@@ -11,7 +11,7 @@
 #   sudo bash install.sh
 #
 # Optional environment variables:
-#   TSP_INSTALL_DIR   Install directory             (default: /opt/trusted-servants-pro)
+#   TSP_INSTALL_DIR   Install directory             (default: /opt/tspro)
 #   TSP_IMAGE         Docker image to deploy        (default: viibeware/trusted-servants-pro:latest)
 #   TSP_DOMAIN        Public hostname for HTTPS     (default: unset — uses self-signed cert)
 #   TSP_ACME_EMAIL    Email for Let's Encrypt cert  (default: admin@<TSP_DOMAIN>)
@@ -22,7 +22,7 @@
 set -euo pipefail
 
 # ---------- config ----------
-INSTALL_DIR="${TSP_INSTALL_DIR:-/opt/trusted-servants-pro}"
+INSTALL_DIR="${TSP_INSTALL_DIR:-/opt/tspro}"
 IMAGE="${TSP_IMAGE:-viibeware/trusted-servants-pro:latest}"
 DOMAIN="${TSP_DOMAIN:-}"
 ACME_EMAIL="${TSP_ACME_EMAIL:-}"
