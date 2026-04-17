@@ -1188,6 +1188,12 @@ h5.block-heading { font-size: 0.875rem; font-weight: 600; margin: 12px 0 4px; }
   .tbl .row-actions { flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
   .tbl .row-actions .btn { padding: 4px 8px; font-size: 0.75rem; }
 
+  .file-list li { align-items: center; gap: 8px; }
+  .file-list li > .row-actions { flex: 1 1 100%; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+  .file-list li > .row-actions > .btn,
+  .file-list li > .row-actions > form { flex: 1 1 0; min-width: 0; }
+  .file-list li > .row-actions > form > .btn { width: 100%; }
+
   body.embed .embed-actions { flex-direction: column; align-items: stretch; }
   body.embed .embed-actions .btn,
   body.embed .embed-actions .btn-primary { width: 100%; justify-content: center; }
