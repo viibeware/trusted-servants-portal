@@ -108,11 +108,24 @@ services:
 
 ## Configuration
 
-A `.env` file sits alongside `docker-compose.yml`:
+A `.env` file sits alongside `docker-compose.yml`. At minimum it must define `TSP_SECRET_KEY` — a long, random value used to sign Flask session cookies.
+
+Generate one with `openssl`:
+
+```bash
+openssl rand -base64 48 | tr -d '\n/+=' | cut -c1-64
+```
+
+Example `.env`:
 
 ```
-TSP_SECRET_KEY=<long random string>
+TSP_SECRET_KEY=REPLACE_WITH_OUTPUT_OF_THE_COMMAND_ABOVE
+TSP_ADMIN_USERNAME=admin
+TSP_ADMIN_PASSWORD=change-me-before-first-boot
+TSP_ADMIN_EMAIL=admin@example.com
 ```
+
+Keep `.env` out of version control and set it to mode `600` on the host (the installer does this automatically). Rotating `TSP_SECRET_KEY` will sign out all active users but does not affect stored Zoom / SMTP passwords — those are encrypted with a separate Fernet key stored at `data/zoom.key` (see **Security**).
 
 Other environment variables (all with sensible defaults):
 
