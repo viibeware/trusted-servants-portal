@@ -406,8 +406,7 @@
       currentMediaTarget = btn.dataset.mediaPicker;
       const frame = document.getElementById("media-picker-frame");
       if (frame && frame.src === "about:blank") frame.src = "/media?picker=1&embed=1";
-      document.getElementById("media-picker-modal")?.setAttribute("aria-hidden", "false");
-      document.body.classList.add("modal-open");
+      openModal("media-picker-modal");
     });
   });
   window.addEventListener("message", (e) => {
@@ -431,8 +430,8 @@
     }
     label.textContent = "Selected from library: " + item.original_filename;
     // Close modal
-    document.getElementById("media-picker-modal")?.setAttribute("aria-hidden", "true");
-    document.body.classList.remove("modal-open");
+    const m = document.getElementById("media-picker-modal");
+    if (m) closeModal(m);
   });
 
   // Drag-and-drop reorder for .file-list-sortable

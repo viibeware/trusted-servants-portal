@@ -11,7 +11,7 @@
   <aside class="login-hero"{% if _bg and not _bg_colors %} style="background: {{ _bg }};"{% endif %} data-effect="{{ _effect }}" data-speed="{{ _speed }}" data-size="{{ _size }}"{% if _bg_colors %} data-bg-colors='{{ _bg_colors }}'{% endif %}>
     <canvas class="login-hero-bg" aria-hidden="true"></canvas>
     <div class="login-hero-inner">
-      <img class="login-hero-logo" src="{{ url_for('static', filename='img/logo_ts_white.svg') }}" alt="Trusted Servants Pro">
+      <img class="login-hero-logo" src="{{ url_for('static', filename='img/logo_tspro_white.svg') }}" alt="Trusted Servants Pro">
       <div class="login-hero-title">Trusted Servants Pro</div>
       <button type="button" class="login-request-btn" data-open-modal="request-access-modal">Request Access</button>
     </div>
@@ -68,7 +68,7 @@
       {% if site and site.footer_logo_filename %}
       <img class="login-warp-logo" src="{{ url_for('main.site_footer_logo') }}" alt="">
       {% else %}
-      <img class="login-warp-logo" src="{{ url_for('static', filename='img/logo_ts_white.svg') }}" alt="">
+      <img class="login-warp-logo" src="{{ url_for('static', filename='img/logo_tspro_white.svg') }}" alt="">
       {% endif %}
     </div>
     <div class="login-warp-white"></div>

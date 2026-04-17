@@ -591,6 +591,11 @@
               <div class="u-name">1.3</div>
               <div class="muted smaller">April 2026</div>
               <ul>
+                <li><b>Open-source under AGPLv3</b> — the portal is now licensed under the GNU Affero General Public License v3.0. Every Python and first-party JS file carries an SPDX header and the repository ships with the full license text. GitHub auto-detects the badge.</li>
+                <li><b>Add File modal</b> — on a library page the &ldquo;+ Add File&rdquo; button now opens a proper popup modal instead of expanding an inline accordion. The <b>File Browser</b> button inside the form (renamed from &ldquo;Browse Library&rdquo;) now actually opens the media picker — it had been silently failing due to a modal-class mismatch.</li>
+                <li><b>About refresh</b> — bigger 120&nbsp;px branded TSPro logo, updated tagline (&ldquo;An open-source web app designed to help addiction recovery fellowships maintain shared documents and accounts&rdquo;), and each Built&nbsp;With tile now links to the project&rsquo;s canonical homepage (opens in a new tab).</li>
+                <li><b>Unified login logo</b> — the login hero and 3D-warp both now use a white variant of the new TSPro logo to match the About pane.</li>
+                <li><b>Installer docs</b> — the README now has a step-by-step &ldquo;One-command install (Ubuntu 24.04)&rdquo; section covering provisioning, optional DNS setup, the <code>curl | sudo bash</code> command, non-interactive env vars, and day-to-day compose commands.</li>
                 <li><b>Server metrics widget</b> — new admin-only dashboard card with CPU, memory, load average, uptime, host OS, and hostname. CPU and memory get canvas sparklines; the container mounts host <code>/proc</code> and <code>/etc/os-release</code> read-only so readings reflect the physical server, not the container.</li>
                 <li><b>Drag-and-drop dashboard</b> — every widget is now draggable and auto-saves the new order to <code>SiteSetting.dash_order_json</code>. A subtle grip handle fades in on hover and stays visible on mobile.</li>
                 <li><b>Universal SVG icons</b> — replaced every system-font glyph (×, ⋮⋮, →, gear, help, logout, sun, moon, user, mail, phone) with bundled Lucide SVGs so the UI looks identical across browsers, OSes, and fonts.</li>

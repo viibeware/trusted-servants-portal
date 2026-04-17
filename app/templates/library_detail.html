@@ -2,7 +2,7 @@
 {% block heading %}{{ library.name }}{% endblock %}
 {% block top_actions %}
   {% if current_user.can_edit() %}
-  <button type="button" class="btn btn-primary" data-file-add-toggle="add-library-file">+ Add File</button>
+  <button type="button" class="btn btn-primary" data-open-modal="add-library-file-modal">+ Add File</button>
   <button type="button" class="btn btn-primary" data-open-modal="library-edit-modal">Edit</button>
   {% endif %}
   {% if current_user.is_admin() %}
@@ -77,7 +77,7 @@
           <div class="file-input-row">
             <input type="file" name="file"
                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.mp4,.mov,application/pdf,image/*,video/*">
-            <button type="button" class="btn btn-sm" data-media-picker="{{ edit_id }}">Browse Library</button>
+            <button type="button" class="btn btn-sm" data-media-picker="{{ edit_id }}">File Browser</button>
           </div>
         </fieldset>
         <label>External Link <span class="muted small">(optional)</span>
@@ -106,30 +106,46 @@
 
   {% if can_edit %}
   <div class="card-foot">
-    <button type="button" class="btn btn-sm" data-file-add-toggle="add-library-file">+ Add File</button>
-    <form id="add-library-file" method="post" class="file-add-form collapsed" enctype="multipart/form-data"
-          action="{{ url_for('main.reading_new', lid=library.id) }}">
-      <label>Title<input name="title" required></label>
-      <label>File</label>
-      <div class="file-input-row">
-        <input type="file" name="file"
-               accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.mp4,.mov,application/pdf,image/*,video/*">
-        <button type="button" class="btn btn-sm" data-media-picker="add-library-file">Browse Library</button>
-      </div>
-      <label>External Link <span class="muted small">(optional)</span>
-        <input name="url" type="url" placeholder="https://..."></label>
-      <label>Thumbnail <span class="muted small">(optional)</span>
-        <input type="file" name="thumbnail" accept="image/*"></label>
-      <label>Body <span class="muted small">(optional inline text)</span>
-        <textarea name="body" rows="6"></textarea></label>
-      <div class="form-actions">
-        <button type="button" class="btn btn-sm" data-file-add-cancel="add-library-file">Cancel</button>
-        <button type="submit" class="btn btn-sm btn-primary">Upload</button>
-      </div>
-    </form>
+    <button type="button" class="btn btn-sm" data-open-modal="add-library-file-modal">+ Add File</button>
   </div>
   {% endif %}
 </section>
+
+{% if can_edit %}
+<div class="modal" id="add-library-file-modal" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true">
+    <form id="add-library-file" method="post" class="form" enctype="multipart/form-data"
+          action="{{ url_for('main.reading_new', lid=library.id) }}">
+      <div class="modal-head">
+        <h2>Add File</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">{{ icon('x') }}</button>
+      </div>
+      <div class="modal-body">
+        <label>Title<input name="title" required></label>
+        <fieldset class="fieldset">
+          <legend>File <span class="muted small">(PDF, DOC, JPG, PNG, MP4, MOV)</span></legend>
+          <div class="file-input-row">
+            <input type="file" name="file"
+                   accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.mp4,.mov,application/pdf,image/*,video/*">
+            <button type="button" class="btn btn-sm" data-media-picker="add-library-file">File Browser</button>
+          </div>
+        </fieldset>
+        <label>External Link <span class="muted small">(optional)</span>
+          <input name="url" type="url" placeholder="https://..."></label>
+        <label>Thumbnail <span class="muted small">(optional)</span>
+          <input type="file" name="thumbnail" accept="image/*"></label>
+        <label>Body <span class="muted small">(optional inline text)</span>
+          <textarea name="body" rows="6"></textarea></label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Upload</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 {% if can_edit %}
 {% set form_id = 'library-edit-form' %}

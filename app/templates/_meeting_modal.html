@@ -233,7 +233,7 @@
                 <label>Replace File</label>
                 <div class="file-input-row">
                   <input type="file" name="file">
-                  <button type="button" class="btn btn-sm" data-media-picker="{{ f_edit_id }}">Browse Library</button>
+                  <button type="button" class="btn btn-sm" data-media-picker="{{ f_edit_id }}">File Browser</button>
                 </div>
                 <label>Or URL<input name="url" type="url" placeholder="https://..."
                        value="{{ f.url or '' }}"></label>
@@ -259,7 +259,7 @@
             <label>File</label>
             <div class="file-input-row">
               <input type="file" name="file">
-              <button type="button" class="btn btn-sm" data-media-picker="add-{{ cat }}">Browse Library</button>
+              <button type="button" class="btn btn-sm" data-media-picker="add-{{ cat }}">File Browser</button>
             </div>
             <label>Or URL<input name="url" type="url" placeholder="https://..."></label>
             {% endif %}
