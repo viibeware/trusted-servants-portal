@@ -15,17 +15,13 @@
       <div class="login-hero-title">Trusted Servants Pro</div>
       <button type="button" class="login-request-btn" data-open-modal="request-access-modal">Request Access</button>
     </div>
+    {% set _flogo = (site.footer_logo_filename if site else None) %}
+    {% if _flogo %}
     <div class="login-hero-footer">
-      {% set _flogo = (site.footer_logo_filename if site else None) %}
-      {% if _flogo %}
-        {% set _flogo_src = url_for('main.site_footer_logo') %}
-        {% set _flogo_is_svg = _flogo.lower().endswith('.svg') %}
-      {% else %}
-        {% set _flogo_src = url_for('static', filename='img/viibeware.svg') %}
-        {% set _flogo_is_svg = true %}
-      {% endif %}
-      <img src="{{ _flogo_src }}" alt="" class="login-hero-brand{% if _flogo_is_svg %} login-hero-brand-white{% endif %}">
+      {% set _flogo_is_svg = _flogo.lower().endswith('.svg') %}
+      <img src="{{ url_for('main.site_footer_logo') }}" alt="" class="login-hero-brand{% if _flogo_is_svg %} login-hero-brand-white{% endif %}">
     </div>
+    {% endif %}
   </aside>
 
   <section class="login-form-pane">
