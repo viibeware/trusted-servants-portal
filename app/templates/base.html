@@ -557,19 +557,57 @@
 {% endif %}
       <div class="settings-pane" data-pane="about">
         <div class="about-pane">
-          <div class="about-head about-head-branded">
-            <img class="about-logo" src="{{ url_for('static', filename='img/logo.svg') }}" alt="Trusted Servants Pro">
-            <div>
-              <div class="u-name">Trusted Servants Pro</div>
-              <div class="muted small">Version 1.2</div>
+          {% set _tech_icons = [
+            ('Python', 'python'),
+            ('Flask', 'flask'),
+            ('Jinja', 'jinja'),
+            ('Gunicorn', 'gunicorn'),
+            ('SQLite', 'sqlite'),
+            ('SQLAlchemy', 'sqlalchemy'),
+            ('Markdown', 'markdown'),
+            ('JavaScript', 'javascript'),
+            ('Docker', 'docker'),
+            ('Caddy', 'caddy'),
+            ('Cloudflare', 'cloudflare'),
+            ("Let's Encrypt", 'letsencrypt'),
+          ] %}
+          <div class="about-hero">
+            <div class="about-hero-brand">
+              <img class="about-logo" src="{{ url_for('static', filename='img/logo.svg') }}" alt="Trusted Servants Pro">
+              <div class="about-hero-name">Trusted Servants Pro</div>
+              <div class="about-hero-version">Version 1.2</div>
+              <div class="about-tagline">A web app designed to help addiction recovery fellowships maintain shared documents and accounts</div>
+              <div class="about-built-by">
+                Built by
+                <a href="https://viibeware.com" target="_blank" rel="noopener" class="viibeware-credit viibeware-credit-sm">
+                  <img src="{{ url_for('static', filename='img/viibeware.svg') }}" alt="">
+                  <span class="viibeware-name">VIIBEWARE</span>
+                </a>
+              </div>
+            </div>
+            <div class="about-hero-stack">
+              <div class="about-stack-label">Built With</div>
+              <div class="tech-stack">
+                {% for name, slug in _tech_icons %}
+                <span class="tech-tile" title="{{ name }}">
+                  <span class="tech-icon" style="-webkit-mask-image: url('{{ url_for('static', filename='img/tech/' ~ slug ~ '.svg') }}'); mask-image: url('{{ url_for('static', filename='img/tech/' ~ slug ~ '.svg') }}');"></span>
+                  <span class="tech-tile-name">{{ name }}</span>
+                </span>
+                {% endfor %}
+              </div>
             </div>
           </div>
+
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
             <li>
               <div class="u-name">1.2</div>
               <div class="muted smaller">April 2026</div>
               <ul>
+                <li><b>Rebrand to Trusted Servants Pro</b> — renamed the app and sidebar brand from &ldquo;Trusted Servants Portal&rdquo; to &ldquo;Trusted Servants Pro.&rdquo; The install directory is now <code>/opt/tspro</code> and the Docker container name is <code>tspro</code>.</li>
+                <li><b>About pane refresh</b> — new tagline clarifying the portal is built for addiction recovery fellowships, with a &ldquo;Built by VIIBEWARE&rdquo; credit moved inline under the description.</li>
+                <li><b>Data tab layout</b> — vertical divider between the Import and Export columns, with action buttons left-aligned to each column.</li>
+                <li><b>Bot Protection alignment</b> — the Save Bot Protection button on the Appearance tab is now left-aligned to match the other login settings forms.</li>
                 <li><b>Unbundled third-party branding</b> — removed the DCCMA logo assets from the shipping image. Only the Trusted Servants and Viibeware marks are bundled now.</li>
                 <li><b>Sidebar logo on login</b> — the admin-configured sidebar footer logo (or the Viibeware default) now appears at the bottom of the login hero at 100&nbsp;px wide. SVGs are auto-whitened with a CSS filter so they read cleanly over the gradient.</li>
               </ul>
@@ -611,12 +649,6 @@
               </ul>
             </li>
           </ul>
-          <div class="about-credit">
-            <a href="https://viibeware.com" target="_blank" rel="noopener" class="viibeware-credit">
-              <img src="{{ url_for('static', filename='img/viibeware.svg') }}" alt="">
-              <span class="viibeware-name">VIIBEWARE CORP</span>
-            </a>
-          </div>
         </div>
       </div>
     </div>
