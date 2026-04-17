@@ -737,7 +737,7 @@ form.hide-zoom .zoom-only, form.hide-zoom .zoom-only-field { display: none; }
 .width-slider-label input[type="range"] { width: 100%; }
 .about-head-branded { flex-direction: row; align-items: center; gap: 16px; }
 .about-head-branded .u-name { font-size: 1rem; }
-.about-logo { width: 96px; height: 96px; }
+.about-logo { width: 120px; height: auto; }
 .about-credit { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border); }
 .viibeware-credit { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
 .viibeware-credit img { height: 28px; }
@@ -759,7 +759,7 @@ form.hide-zoom .zoom-only, form.hide-zoom .zoom-only-field { display: none; }
 .about-hero { display: grid; grid-template-columns: minmax(200px, 240px) 1fr; gap: 24px; align-items: start;
   padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2); }
 .about-hero-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
-.about-hero-brand .about-logo { width: 96px; height: 96px; margin-bottom: 10px; }
+.about-hero-brand .about-logo { width: 120px; height: auto; margin-bottom: 10px; }
 .about-hero-name { font-size: 1.0625rem; font-weight: 700; color: var(--text); line-height: 1.25; }
 .about-hero-version { font-size: .8125rem; color: var(--muted); font-weight: 500; }
 .about-hero-stack { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
@@ -774,7 +774,8 @@ form.hide-zoom .zoom-only, form.hide-zoom .zoom-only-field { display: none; }
 .tech-stack { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 10px; }
 .tech-tile { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 10px;
   padding: 16px 8px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2);
-  transition: border-color 140ms ease, transform 140ms ease, background 140ms ease; cursor: default; }
+  transition: border-color 140ms ease, transform 140ms ease, background 140ms ease;
+  text-decoration: none; color: inherit; }
 .tech-tile:hover { border-color: var(--access); transform: translateY(-2px); background: var(--panel); }
 .tech-icon { width: 32px; height: 32px; flex: 0 0 auto; background-color: var(--text);
   -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center;

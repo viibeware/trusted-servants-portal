@@ -545,25 +545,25 @@
       <div class="settings-pane" data-pane="about">
         <div class="about-pane">
           {% set _tech_icons = [
-            ('Python', 'python'),
-            ('Flask', 'flask'),
-            ('Jinja', 'jinja'),
-            ('Gunicorn', 'gunicorn'),
-            ('SQLite', 'sqlite'),
-            ('SQLAlchemy', 'sqlalchemy'),
-            ('Markdown', 'markdown'),
-            ('JavaScript', 'javascript'),
-            ('Docker', 'docker'),
-            ('Caddy', 'caddy'),
-            ('Cloudflare', 'cloudflare'),
-            ("Let's Encrypt", 'letsencrypt'),
+            ('Python', 'python', 'https://www.python.org/'),
+            ('Flask', 'flask', 'https://flask.palletsprojects.com/'),
+            ('Jinja', 'jinja', 'https://jinja.palletsprojects.com/'),
+            ('Gunicorn', 'gunicorn', 'https://gunicorn.org/'),
+            ('SQLite', 'sqlite', 'https://www.sqlite.org/'),
+            ('SQLAlchemy', 'sqlalchemy', 'https://www.sqlalchemy.org/'),
+            ('Markdown', 'markdown', 'https://python-markdown.github.io/'),
+            ('JavaScript', 'javascript', 'https://developer.mozilla.org/docs/Web/JavaScript'),
+            ('Docker', 'docker', 'https://www.docker.com/'),
+            ('Caddy', 'caddy', 'https://caddyserver.com/'),
+            ('Cloudflare', 'cloudflare', 'https://www.cloudflare.com/'),
+            ("Let's Encrypt", 'letsencrypt', 'https://letsencrypt.org/'),
           ] %}
           <div class="about-hero">
             <div class="about-hero-brand">
-              <img class="about-logo" src="{{ url_for('static', filename='img/logo.svg') }}" alt="Trusted Servants Pro">
+              <img class="about-logo" src="{{ url_for('static', filename='img/logo_tspro_about.svg') }}" alt="Trusted Servants Pro">
               <div class="about-hero-name">Trusted Servants Pro</div>
               <div class="about-hero-version">Version 1.3</div>
-              <div class="about-tagline">A web app designed to help addiction recovery fellowships maintain shared documents and accounts</div>
+              <div class="about-tagline">An open-source web app designed to help addiction recovery fellowships maintain shared documents and accounts</div>
               <div class="about-built-by">
                 Built by
                 <a href="https://viibeware.com" target="_blank" rel="noopener" class="viibeware-credit viibeware-credit-sm">
@@ -575,11 +575,11 @@
             <div class="about-hero-stack">
               <div class="about-stack-label">Built With</div>
               <div class="tech-stack">
-                {% for name, slug in _tech_icons %}
-                <span class="tech-tile" title="{{ name }}">
+                {% for name, slug, url in _tech_icons %}
+                <a class="tech-tile" href="{{ url }}" target="_blank" rel="noopener" title="{{ name }}">
                   <span class="tech-icon" style="-webkit-mask-image: url('{{ url_for('static', filename='img/tech/' ~ slug ~ '.svg') }}'); mask-image: url('{{ url_for('static', filename='img/tech/' ~ slug ~ '.svg') }}');"></span>
                   <span class="tech-tile-name">{{ name }}</span>
-                </span>
+                </a>
                 {% endfor %}
               </div>
             </div>
