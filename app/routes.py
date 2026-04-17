@@ -162,7 +162,7 @@ def dashboard_customize():
 def meetings():
     sort = request.args.get("sort") or request.cookies.get("view-meetings-sort") or "name"
     direction = request.args.get("dir") or request.cookies.get("view-meetings-dir") or "asc"
-    view = request.args.get("view") or request.cookies.get("view-meetings") or "cards"
+    view = request.args.get("view") or request.cookies.get("view-meetings") or "table"
     show = request.args.get("show") or "active"
     q = Meeting.query
     if show == "archived":
@@ -1164,7 +1164,7 @@ def file_download(fid):
 @bp.route("/libraries")
 @login_required
 def libraries():
-    view = request.args.get("view") or request.cookies.get("view-libraries") or "cards"
+    view = request.args.get("view") or request.cookies.get("view-libraries") or "table"
     sort = request.args.get("sort") or request.cookies.get("view-libraries-sort") or "name"
     direction = request.args.get("dir") or request.cookies.get("view-libraries-dir") or "asc"
     items = Library.query.all()

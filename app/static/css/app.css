@@ -793,10 +793,10 @@ body.embed .card:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom
   background: var(--panel-2); color: var(--text); font-size: 0.8125rem; font-family: inherit; }
 
 .mtype-chip { display: inline-block; margin-left: 12px; padding: 4px 12px; border-radius: 999px; white-space: nowrap;
-  font-size: 0.75rem; font-weight: 700; letter-spacing: .3px; color: white; vertical-align: middle; }
-.mtype-online { background: #0b5cff; }
-.mtype-hybrid { background: #ac48ff; }
-.mtype-in_person { background: #38c64c; }
+  font-size: 0.75rem; font-weight: 600; letter-spacing: .3px; vertical-align: middle; }
+.mtype-online { background: rgba(11, 92, 255, 0.16); color: #0b5cff; }
+.mtype-hybrid { background: rgba(172, 72, 255, 0.18); color: #8b36d9; }
+.mtype-in_person { background: rgba(56, 198, 76, 0.2); color: #1f9d3b; }
 
 .meeting-info { display: flex; flex-direction: column; gap: 20px; }
 .meeting-info .detail-label { font-size: 1rem; font-weight: 700; color: var(--text);
