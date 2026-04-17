@@ -136,11 +136,6 @@
   const form = document.getElementById('login-form');
   const split = document.querySelector('.login-split');
   if (!form || !split) return;
-  // Turnstile tokens are single-use, so we can't do a fetch+replay to pre-flight
-  // credentials — the replay would trigger "timeout-or-duplicate". When Turnstile
-  // is active we play the animation in parallel with a native submit; a failed
-  // login will still return to this page with a flashed error.
-  const hasTurnstile = !!form.querySelector('.cf-turnstile');
   const submitBtn = form.querySelector('.login-submit');
 
   function animateSineWarp(canvas, durationMs){
@@ -235,13 +230,11 @@
     if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     e.preventDefault();
 
-    if (hasTurnstile) {
-      // Play animation, then native-submit so the single-use token is only sent once.
-      playWarpAndNavigate(() => form.submit());
-      return;
-    }
-
-    // Validate credentials first via fetch; only animate on success.
+    // Pre-flight via fetch: the fetch IS the real login, so credentials — and
+    // the Turnstile token, when present — are only sent once. Animate only on
+    // confirmed success (Flask redirecting away from the login URL). On
+    // failure, render the server's response in place so the user sees the
+    // flash error and (with Turnstile) a fresh single-use challenge token.
     const formData = new FormData(form);
     const loginUrl = new URL(form.action || window.location.href, window.location.origin).href;
     fetch(loginUrl, {
@@ -251,14 +244,15 @@
       redirect: 'follow',
     }).then(resp => {
       const finalUrl = new URL(resp.url, window.location.origin).href;
-      // After a successful login, Flask redirects to main.index (or ?next=...).
-      // If we end up back on the login URL, credentials failed.
       const succeeded = resp.ok && finalUrl !== loginUrl;
       if (succeeded) {
         setTimeout(() => playWarpAndNavigate(() => window.location.assign(finalUrl)), 500);
       } else {
-        // Failure: resubmit normally so the server renders the flash.
-        form.submit();
+        return resp.text().then(html => {
+          document.open();
+          document.write(html);
+          document.close();
+        });
       }
     }).catch(() => { form.submit(); });
   });
