@@ -546,14 +546,18 @@ html.login-fade-in body { animation: login-page-fade-in 650ms ease-out both; }
 
 /* Request-access modal */
 .modal-panel.request-access-panel { max-width: 400px; width: calc(100% - 32px); margin: 5vh auto; position: relative;
-  background: var(--panel); border-radius: 18px; padding: 32px 36px 36px; box-shadow: 0 20px 50px rgba(0,0,0,0.25); }
+  background: var(--panel); border-radius: 18px; padding: 32px 36px 36px; box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+  max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
 .request-access-close { position: absolute; top: 14px; right: 14px; width: 32px; height: 32px;
   color: var(--access); font-size: 1.5rem; background: transparent; border: 0; border-radius: 0;
   display: grid; place-items: center; cursor: pointer; }
 .request-access-close:hover { background: transparent; color: var(--access-hover); }
 .request-access-title { text-align: center; font-size: 1.5rem; font-weight: 700; color: var(--text);
   margin: 4px 0 24px; line-height: 1.25; }
-.request-access-form { display: flex; flex-direction: column; gap: 18px; }
+.request-access-form { display: flex; flex-direction: column; gap: 18px;
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  scrollbar-width: none; -ms-overflow-style: none; }
+.request-access-form::-webkit-scrollbar { display: none; }
 .request-access-form label { display: flex; flex-direction: column; gap: 6px; font-size: 0.9375rem; color: var(--text); font-weight: 500; }
 .request-access-form .req { color: var(--danger, #e11d48); }
 .request-access-form input[type="text"],
