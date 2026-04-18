@@ -13,7 +13,7 @@
   {% if widget_key == 'server-metrics' and current_user.dash_show_server_metrics %}
   <div class="dash-widget dash-widget-wide" data-widget-key="server-metrics" {% if can_reorder %}draggable="true"{% endif %}>
     {% if can_reorder %}<span class="dash-drag-handle" aria-hidden="true">{{ icon('grip-vertical') }}</span>{% endif %}
-    <section class="card server-metrics" id="server-metrics-widget" data-endpoint="{{ url_for('main.api_server_metrics') }}">
+    <section class="card server-metrics{% if not current_user.can_edit() %} server-metrics-role-only{% endif %}" id="server-metrics-widget" data-endpoint="{{ url_for('main.api_server_metrics') }}">
       <div class="server-metrics-body">
         <div class="role-panel">
           <div class="role-panel-label">Your role</div>
@@ -34,12 +34,13 @@
             {% endif %}
           </ul>
         </div>
+        {% if current_user.can_edit() %}
         <div class="server-metrics-column">
           <div class="card-head">
             <h2>Server</h2>
             <span class="muted smaller server-metrics-os" data-field="os">—</span>
           </div>
-          <div class="server-metrics-grid">
+          <div class="server-metrics-grid{% if current_user.is_admin() %} server-metrics-grid-5{% endif %}">
             <div class="metric-tile">
               <div class="metric-label">CPU</div>
               <div class="metric-value"><span data-field="cpu_percent">—</span><span class="metric-unit">%</span></div>
@@ -61,8 +62,18 @@
               <div class="metric-value metric-value-sm" data-field="uptime">—</div>
               <div class="metric-sub muted smaller" data-field="cpu_count">—</div>
             </div>
+            {% if current_user.is_admin() %}
+            <div class="metric-tile metric-tile-text" id="online-users-tile"
+                 data-endpoint="{{ url_for('main.api_online_users') }}"
+                 title="{% for u in online_users %}{{ u.username }} ({{ u.role }}){% if not loop.last %}, {% endif %}{% endfor %}">
+              <div class="metric-label">Online</div>
+              <div class="metric-value" data-field="online_count">{{ online_count }}</div>
+              <div class="metric-sub muted smaller" data-field="online_label">{% if online_count == 1 %}user · last 5 min{% else %}users · last 5 min{% endif %}</div>
+            </div>
+            {% endif %}
           </div>
         </div>
+        {% endif %}
       </div>
     </section>
   </div>
@@ -164,7 +175,8 @@
             ('dash_show_meetings', 'Recent Meetings', 'List of the most recent meetings.'),
             ('dash_show_libraries', 'Libraries', 'List of libraries with file counts.'),
             ('dash_show_files', 'Recent Files', 'Most recently uploaded files from the file browser.'),
-            ('dash_show_server_metrics', 'Your Role and Server Stats', 'Your account role and capabilities alongside CPU, memory, load average, uptime, and host OS.'),
+            ('dash_show_server_metrics', 'Your Role' + (' and Server Stats' if current_user.can_edit() else ''),
+              'Your account role and capabilities' + (' alongside CPU, memory, load average, uptime, and host OS.' if current_user.can_edit() else '.')),
           ] %}
           <li class="special-page-row">
             <div class="special-page-info">

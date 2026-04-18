@@ -8,7 +8,8 @@ from flask import (Blueprint, render_template, redirect, url_for, request,
                    flash, send_from_directory, abort, current_app, jsonify)
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
-from .models import (db, Meeting, MeetingFile, MeetingSchedule, MeetingLibrary,
+from datetime import datetime, timedelta
+from .models import (db, User, Meeting, MeetingFile, MeetingSchedule, MeetingLibrary,
                      ZoomAccount, ZoomOtpEmail, Location, Library, Reading,
                      MediaItem, NavLink, SiteSetting, IntergroupAccount,
                      AccessRequest, FILE_CATEGORIES, DAYS_OF_WEEK)
@@ -133,6 +134,36 @@ def inject_globals():
 
 DASHBOARD_WIDGET_KEYS = ("server-metrics", "meetings", "libraries", "files", "access-requests")
 
+ONLINE_WINDOW = timedelta(minutes=5)
+LAST_SEEN_THROTTLE = timedelta(seconds=60)
+
+
+@bp.before_app_request
+def _track_last_seen():
+    """Throttled last_seen_at update for the authenticated user."""
+    if not getattr(current_user, "is_authenticated", False):
+        return
+    now = datetime.utcnow()
+    last = getattr(current_user, "last_seen_at", None)
+    if last is not None and (now - last) < LAST_SEEN_THROTTLE:
+        return
+    try:
+        current_user.last_seen_at = now
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _online_users():
+    """Return (count, list[User]) of users seen within ONLINE_WINDOW."""
+    cutoff = datetime.utcnow() - ONLINE_WINDOW
+    q = (User.query
+         .filter(User.last_seen_at.isnot(None))
+         .filter(User.last_seen_at >= cutoff)
+         .order_by(User.last_seen_at.desc()))
+    users = q.all()
+    return len(users), users
+
 
 def _dashboard_order(user):
     import json
@@ -159,14 +190,18 @@ def index():
     libraries = Library.query.order_by(Library.name).all()
     recent_files = MediaItem.query.order_by(MediaItem.created_at.desc()).limit(6).all()
     access_requests = []
+    online_count = 0
+    online_users = []
     if current_user.is_admin():
         access_requests = (AccessRequest.query
                            .filter_by(status="pending")
                            .order_by(AccessRequest.created_at.desc())
                            .limit(6).all())
+        online_count, online_users = _online_users()
     dashboard_order = _dashboard_order(current_user)
     return render_template("index.html", meetings=meetings, libraries=libraries,
                            recent_files=recent_files, access_requests=access_requests,
+                           online_count=online_count, online_users=online_users,
                            dashboard_order=dashboard_order)
 
 
@@ -184,10 +219,23 @@ def dashboard_customize():
 
 
 @bp.route("/api/server-metrics")
-@login_required
+@editor_required
 def api_server_metrics():
     from .metrics import snapshot
     return jsonify(snapshot())
+
+
+@bp.route("/api/online-users")
+@login_required
+def api_online_users():
+    if not current_user.is_admin():
+        abort(403)
+    count, users = _online_users()
+    return jsonify(count=count, users=[
+        {"username": u.username, "role": u.role,
+         "last_seen_at": u.last_seen_at.isoformat() + "Z" if u.last_seen_at else None}
+        for u in users
+    ])
 
 
 @bp.route("/dashboard/order", methods=["POST"])

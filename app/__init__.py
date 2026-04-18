@@ -296,7 +296,9 @@ def _migrate_sqlite(app):
                          ("dash_show_libraries", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("dash_show_files", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("dash_show_server_metrics", "BOOLEAN NOT NULL DEFAULT 1"),
-                         ("dash_order_json", "TEXT")):
+                         ("dash_show_online_users", "BOOLEAN NOT NULL DEFAULT 1"),
+                         ("dash_order_json", "TEXT"),
+                         ("last_seen_at", "DATETIME")):
             add("user", col, ddl)
 
 

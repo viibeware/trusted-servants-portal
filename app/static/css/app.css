@@ -335,6 +335,8 @@ a.card.meeting-card { font-weight: 500; }
 
 /* Combined role + server-metrics widget layout */
 .server-metrics-body { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; gap: 24px; align-items: start; }
+.server-metrics-role-only .server-metrics-body { grid-template-columns: 1fr; }
+.server-metrics-role-only .role-panel { padding-right: 0; border-right: 0; }
 .role-panel { display: flex; flex-direction: column; padding-right: 24px; border-right: 1px solid var(--border); }
 .role-panel-label { font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .role-panel-name { font-size: 1.375rem; font-weight: 700; color: var(--text); margin-top: 2px; line-height: 1.2; }
@@ -1417,6 +1419,7 @@ h5.block-heading { font-size: 0.875rem; font-weight: 600; margin: 12px 0 4px; }
 .server-metrics .card-head { align-items: baseline; }
 .server-metrics-os { text-align: right; }
 .server-metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 4px; }
+.server-metrics-grid-5 { grid-template-columns: repeat(5, 1fr); }
 .metric-tile { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px;
   border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); min-width: 0; }
 .metric-label { font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.12em;
@@ -1428,11 +1431,16 @@ h5.block-heading { font-size: 0.875rem; font-weight: 600; margin: 12px 0 4px; }
 .metric-sub { margin-top: 2px; }
 .metric-spark { width: 100%; height: 40px; margin-top: 6px; display: block; }
 .metric-tile-text { justify-content: center; }
+@media (max-width: 960px) {
+  .server-metrics-grid-5 { grid-template-columns: repeat(3, 1fr); }
+}
 @media (max-width: 720px) {
-  .server-metrics-grid { grid-template-columns: 1fr 1fr; }
+  .server-metrics-grid,
+  .server-metrics-grid-5 { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 520px) {
-  .server-metrics-grid { grid-template-columns: 1fr; }
+  .server-metrics-grid,
+  .server-metrics-grid-5 { grid-template-columns: 1fr; }
 }
 
 /* ===== First-run setup wizard ===== */

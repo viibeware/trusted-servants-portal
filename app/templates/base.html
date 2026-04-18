@@ -678,6 +678,14 @@
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
             <li>
+              <div class="u-name">1.3.6</div>
+              <div class="muted smaller">April 2026</div>
+              <ul>
+                <li><b>Online Now tile in Server Stats</b> — the Server Stats card gains a fifth tile (admin-only) showing the number of users active in the last five minutes, with the list of usernames and roles exposed on hover. Refreshes every 30 seconds via <code>/api/online-users</code>. Activity is tracked via a new <code>User.last_seen_at</code> column updated by a throttled (once/minute per user) <code>before_app_request</code> hook, so it survives gunicorn restarts and works across workers.</li>
+                <li><b>Server Stats restricted to editors and admins</b> — the CPU / memory / load / uptime column in the "Your Role and Server Stats" card is now hidden from viewers, and <code>/api/server-metrics</code> is gated with <code>@editor_required</code>. Viewers still see their role and capabilities in the same widget (now rendered full-width without the server column), and can still toggle the widget from Customize Dashboard; the toggle's label and description adapt to the viewer's role so it only mentions "Server Stats" for users who can see them.</li>
+              </ul>
+            </li>
+            <li>
               <div class="u-name">1.3.5</div>
               <div class="muted smaller">April 2026</div>
               <ul>

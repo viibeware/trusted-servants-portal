@@ -40,7 +40,9 @@ class User(UserMixin, db.Model):
     dash_show_libraries = db.Column(db.Boolean, nullable=False, default=True)
     dash_show_files = db.Column(db.Boolean, nullable=False, default=True)
     dash_show_server_metrics = db.Column(db.Boolean, nullable=False, default=True)
+    dash_show_online_users = db.Column(db.Boolean, nullable=False, default=True)
     dash_order_json = db.Column(db.Text)
+    last_seen_at = db.Column(db.DateTime)
 
     def can_edit(self):
         return self.role in ("admin", "editor")

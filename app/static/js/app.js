@@ -709,6 +709,7 @@
   (function initServerMetrics(){
     const widget = document.getElementById("server-metrics-widget");
     if (!widget) return;
+    if (!widget.querySelector(".server-metrics-column")) return;
     const endpoint = widget.dataset.endpoint;
     const MAX_SAMPLES = 60;
     const series = { cpu: [], mem: [] };
@@ -795,6 +796,34 @@
 
     tick();
     const h = setInterval(tick, 5000);
+    window.addEventListener("beforeunload", () => clearInterval(h));
+  })();
+
+  (function initOnlineUsers(){
+    const tile = document.getElementById("online-users-tile");
+    if (!tile) return;
+    const endpoint = tile.dataset.endpoint;
+    const countEl = tile.querySelector('[data-field="online_count"]');
+    const labelEl = tile.querySelector('[data-field="online_label"]');
+
+    function render(count, users) {
+      if (countEl) countEl.textContent = count;
+      if (labelEl) labelEl.textContent = (count === 1 ? "user" : "users") + " · last 5 min";
+      tile.title = users.length
+        ? users.map(u => u.username + " (" + u.role + ")").join(", ")
+        : "No one online right now.";
+    }
+
+    async function tick() {
+      try {
+        const r = await fetch(endpoint, { credentials: "same-origin", headers: { "X-Requested-With": "fetch" }});
+        if (!r.ok) return;
+        const d = await r.json();
+        render(d.count || 0, d.users || []);
+      } catch (_) {}
+    }
+
+    const h = setInterval(tick, 30000);
     window.addEventListener("beforeunload", () => clearInterval(h));
   })();
 })();
