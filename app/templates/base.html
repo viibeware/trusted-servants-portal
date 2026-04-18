@@ -4,6 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{% block title %}Trusted Servants Pro{% endblock %}</title>
+{% if site and site.og_enabled %}
+{% set _og_title = site.og_title or 'Trusted Servants Pro' %}
+<meta property="og:title" content="{{ _og_title }}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ request.url }}">
+<meta property="og:site_name" content="Trusted Servants Pro">
+{% if site.og_description %}<meta property="og:description" content="{{ site.og_description }}">{% endif %}
+{% if site.og_image_filename %}<meta property="og:image" content="{{ url_for('main.site_og_image', _external=True) }}">{% endif %}
+<meta name="twitter:card" content="{% if site.og_image_filename %}summary_large_image{% else %}summary{% endif %}">
+<meta name="twitter:title" content="{{ _og_title }}">
+{% if site.og_description %}<meta name="twitter:description" content="{{ site.og_description }}">{% endif %}
+{% if site.og_image_filename %}<meta name="twitter:image" content="{{ url_for('main.site_og_image', _external=True) }}">{% endif %}
+{% if site.og_description %}<meta name="description" content="{{ site.og_description }}">{% endif %}
+{% endif %}
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -294,6 +308,63 @@
         </form>
         </div>
         </div>
+        <hr class="settings-sep">
+        {% set _og_has_image = site and site.og_image_filename %}
+        <div class="appearance-grid">
+        <form class="form appearance-og-form" method="post" action="{{ url_for('main.og_save') }}" enctype="multipart/form-data">
+          <div class="u-name">Open Graph / Link Previews</div>
+          <p class="muted small">Controls the title, description, and image other sites show when someone pastes a link to this portal into Slack, iMessage, Facebook, Twitter/X, or similar. Image is served publicly so crawlers can fetch it.</p>
+          <li class="special-page-row og-toggle-row" style="list-style:none; padding:0;">
+            <div class="special-page-info">
+              <div class="u-name">Enable link previews</div>
+              <p class="muted small">When off, no Open Graph or Twitter Card tags are emitted.</p>
+            </div>
+            <label class="mode-toggle" title="Enable Open Graph link previews">
+              <input type="checkbox" name="og_enabled" value="1" {% if site and site.og_enabled %}checked{% endif %}>
+              <span class="mode-track"><span class="mode-thumb"></span></span>
+            </label>
+          </li>
+          <label>Title
+            <input type="text" name="og_title" maxlength="200" value="{{ (site.og_title if site else '') or '' }}" placeholder="Trusted Servants Pro">
+          </label>
+          <label>Description
+            <textarea name="og_description" rows="3" placeholder="One or two sentences describing the portal.">{{ (site.og_description if site else '') or '' }}</textarea>
+          </label>
+          <div class="branding-row">
+            <div class="branding-preview-wrap">
+              <div class="muted smaller">Preview image</div>
+              <div class="og-preview-mock">
+                <img id="og-preview-img" src="{{ url_for('main.site_og_image') if _og_has_image else '' }}" alt="" style="max-width:100%; max-height:160px; border-radius:6px;"{% if not _og_has_image %} hidden{% endif %}>
+                <div class="og-preview-empty muted smaller"{% if _og_has_image %} hidden{% endif %}>No image set</div>
+              </div>
+              <p class="muted smaller" style="margin-top:6px;">Recommended: 1200×630 px, JPG or PNG, under 5 MB.</p>
+            </div>
+            <div class="branding-fields">
+              <label>Replace image<input type="file" name="og_image" accept="image/*" id="og-image-input"></label>
+              <label class="check og-clear-label"{% if not _og_has_image %} hidden{% endif %}><input type="checkbox" name="clear_og_image" value="1"><span>Remove image</span></label>
+            </div>
+          </div>
+          <div class="form-actions"><button class="btn btn-primary">Save Open Graph</button></div>
+        </form>
+        </div>
+        <script>
+        (function(){
+          const input = document.getElementById('og-image-input');
+          const preview = document.getElementById('og-preview-img');
+          const empty = document.querySelector('.og-preview-empty');
+          const clearLabel = document.querySelector('.og-clear-label');
+          if (!input || !preview) return;
+          input.addEventListener('change', () => {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            const url = URL.createObjectURL(file);
+            preview.src = url;
+            preview.hidden = false;
+            if (empty) empty.hidden = true;
+            if (clearLabel) clearLabel.hidden = false;
+          });
+        })();
+        </script>
         <script src="{{ url_for('static', filename='js/login_fx.js') }}"></script>
         <script>
         (function(){
@@ -606,6 +677,13 @@
 
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
+            <li>
+              <div class="u-name">1.3.5</div>
+              <div class="muted smaller">April 2026</div>
+              <ul>
+                <li><b>Open Graph / link previews</b> — new admin-only section in Settings → Appearance controls the title, description, and image other platforms show when a portal URL is pasted into Slack, iMessage, Facebook, Twitter/X, etc. Emits <code>og:*</code> and <code>twitter:*</code> meta tags site-wide when enabled. The image is served at <code>/site-branding/og-image</code> (public, so crawlers can fetch it without auth). Four new <code>SiteSetting</code> columns (<code>og_enabled</code>, <code>og_title</code>, <code>og_description</code>, <code>og_image_filename</code>) with matching migration entries.</li>
+              </ul>
+            </li>
             <li>
               <div class="u-name">1.3.4</div>
               <div class="muted smaller">April 2026</div>

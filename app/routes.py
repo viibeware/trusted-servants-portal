@@ -1105,6 +1105,38 @@ def site_footer_logo():
     return send_from_directory(current_app.config["UPLOAD_FOLDER"], s.footer_logo_filename)
 
 
+@bp.route("/site-branding/og-image")
+def site_og_image():
+    s = _get_site_setting()
+    if not s.og_image_filename:
+        abort(404)
+    return send_from_directory(current_app.config["UPLOAD_FOLDER"], s.og_image_filename)
+
+
+@bp.route("/settings/og-save", methods=["POST"])
+@admin_required
+def og_save():
+    s = _get_site_setting()
+    s.og_enabled = request.form.get("og_enabled") == "1"
+    s.og_title = (request.form.get("og_title") or "").strip()[:200] or None
+    s.og_description = (request.form.get("og_description") or "").strip() or None
+    if request.form.get("clear_og_image") == "1":
+        old = s.og_image_filename
+        s.og_image_filename = None
+        if old:
+            _delete_upload(old)
+    uploaded = request.files.get("og_image")
+    if uploaded and uploaded.filename:
+        old = s.og_image_filename
+        stored, _original = _save_upload(uploaded)
+        s.og_image_filename = stored
+        if old and old != stored:
+            _delete_upload(old)
+    db.session.commit()
+    flash("Open Graph settings updated", "success")
+    return redirect(request.referrer or url_for("main.index"))
+
+
 # --- Files ---
 
 @bp.route("/meetings/<int:mid>/files/new", methods=["GET", "POST"])
