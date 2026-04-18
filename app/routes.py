@@ -772,7 +772,7 @@ def zoom_account_delete(aid):
 
 
 @bp.route("/zoom-accounts/<int:aid>/reveal")
-@admin_required
+@login_required
 def zoom_account_reveal(aid):
     acct = db.session.get(ZoomAccount, aid) or abort(404)
     return jsonify({"username": acct.username, "password": decrypt(acct.password_enc)})

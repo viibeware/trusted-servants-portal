@@ -689,6 +689,13 @@
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
             <li>
+              <div class="u-name">1.3.8</div>
+              <div class="muted smaller">April 2026</div>
+              <ul>
+                <li><b>Zoom password reveal opened up</b> — the <code>/zoom-accounts/&lt;id&gt;/reveal</code> endpoint is now gated with <code>@login_required</code> instead of <code>@admin_required</code>, so viewers and editors can use the "Show" button on the Zoom Accounts page. This matches the existing behavior on meeting detail pages (which already render the decrypted Zoom password for all authenticated users) and the OTP email reveal endpoint.</li>
+              </ul>
+            </li>
+            <li>
               <div class="u-name">1.3.7</div>
               <div class="muted smaller">April 2026</div>
               <ul>
