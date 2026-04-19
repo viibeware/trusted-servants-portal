@@ -689,6 +689,13 @@
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
             <li>
+              <div class="u-name">1.3.10</div>
+              <div class="muted smaller">April 2026</div>
+              <ul>
+                <li><b>Turnstile fully refreshes after failed login</b> — the previous fix tried to re-render the widget in-place after a <code>document.write()</code>, but the Cloudflare API's internal widget tracking didn't cooperate and the old single-use token stayed on screen. The login page now extracts the server's flash message from the failed POST response, stashes it in <code>sessionStorage</code>, and triggers a full page reload. The fresh page gets a brand-new Turnstile widget, a fresh CSRF token, and the stashed flash is rendered into the flash strip on page load.</li>
+              </ul>
+            </li>
+            <li>
               <div class="u-name">1.3.9</div>
               <div class="muted smaller">April 2026</div>
               <ul>

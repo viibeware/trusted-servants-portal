@@ -119,6 +119,24 @@
 </div>
 <script src="{{ url_for('static', filename='js/login_fx.js') }}"></script>
 <script>
+(function surfaceStashedFlash(){
+  // Pick up a flash stashed by a previous failed login so the user sees
+  // the error even though we did a full reload to refresh Turnstile/CSRF.
+  let msg = null;
+  try { msg = sessionStorage.getItem('tsp-login-flash'); } catch (_) {}
+  if (!msg) return;
+  try { sessionStorage.removeItem('tsp-login-flash'); } catch (_) {}
+  const flashes = document.querySelector('.login-form .flashes');
+  if (!flashes) return;
+  // Only add our own if the server hasn't already rendered a matching flash.
+  const existing = flashes.querySelector('.flash-danger, .flash-warning');
+  if (existing && existing.textContent.trim() === msg) return;
+  const el = document.createElement('div');
+  el.className = 'flash flash-danger';
+  el.textContent = msg;
+  flashes.appendChild(el);
+})();
+
 (function(){
   const hero = document.querySelector('.login-hero');
   const canvas = document.querySelector('.login-hero-bg');
@@ -250,31 +268,20 @@
       if (succeeded) {
         setTimeout(() => playWarpAndNavigate(() => window.location.assign(finalUrl)), 500);
       } else {
+        // Stash the server's flash message so a full reload can surface it
+        // on the next page load, where Turnstile and the CSRF form render
+        // fresh. Trying to re-use the in-place DOM via document.write left
+        // the old single-use Turnstile token visible and the widget stuck.
         return resp.text().then(html => {
-          document.open();
-          document.write(html);
-          document.close();
-          // After document.write, the Turnstile API singleton from the previous
-          // page survives on window, but the freshly written .cf-turnstile divs
-          // are new DOM nodes the API hasn't seen. Explicitly render them so
-          // the user gets a fresh single-use challenge token.
-          const tryRender = () => {
-            if (!window.turnstile || typeof window.turnstile.render !== 'function') return false;
-            document.querySelectorAll('.cf-turnstile').forEach(el => {
-              if (!el.dataset.tspRendered) {
-                try { window.turnstile.render(el); el.dataset.tspRendered = '1'; }
-                catch (_) {}
-              }
-            });
-            return true;
-          };
-          if (!tryRender()) {
-            // API script hadn't loaded yet in the rewritten document — poll briefly.
-            let tries = 0;
-            const h = setInterval(() => {
-              if (tryRender() || ++tries > 40) clearInterval(h);
-            }, 100);
-          }
+          let msg = 'Sign in failed';
+          try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const flash = doc.querySelector('.flash-danger, .flash-warning');
+            if (flash && flash.textContent.trim()) msg = flash.textContent.trim();
+          } catch (_) {}
+          try { sessionStorage.setItem('tsp-login-flash', msg); } catch (_) {}
+          window.location.assign(loginUrl);
         });
       }
     }).catch(() => { form.submit(); });
