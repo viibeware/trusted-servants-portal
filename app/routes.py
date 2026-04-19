@@ -192,16 +192,28 @@ def index():
     access_requests = []
     online_count = 0
     online_users = []
+    locked_accounts = []
     if current_user.is_admin():
         access_requests = (AccessRequest.query
                            .filter_by(status="pending")
                            .order_by(AccessRequest.created_at.desc())
                            .limit(6).all())
         online_count, online_users = _online_users()
+        from sqlalchemy import func as _sa_func
+        from .auth import currently_locked_usernames, user_lockout_expires_in
+        locked_set = currently_locked_usernames()
+        if locked_set:
+            for u in User.query.filter(_sa_func.lower(User.username).in_(locked_set)).all():
+                locked_accounts.append({
+                    "id": u.id,
+                    "username": u.username,
+                    "expires_in_minutes": (user_lockout_expires_in(u.username) // 60) + 1,
+                })
     dashboard_order = _dashboard_order(current_user)
     return render_template("index.html", meetings=meetings, libraries=libraries,
                            recent_files=recent_files, access_requests=access_requests,
                            online_count=online_count, online_users=online_users,
+                           locked_accounts=locked_accounts,
                            dashboard_order=dashboard_order)
 
 
@@ -213,6 +225,8 @@ def dashboard_customize():
     current_user.dash_show_libraries = request.form.get("dash_show_libraries") == "1"
     current_user.dash_show_files = request.form.get("dash_show_files") == "1"
     current_user.dash_show_server_metrics = request.form.get("dash_show_server_metrics") == "1"
+    if current_user.is_admin():
+        current_user.dash_show_access_requests = request.form.get("dash_show_access_requests") == "1"
     db.session.commit()
     flash("Dashboard updated", "success")
     return redirect(url_for("main.index"))

@@ -41,6 +41,7 @@ class User(UserMixin, db.Model):
     dash_show_files = db.Column(db.Boolean, nullable=False, default=True)
     dash_show_server_metrics = db.Column(db.Boolean, nullable=False, default=True)
     dash_show_online_users = db.Column(db.Boolean, nullable=False, default=True)
+    dash_show_access_requests = db.Column(db.Boolean, nullable=False, default=True)
     dash_order_json = db.Column(db.Text)
     last_seen_at = db.Column(db.DateTime)
 
@@ -309,3 +310,16 @@ class UrlRedirect(db.Model):
     source_path = db.Column(db.String(2000), unique=True, nullable=False, index=True)
     target_path = db.Column(db.String(2000), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class LoginFailure(db.Model):
+    """One row per failed login attempt. Used by the login rate limiter so
+    the counter is shared across gunicorn workers and survives restarts."""
+    __tablename__ = "login_failure"
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(8), nullable=False)   # 'ip' or 'user'
+    key = db.Column(db.String(255), nullable=False)  # IP string or lower(username)
+    failed_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    __table_args__ = (
+        db.Index("ix_login_failure_kind_key_time", "kind", "key", "failed_at"),
+    )

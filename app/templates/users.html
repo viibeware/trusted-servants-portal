@@ -53,11 +53,17 @@
     <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Reset password</th><th></th></tr></thead>
     <tbody>
     {% for u in users %}
-    <tr>
+    {% set _lock_seconds = lockouts.get(u.id, 0) %}
+    <tr{% if _lock_seconds %} class="user-locked-row"{% endif %}>
       <form method="post" action="{{ url_for('auth.users_update', uid=u.id) }}">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
-      <td data-label="Username">{{ u.username }}</td>
+      <td data-label="Username">
+        {{ u.username }}
+        {% if _lock_seconds %}
+        <span class="badge badge-warning user-locked-badge" title="Auto-unlocks in ~{{ (_lock_seconds // 60) + 1 }} min">Locked</span>
+        {% endif %}
+      </td>
       <td data-label="Email"><input name="email" type="email" value="{{ u.email or '' }}" required></td>
       <td data-label="Role">
         <select name="role">
@@ -68,6 +74,13 @@
       <td class="users-actions">
         <button class="btn btn-sm btn-primary">Save</button>
       </form>
+        {% if _lock_seconds %}
+        <form method="post" action="{{ url_for('auth.users_unlock', uid=u.id) }}" style="display:inline">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+          <button class="btn btn-sm" title="Clear login lockout for {{ u.username }}">Unlock</button>
+        </form>
+        {% endif %}
         {% if u.id != current_user.id %}
         <form method="post" action="{{ url_for('auth.users_delete', uid=u.id) }}" onsubmit="return confirm('Delete user {{ u.username }}?');" style="display:inline">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -690,6 +690,20 @@
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
             <li>
+              <div class="u-name">1.3.12</div>
+              <div class="muted smaller">April 2026</div>
+              <ul>
+                <li><b>Per-username login lockout</b> — the login rate limiter now tracks failures on two dimensions: the client IP and the submitted username. Either bucket at 5 failures in 15 minutes blocks further attempts. This catches distributed brute-forcing against a single account that pure IP throttling would miss. Admin accounts are exempt from the per-username bucket (IP lockout still applies) so legitimate admin typos can't lock you out of your own portal.</li>
+                <li><b>Lockout state is DB-backed</b> — new <code>login_failure</code> table with one row per attempt and a composite index on <code>(kind, key, failed_at)</code>. Counters are now consistent across gunicorn workers and survive container restarts, so locked accounts show correctly in the Users panel and on the dashboard no matter which worker processed the failures. Stale rows are pruned lazily on each write.</li>
+                <li><b>Users panel shows lockouts</b> — locked accounts display a yellow "Locked" badge next to the username with a tooltip showing auto-unlock ETA, the whole row tinted amber. A one-click <b>Unlock</b> button appears in the actions column for admins to clear the lockout immediately.</li>
+                <li><b>Access Requests widget redesigned</b> — now a two-column card with Access Requests on the left and a new <b>Locked Accounts</b> block on the right, divided by a full-height vertical rule. Each locked account lists the username, auto-unlock ETA, and an inline <b>Unlock</b> button. Warning badge on the heading shows the count. Both headings share the same 1rem / 700 weight and sit on the same baseline. Collapses to a stacked single-column layout at ≤ 720px.</li>
+                <li><b>"View all requests" is now a button</b> — promoted from the card-head link to a proper <code>btn btn-sm</code> at the bottom of the left column.</li>
+                <li><b>Customize Dashboard toggle for the widget</b> — new admin-only <b>Access Requests &amp; Locked Accounts</b> entry with a mode toggle. Backed by a new <code>User.dash_show_access_requests</code> column plus <code>_migrate_sqlite</code> entry.</li>
+                <li><b>Drag handle always visible on widgets</b> — <code>.dash-drag-handle</code> sits at 55% opacity by default, bumping to 100% on hover. No more hunting for it.</li>
+                <li><b>Failed-login page refresh is smoother</b> — the outgoing page fades to opacity 0 before navigation, and the incoming login page runs its existing 650 ms fade-in animation, masking the brief first-paint flash of unstyled content that was visible before.</li>
+              </ul>
+            </li>
+            <li>
               <div class="u-name">1.3.11</div>
               <div class="muted smaller">April 2026</div>
               <ul>

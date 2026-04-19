@@ -280,8 +280,18 @@
             const flash = doc.querySelector('.flash-danger, .flash-warning');
             if (flash && flash.textContent.trim()) msg = flash.textContent.trim();
           } catch (_) {}
-          try { sessionStorage.setItem('tsp-login-flash', msg); } catch (_) {}
-          window.location.assign(loginUrl);
+          try {
+            sessionStorage.setItem('tsp-login-flash', msg);
+            // Reuse the successful-login fade so the reloaded page fades in
+            // instead of painting unstyled for a frame while CSS is still
+            // applying.
+            sessionStorage.setItem('tsp-login-fade', '1');
+          } catch (_) {}
+          // Hide the current document body immediately so the outgoing page
+          // doesn't briefly flash while navigating.
+          document.body.style.opacity = '0';
+          document.body.style.transition = 'opacity 120ms ease-out';
+          setTimeout(() => window.location.assign(loginUrl), 80);
         });
       }
     }).catch(() => { form.submit(); });

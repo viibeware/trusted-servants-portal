@@ -136,23 +136,47 @@
   </div>
   {% endif %}
 
-  {% if widget_key == 'access-requests' and current_user.is_admin() %}
+  {% if widget_key == 'access-requests' and current_user.is_admin() and current_user.dash_show_access_requests %}
   <div class="dash-widget" data-widget-key="access-requests" {% if can_reorder %}draggable="true"{% endif %}>
     {% if can_reorder %}<span class="dash-drag-handle" aria-hidden="true">{{ icon('grip-vertical') }}</span>{% endif %}
-    <section class="card">
-      <div class="card-head">
-        <h2>Access Requests
+    <section class="card access-requests-card">
+      <div class="access-requests-block">
+        <h2 class="ar-title">Access Requests
           {% if pending_access_count %}<span class="nav-badge">{{ pending_access_count }}</span>{% endif %}
         </h2>
-        <a href="{{ url_for('main.access_requests') }}" class="link">View all {{ icon('arrow-right') }}</a>
+        {% if access_requests %}
+        <ul class="list">
+          {% for r in access_requests %}
+          <li><a href="{{ url_for('main.access_requests') }}"><span>{{ r.name }}</span><span class="muted">{{ r.created_at.strftime('%b %d') }}</span></a></li>
+          {% endfor %}
+        </ul>
+        {% else %}<p class="muted">No pending requests.</p>{% endif %}
+        <div class="access-requests-foot">
+          <a href="{{ url_for('main.access_requests') }}" class="btn btn-sm">View all requests</a>
+        </div>
       </div>
-      {% if access_requests %}
-      <ul class="list">
-        {% for r in access_requests %}
-        <li><a href="{{ url_for('main.access_requests') }}"><span>{{ r.name }}</span><span class="muted">{{ r.created_at.strftime('%b %d') }}</span></a></li>
-        {% endfor %}
-      </ul>
-      {% else %}<p class="muted">No pending requests.</p>{% endif %}
+
+      <div class="locked-accounts-block">
+        <h3 class="locked-accounts-title">Locked Accounts
+          {% if locked_accounts %}<span class="nav-badge nav-badge-warn">{{ locked_accounts|length }}</span>{% endif %}
+        </h3>
+        {% if locked_accounts %}
+        <ul class="list locked-accounts-list">
+          {% for a in locked_accounts %}
+          <li>
+            <span class="locked-accounts-name">{{ a.username }}</span>
+            <span class="muted smaller">auto-unlocks in ~{{ a.expires_in_minutes }} min</span>
+            <form method="post" action="{{ url_for('auth.users_unlock', uid=a.id) }}" class="locked-accounts-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm" title="Clear lockout for {{ a.username }}">Unlock</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted smaller locked-accounts-empty">No accounts currently locked out.</p>
+        {% endif %}
+      </div>
     </section>
   </div>
   {% endif %}
@@ -190,6 +214,18 @@
             </label>
           </li>
           {% endfor %}
+          {% if current_user.is_admin() %}
+          <li class="special-page-row">
+            <div class="special-page-info">
+              <div class="u-name">Access Requests &amp; Locked Accounts</div>
+              <p class="muted small">Pending access-request submissions and any accounts currently locked out from too many failed logins.</p>
+            </div>
+            <label class="mode-toggle" title="Show Access Requests &amp; Locked Accounts">
+              <input type="checkbox" name="dash_show_access_requests" value="1" {% if current_user.dash_show_access_requests %}checked{% endif %}>
+              <span class="mode-track"><span class="mode-thumb"></span></span>
+            </label>
+          </li>
+          {% endif %}
         </ul>
       </div>
       <div class="modal-foot">

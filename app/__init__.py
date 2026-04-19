@@ -218,7 +218,15 @@ def create_app():
         return response
 
     with app.app_context():
-        db.create_all()
+        # Race-safe: two gunicorn workers can both run create_all at boot.
+        # The loser sees "table already exists" — tolerate it rather than
+        # crashing.
+        from sqlalchemy.exc import OperationalError
+        try:
+            db.create_all()
+        except OperationalError as e:
+            if "already exists" not in str(e).lower():
+                raise
         _migrate_sqlite(app)
         _seed_admin(app)
         _backfill_media(app)
@@ -377,6 +385,7 @@ def _migrate_sqlite(app):
                          ("dash_show_files", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("dash_show_server_metrics", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("dash_show_online_users", "BOOLEAN NOT NULL DEFAULT 1"),
+                         ("dash_show_access_requests", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("dash_order_json", "TEXT"),
                          ("last_seen_at", "DATETIME")):
             add("user", col, ddl)

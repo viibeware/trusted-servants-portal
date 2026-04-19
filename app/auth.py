@@ -1,53 +1,134 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-import time
-from collections import defaultdict, deque
-from threading import Lock
+from datetime import datetime, timedelta
 from urllib.parse import urlparse, urljoin
 from flask import Blueprint, render_template, redirect, url_for, request, flash, session, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from sqlalchemy import func
 from werkzeug.security import check_password_hash, generate_password_hash
-from .models import db, User, SiteSetting, ROLES
+from .models import db, User, SiteSetting, LoginFailure, ROLES
 from .crypto import decrypt
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 
-# Simple in-memory login rate limiter. Not distributed across processes;
-# adequate for a single gunicorn instance handling a small fellowship portal.
+# DB-backed login rate limiter. Rows persist across gunicorn workers and
+# across restarts, so lockouts surface consistently in the Users panel and
+# the dashboard widget regardless of which worker saw the failed attempts.
+# Tracked on two dimensions: the client IP, and the submitted username
+# (lowercased). Either bucket over threshold locks further attempts; this
+# blocks distributed brute-forcing that a pure IP-based limiter would miss.
 _LOGIN_WINDOW_SECONDS = 900   # 15 minutes
-_LOGIN_MAX_FAILURES = 10
-_login_failures = defaultdict(deque)
-_login_lock = Lock()
+_LOGIN_MAX_FAILURES_IP = 5
+_LOGIN_MAX_FAILURES_USER = 5
+# Back-compat alias used by user-facing helpers (user_is_locked, etc.).
+_LOGIN_MAX_FAILURES = _LOGIN_MAX_FAILURES_USER
 
 
-def _login_rate_limit_hit(ip):
+def _cutoff():
+    return datetime.utcnow() - timedelta(seconds=_LOGIN_WINDOW_SECONDS)
+
+
+def _failures_in_window(kind, key):
+    """Return the list of failed_at timestamps (oldest first) within the window."""
+    rows = (db.session.query(LoginFailure.failed_at)
+            .filter(LoginFailure.kind == kind, LoginFailure.key == key,
+                    LoginFailure.failed_at >= _cutoff())
+            .order_by(LoginFailure.failed_at.asc())
+            .all())
+    return [r[0] for r in rows]
+
+
+def _prune_stale():
+    """Delete old rows outside the window. Runs lazily on each failure write."""
+    try:
+        (LoginFailure.query
+         .filter(LoginFailure.failed_at < _cutoff())
+         .delete(synchronize_session=False))
+    except Exception:
+        db.session.rollback()
+
+
+def _login_rate_limit_hit(ip, username=None):
     """Return (blocked, retry_after_seconds). Non-destructive read."""
-    now = time.time()
-    with _login_lock:
-        q = _login_failures.get(ip)
-        if not q:
-            return False, 0
-        while q and q[0] < now - _LOGIN_WINDOW_SECONDS:
-            q.popleft()
-        if len(q) >= _LOGIN_MAX_FAILURES:
-            return True, int(q[0] + _LOGIN_WINDOW_SECONDS - now)
+    ip_times = _failures_in_window("ip", ip) if ip else []
+    if len(ip_times) >= _LOGIN_MAX_FAILURES_IP:
+        retry = int((ip_times[0] + timedelta(seconds=_LOGIN_WINDOW_SECONDS)
+                     - datetime.utcnow()).total_seconds())
+        return True, max(retry, 0)
+    if username:
+        u_times = _failures_in_window("user", username.lower())
+        if len(u_times) >= _LOGIN_MAX_FAILURES_USER:
+            retry = int((u_times[0] + timedelta(seconds=_LOGIN_WINDOW_SECONDS)
+                         - datetime.utcnow()).total_seconds())
+            return True, max(retry, 0)
     return False, 0
 
 
-def _record_login_failure(ip):
-    now = time.time()
-    with _login_lock:
-        q = _login_failures[ip]
-        while q and q[0] < now - _LOGIN_WINDOW_SECONDS:
-            q.popleft()
-        q.append(now)
+def _record_login_failure(ip, username=None):
+    now = datetime.utcnow()
+    if ip:
+        db.session.add(LoginFailure(kind="ip", key=ip, failed_at=now))
+    if username:
+        db.session.add(LoginFailure(kind="user", key=username.lower(), failed_at=now))
+    _prune_stale()
+    db.session.commit()
 
 
-def _clear_login_failures(ip):
-    with _login_lock:
-        _login_failures.pop(ip, None)
+def _clear_login_failures(ip=None, username=None):
+    q = LoginFailure.query
+    if ip is not None and username:
+        q = q.filter(
+            ((LoginFailure.kind == "ip") & (LoginFailure.key == ip))
+            | ((LoginFailure.kind == "user") & (LoginFailure.key == username.lower()))
+        )
+    elif ip is not None:
+        q = q.filter(LoginFailure.kind == "ip", LoginFailure.key == ip)
+    elif username:
+        q = q.filter(LoginFailure.kind == "user", LoginFailure.key == username.lower())
+    else:
+        return
+    q.delete(synchronize_session=False)
+    db.session.commit()
+
+
+def user_is_locked(username):
+    """True if a user's failure bucket is over threshold within the window."""
+    if not username:
+        return False
+    return len(_failures_in_window("user", username.lower())) >= _LOGIN_MAX_FAILURES
+
+
+def user_lockout_expires_in(username):
+    """Seconds until the user's lockout expires, or 0 if not locked."""
+    if not username:
+        return 0
+    times = _failures_in_window("user", username.lower())
+    if len(times) < _LOGIN_MAX_FAILURES:
+        return 0
+    retry = int((times[0] + timedelta(seconds=_LOGIN_WINDOW_SECONDS)
+                 - datetime.utcnow()).total_seconds())
+    return max(retry, 0)
+
+
+def clear_user_lockout(username):
+    if not username:
+        return
+    (LoginFailure.query
+     .filter(LoginFailure.kind == "user", LoginFailure.key == username.lower())
+     .delete(synchronize_session=False))
+    db.session.commit()
+
+
+def currently_locked_usernames():
+    """Set of lowercased usernames currently over threshold. One query."""
+    rows = (db.session.query(LoginFailure.key)
+            .filter(LoginFailure.kind == "user",
+                    LoginFailure.failed_at >= _cutoff())
+            .group_by(LoginFailure.key)
+            .having(func.count(LoginFailure.id) >= _LOGIN_MAX_FAILURES)
+            .all())
+    return {r[0] for r in rows}
 
 
 def _is_safe_url(target):
@@ -90,7 +171,13 @@ def login():
     site = SiteSetting.query.first()
     ip = request.remote_addr or "unknown"
     if request.method == "POST":
-        blocked, retry = _login_rate_limit_hit(ip)
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        # Look up the user early so we can exempt admin accounts from the
+        # per-username lockout. IP-based lockout still applies to everyone.
+        user = User.query.filter(func.lower(User.username) == username.lower()).first()
+        lockout_username = None if (user and user.is_admin()) else username
+        blocked, retry = _login_rate_limit_hit(ip, lockout_username)
         if blocked:
             flash(f"Too many failed attempts. Try again in {max(retry, 1) // 60 + 1} minutes.",
                   "danger")
@@ -99,21 +186,18 @@ def login():
             token = request.form.get("cf-turnstile-response", "")
             ok, err = _verify_turnstile(site, token, request.remote_addr)
             if not ok:
-                _record_login_failure(ip)
+                _record_login_failure(ip, lockout_username)
                 flash(err, "danger")
                 return render_template("login.html")
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
-        user = User.query.filter(func.lower(User.username) == username.lower()).first()
         if user and check_password_hash(user.password_hash, password):
-            _clear_login_failures(ip)
+            _clear_login_failures(ip=ip, username=user.username)
             session.permanent = True
             login_user(user, remember=True)
             next_url = request.args.get("next") or request.form.get("next")
             if next_url and _is_safe_url(next_url):
                 return redirect(next_url)
             return redirect(url_for("main.index"))
-        _record_login_failure(ip)
+        _record_login_failure(ip, lockout_username)
         flash("Invalid credentials", "danger")
     return render_template("login.html")
 
@@ -131,7 +215,25 @@ def users():
     if not current_user.is_admin():
         flash("Admins only", "danger")
         return redirect(url_for("main.index"))
-    return render_template("users.html", users=User.query.order_by(User.username).all(), roles=ROLES)
+    user_list = User.query.order_by(User.username).all()
+    lockouts = {
+        u.id: user_lockout_expires_in(u.username)
+        for u in user_list if user_is_locked(u.username)
+    }
+    return render_template("users.html", users=user_list, roles=ROLES,
+                           lockouts=lockouts)
+
+
+@bp.route("/users/<int:uid>/unlock", methods=["POST"])
+@login_required
+def users_unlock(uid):
+    if not current_user.is_admin():
+        return redirect(url_for("main.index"))
+    u = db.session.get(User, uid)
+    if u:
+        clear_user_lockout(u.username)
+        flash(f"Login lockout cleared for {u.username}", "success")
+    return redirect(url_for("auth.users", embed=1) if request.form.get("embed") == "1" else url_for("auth.users"))
 
 
 @bp.route("/users/create", methods=["POST"])
