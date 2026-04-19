@@ -690,6 +690,17 @@
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
             <li>
+              <div class="u-name">1.4.0</div>
+              <div class="muted smaller">April 2026</div>
+              <ul>
+                <li><b>File Browser picker rebuilt</b> — the "File Browser" button inside reading/meeting-file forms now opens the same table-based layout as the full File Browser: Name, Type, Size, Uploaded by columns with per-row actions. The old grid view is gone; picker and full browser now share one rendering path.</li>
+                <li><b>Sort + direction controls in the picker</b> — a Sort dropdown (Name / Type / Size / Uploaded) and a direction toggle button are rendered inside the picker content area (the embed-mode layout hides the outer topbar where they used to live). Placed beneath the "+ Upload new" row and right-aligned.</li>
+                <li><b>Preview before selecting</b> — every row in the picker has a Preview button. For images and PDFs it opens the existing file lightbox inside the picker iframe; for other types it opens the file in a new tab. Clicking a filename link also triggers the preview for images/PDFs, matching the main File Browser behavior.</li>
+                <li><b>Picker URL preservation</b> — Sort dropdown / direction / search submissions now carry both <code>picker=1</code> and <code>embed=1</code> forward, so navigating within the picker stays in picker mode without the outer chrome flashing in.</li>
+                <li><b>Typography polish</b> — "+ Upload new" inside the picker and the "File Browser" button on the initial Add File modal are now 1rem; the previous <code>btn-sm</code> sizing felt too tiny.</li>
+              </ul>
+            </li>
+            <li>
               <div class="u-name">1.3.13</div>
               <div class="muted smaller">April 2026</div>
               <ul>

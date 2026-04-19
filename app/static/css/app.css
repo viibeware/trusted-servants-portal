@@ -586,6 +586,11 @@ label.content-mode-switch {
 .media-search input { flex: 1; padding: 8px 10px; border-radius: 8px;
   border: 1px solid var(--border); background: var(--panel); color: var(--text); }
 .picker-upload { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.picker-upload > label.btn { font-size: 1rem; }
+.view-controls.picker-controls { display: flex; width: 100%;
+  align-items: center; gap: 10px; margin: 0 0 10px;
+  justify-content: flex-end; }
+#add-library-file .file-input-row > .btn { font-size: 1rem; }
 .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .media-card { display: flex; flex-direction: column; gap: 10px; padding: 12px;
   border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); }

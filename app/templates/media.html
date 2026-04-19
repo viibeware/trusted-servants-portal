@@ -2,23 +2,23 @@
 {% block heading %}File Browser{% endblock %}
 {% block heading_help %}Upload, browse, and manage images, documents, and other files used throughout the portal.{% endblock %}
 {% block top_actions %}
-  {% if not picker %}
+  {% set _pkr = '1' if picker else None %}
+  {% set _emb = '1' if (picker or request.args.get('embed') == '1') else None %}
   <div class="view-controls">
     <label class="sort-select">
       <span class="muted smaller">Sort</span>
       <select onchange="window.location=this.value">
-        <option value="{{ url_for('main.media_list', view=view, sort='name', dir=direction, q=q) }}" {% if sort=='name' %}selected{% endif %}>Name</option>
-        <option value="{{ url_for('main.media_list', view=view, sort='type', dir=direction, q=q) }}" {% if sort=='type' %}selected{% endif %}>Type</option>
-        <option value="{{ url_for('main.media_list', view=view, sort='size', dir=direction, q=q) }}" {% if sort=='size' %}selected{% endif %}>Size</option>
-        <option value="{{ url_for('main.media_list', view=view, sort='uploaded', dir=direction, q=q) }}" {% if sort=='uploaded' %}selected{% endif %}>Uploaded</option>
+        <option value="{{ url_for('main.media_list', view=view, sort='name', dir=direction, q=q, picker=_pkr, embed=_emb) }}" {% if sort=='name' %}selected{% endif %}>Name</option>
+        <option value="{{ url_for('main.media_list', view=view, sort='type', dir=direction, q=q, picker=_pkr, embed=_emb) }}" {% if sort=='type' %}selected{% endif %}>Type</option>
+        <option value="{{ url_for('main.media_list', view=view, sort='size', dir=direction, q=q, picker=_pkr, embed=_emb) }}" {% if sort=='size' %}selected{% endif %}>Size</option>
+        <option value="{{ url_for('main.media_list', view=view, sort='uploaded', dir=direction, q=q, picker=_pkr, embed=_emb) }}" {% if sort=='uploaded' %}selected{% endif %}>Uploaded</option>
       </select>
     </label>
     <a class="btn btn-sm sort-dir" title="Toggle sort direction"
-       href="{{ url_for('main.media_list', view=view, sort=sort, dir=('desc' if direction=='asc' else 'asc'), q=q) }}">
+       href="{{ url_for('main.media_list', view=view, sort=sort, dir=('desc' if direction=='asc' else 'asc'), q=q, picker=_pkr, embed=_emb) }}">
       {{ '↓' if direction == 'desc' else '↑' }}
     </a>
   </div>
-  {% endif %}
   {% if current_user.can_edit() and not picker %}
   <label class="btn btn-primary" for="media-upload-input">+ Upload</label>
   <input type="file" id="media-upload-input" style="display:none" multiple>
@@ -26,8 +26,11 @@
 {% endblock %}
 {% block content %}
 <section class="card">
+  {% set _pkr = '1' if picker else None %}
+  {% set _emb = '1' if (picker or request.args.get('embed') == '1') else None %}
   <form method="get" action="{{ url_for('main.media_list') }}" class="media-search">
     {% if picker %}<input type="hidden" name="picker" value="1">{% endif %}
+    {% if picker %}<input type="hidden" name="embed" value="1">{% endif %}
     <input type="hidden" name="view" value="{{ view }}">
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
@@ -43,9 +46,27 @@
   </div>
   {% endif %}
 
+  {% if picker %}
+  <div class="view-controls picker-controls">
+    <label class="sort-select">
+      <span class="muted smaller">Sort</span>
+      <select onchange="window.location=this.value">
+        <option value="{{ url_for('main.media_list', view=view, sort='name', dir=direction, q=q, picker=_pkr, embed=_emb) }}" {% if sort=='name' %}selected{% endif %}>Name</option>
+        <option value="{{ url_for('main.media_list', view=view, sort='type', dir=direction, q=q, picker=_pkr, embed=_emb) }}" {% if sort=='type' %}selected{% endif %}>Type</option>
+        <option value="{{ url_for('main.media_list', view=view, sort='size', dir=direction, q=q, picker=_pkr, embed=_emb) }}" {% if sort=='size' %}selected{% endif %}>Size</option>
+        <option value="{{ url_for('main.media_list', view=view, sort='uploaded', dir=direction, q=q, picker=_pkr, embed=_emb) }}" {% if sort=='uploaded' %}selected{% endif %}>Uploaded</option>
+      </select>
+    </label>
+    <a class="btn btn-sm sort-dir" title="Toggle sort direction"
+       href="{{ url_for('main.media_list', view=view, sort=sort, dir=('desc' if direction=='asc' else 'asc'), q=q, picker=_pkr, embed=_emb) }}">
+      {{ '↓' if direction == 'desc' else '↑' }}
+    </a>
+  </div>
+  {% endif %}
+
   {% if not items %}
   <p class="muted">No media {% if q %}matching "{{ q }}"{% endif %}.</p>
-  {% elif not picker %}
+  {% else %}
   <table class="tbl media-tbl">
     <thead>
       <tr><th>Name</th><th>Type</th><th>Size</th><th class="hide-sm">Uploaded by</th><th></th></tr>
@@ -59,6 +80,14 @@
         <td class="muted">{{ (m.size_bytes or 0) // 1024 }} KB</td>
         <td class="muted hide-sm">{{ m.uploader.username if m.uploader else '—' }}</td>
         <td class="row-actions">
+          {% if picker %}
+          <button type="button" class="btn btn-sm media-preview"
+                  data-media-preview
+                  data-pub-url="{{ url_for('main.public_file', filename=m.original_filename) }}"
+                  data-download-url="{{ url_for('main.media_download', mid=m.id) }}"
+                  data-filename="{{ m.original_filename }}">Preview</button>
+          <button type="button" class="btn btn-sm btn-primary media-select">Select</button>
+          {% else %}
           <button type="button" class="btn btn-sm btn-copy" data-copy-url="{{ url_for('main.public_file', filename=m.original_filename) }}">Copy Link</button>
           <a class="btn btn-sm" href="{{ url_for('main.media_download', mid=m.id) }}">Download</a>
           {% if current_user.can_edit() %}
@@ -71,55 +100,15 @@
             <button class="btn btn-sm btn-danger">{{ icon('x') }}</button>
           </form>
           {% endif %}
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  {% else %}
-  <div class="media-grid" id="media-grid">
-    {% for m in items %}
-    {% set t = media_type(m.original_filename) %}
-    <div class="media-card" data-media-id="{{ m.id }}"
-         data-stored="{{ m.stored_filename }}"
-         data-original="{{ m.original_filename }}">
-      <div class="media-thumb ftype ftype-{{ t }}">{{ t|upper }}</div>
-      <div class="media-meta">
-        <div class="media-name" title="{{ m.original_filename }}">
-          {% if picker %}{{ m.original_filename }}
-          {% else %}<a href="{{ url_for('main.public_file', filename=m.original_filename) }}" target="_blank">{{ m.original_filename }}</a>
-          {% endif %}
-        </div>
-        <div class="muted smaller">
-          {{ (m.size_bytes or 0) // 1024 }} KB
-          {% if m.uploader %} · {{ m.uploader.username }}{% endif %}
-        </div>
-      </div>
-      <div class="media-actions">
-        {% if picker %}
-        <button type="button" class="btn btn-sm btn-primary media-select">Select</button>
-        {% else %}
-        <button type="button" class="btn btn-sm btn-copy" data-copy-url="{{ url_for('main.public_file', filename=m.original_filename) }}">Copy Link</button>
-        <a class="btn btn-sm" href="{{ url_for('main.media_download', mid=m.id) }}">Download</a>
-        {% if current_user.can_edit() %}
-        <button type="button" class="btn btn-sm media-rename">Rename</button>
-        {% endif %}
-        {% if current_user.is_admin() %}
-        <form method="post" action="{{ url_for('main.media_delete', mid=m.id) }}"
-              onsubmit="return confirm('Delete this file from the library?');">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="btn btn-sm btn-danger">{{ icon('x') }}</button>
-        </form>
-        {% endif %}
-        {% endif %}
-      </div>
-    </div>
-    {% endfor %}
-  </div>
   {% endif %}
 </section>
 
-{% if not picker %}
 <div class="modal file-lightbox" id="file-lightbox" aria-hidden="true">
   <div class="modal-backdrop" data-close></div>
   <div class="lightbox-panel" role="dialog" aria-modal="true">
@@ -192,6 +181,21 @@
       });
     });
 
+    // Picker Preview button: open lightbox for images/PDFs, fallback to new
+    // tab for other types so the user can always eyeball the file first.
+    document.querySelectorAll('[data-media-preview]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const url = btn.dataset.pubUrl;
+        const filename = btn.dataset.filename || '';
+        const downloadUrl = btn.dataset.downloadUrl || url;
+        if (IMG_RE.test(url) || PDF_RE.test(url)) {
+          open(url, filename, downloadUrl);
+        } else {
+          window.open(url, '_blank', 'noopener');
+        }
+      });
+    });
+
     modal.querySelectorAll('[data-close]').forEach(el =>
       el.addEventListener('click', close));
     document.addEventListener('keydown', e => {
@@ -199,5 +203,4 @@
     });
   })();
 </script>
-{% endif %}
 {% endblock %}
