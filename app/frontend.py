@@ -152,9 +152,10 @@ def index():
     if not site or not site.frontend_module_enabled:
         return redirect(url_for("auth.login"))
     if not site.frontend_enabled:
-        # Public toggle is off — signed-in editors and admins can still
-        # preview so they can keep building the site.
-        if not (current_user.is_authenticated and current_user.can_edit()):
+        # Public toggle is off — only admins and frontend editors can preview
+        # so they can keep building the site. Regular editors and viewers
+        # get bounced like anonymous visitors.
+        if not (current_user.is_authenticated and current_user.can_edit_frontend()):
             return redirect(url_for("auth.login"))
     # Preview a handful of the soonest-starting meetings for the homepage.
     meetings = (Meeting.query

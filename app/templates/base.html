@@ -70,16 +70,18 @@
         <a href="{{ n.url }}" target="_blank" rel="noopener" data-nav-custom>{{ n.title }} ↗</a>
       {% endfor %}
       </span>
-      {% if current_user.is_admin() %}
+      {% if current_user.is_admin() or current_user.can_edit_frontend() %}
       <div class="sidebar-nav-divider">
         <span class="sidebar-nav-label">Admin</span>
       </div>
+      {% if current_user.is_admin() %}
       <a href="{{ url_for('main.access_requests') }}" class="{% if 'access_request' in request.endpoint %}active{% endif %}">
         Access Requests{% if pending_access_count %}<span class="nav-badge">{{ pending_access_count }}</span>{% endif %}
       </a>
-      {% if site and site.frontend_module_enabled %}
+      {% endif %}
+      {% if site and site.frontend_module_enabled and current_user.can_edit_frontend() %}
       <a href="{{ url_for('main.frontend_dashboard') }}"
-         class="{% if request.endpoint and request.endpoint.startswith('main.frontend_') %}active{% endif %}">Web Frontend{% if not site.frontend_enabled %} <span class="nav-badge nav-badge-muted" title="Public access is off — only signed-in editors and admins can preview">Off</span>{% endif %}</a>
+         class="{% if request.endpoint and request.endpoint.startswith('main.frontend_') %}active{% endif %}">Web Frontend{% if not site.frontend_enabled %} <span class="nav-badge nav-badge-muted" title="Public access is off — only signed-in admins and frontend editors can preview">Off</span>{% endif %}</a>
       {% endif %}
       {% endif %}
     </nav>
@@ -745,6 +747,16 @@
 
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
+            <li>
+              <div class="u-name">1.6.1</div>
+              <div class="muted smaller">April 2026</div>
+              <ul>
+                <li><b>New <code>frontend_editor</code> role</b> — a fourth role sitting alongside admin / editor / viewer. Frontend editors inherit all regular-editor permissions (meetings, libraries, media, etc.) and additionally get full access to the Web Frontend module: header, footer, homepage, navigation, mega-menu editor, alert bars, template picks, and the public-visibility toggle on the Web Frontend dashboard. They cannot reach other admin-only areas (Users, Data import/export, or the Settings modal's admin tabs). The settings-modal module on/off toggle stays admin-only.</li>
+                <li><b>Frontend preview tightened</b> — when the public toggle is off, only admins and frontend editors can preview the site at <code>/</code>. Regular editors and viewers now get bounced to the admin login the same as anonymous visitors. The amber <i>Preview mode</i> banner on the public site now also only renders for admins and frontend editors, and its copy reflects the narrower audience.</li>
+                <li><b>Sidebar restructured for the new role</b> — the <b>Admin</b> section now shows when the current user is an admin <i>or</i> a frontend editor. Access Requests stays admin-only; Web Frontend shows whenever the user is admin or frontend editor and the module is enabled. A new <code>frontend_editor_required</code> decorator gates 32 frontend editor routes while <code>frontend_module_toggle</code> remains admin-only.</li>
+                <li><b>Role dropdown auto-updated</b> — the Users panel's create/edit dropdowns iterate the shared <code>ROLES</code> tuple, so the new <code>frontend_editor</code> option appears automatically.</li>
+              </ul>
+            </li>
             <li>
               <div class="u-name">1.6.0</div>
               <div class="muted smaller">April 2026</div>

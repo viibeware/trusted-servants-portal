@@ -6,7 +6,7 @@ from sqlalchemy.ext.associationproxy import association_proxy
 
 db = SQLAlchemy()
 
-ROLES = ("admin", "editor", "viewer")
+ROLES = ("admin", "editor", "frontend_editor", "viewer")
 FILE_CATEGORIES = ("documents", "scripts", "external_links", "videos", "images")
 DAYS_OF_WEEK = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
@@ -46,7 +46,13 @@ class User(UserMixin, db.Model):
     last_seen_at = db.Column(db.DateTime)
 
     def can_edit(self):
-        return self.role in ("admin", "editor")
+        return self.role in ("admin", "editor", "frontend_editor")
+
+    def can_edit_frontend(self):
+        """Authorized to edit the Web Frontend module and preview it while
+        the public toggle is off. Includes admins and the dedicated
+        frontend_editor role; regular editors are excluded."""
+        return self.role in ("admin", "frontend_editor")
 
     def is_admin(self):
         return self.role == "admin"

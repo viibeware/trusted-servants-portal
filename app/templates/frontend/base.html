@@ -36,11 +36,11 @@
 </script>
 </head>
 <body class="frontend-body">
-{% if site and not site.frontend_enabled and current_user.is_authenticated and current_user.can_edit() %}
+{% if site and not site.frontend_enabled and current_user.is_authenticated and current_user.can_edit_frontend() %}
 <div class="fe-admin-preview-bar" role="status">
   <div class="fe-container fe-admin-preview-inner">
     <span class="fe-admin-preview-msg">
-      <b>Preview mode —</b> the public web frontend is turned off. Only signed-in admins and editors can see this page.
+      <b>Preview mode —</b> the public web frontend is turned off. Only signed-in admins and frontend editors can see this page.
     </span>
     <a class="fe-admin-preview-cta" href="{{ url_for('main.frontend_dashboard') }}">Open admin ↗</a>
   </div>

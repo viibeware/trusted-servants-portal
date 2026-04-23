@@ -113,6 +113,19 @@ def admin_required(f):
     return wrapper
 
 
+def frontend_editor_required(f):
+    """Admins and frontend_editor role can reach Web Frontend editor routes."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for("auth.login"))
+        if not current_user.can_edit_frontend():
+            flash("You don't have permission to edit the web frontend", "danger")
+            return redirect(request.referrer or url_for("main.index"))
+        return f(*args, **kwargs)
+    return wrapper
+
+
 @bp.app_context_processor
 def inject_globals():
     try:
@@ -1433,7 +1446,7 @@ def site_footer_logo():
 
 
 @bp.route("/frontend/save", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_save():
     """Save homepage content fields. Toggle state and footer text are handled
     by frontend_toggle / frontend_footer_save so this never clobbers them."""
@@ -1450,7 +1463,7 @@ def frontend_save():
 
 
 @bp.route("/frontend/toggle", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_toggle():
     """Flip the public-frontend on/off switch without touching content fields."""
     s = _get_site_setting()
@@ -1510,7 +1523,7 @@ def _apply_alert_form(s, form, prefix):
 
 
 @bp.route("/frontend/top-alert-save", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_top_alert_save():
     s = _get_site_setting()
     _apply_alert_form(s, request.form, "top")
@@ -1520,7 +1533,7 @@ def frontend_top_alert_save():
 
 
 @bp.route("/frontend/header-alert-save", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_header_alert_save():
     s = _get_site_setting()
     _apply_alert_form(s, request.form, "header")
@@ -1530,7 +1543,7 @@ def frontend_header_alert_save():
 
 
 @bp.route("/frontend/logo-save", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_logo_save():
     """Upload / clear / resize the public-frontend logo."""
     s = _get_site_setting()
@@ -1556,7 +1569,7 @@ def frontend_logo_save():
 
 
 @bp.route("/frontend/header-save", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_header_save():
     """Persist header layout settings (width mode + sizing)."""
     s = _get_site_setting()
@@ -1590,7 +1603,7 @@ _HEX = _re.compile(r"#[0-9a-fA-F]{6}")
 
 
 @bp.route("/frontend/nav-appearance", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_nav_appearance_save():
     s = _get_site_setting()
     bg = (request.form.get("frontend_mega_bg_color") or "").strip()
@@ -1625,7 +1638,7 @@ def _apply_nav_item_form(item, form):
 
 
 @bp.route("/frontend/nav-item/new", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_nav_item_new():
     max_pos = db.session.query(db.func.max(FrontendNavItem.position)).scalar() or 0
     item = FrontendNavItem(position=max_pos + 1)
@@ -1637,7 +1650,7 @@ def frontend_nav_item_new():
 
 
 @bp.route("/frontend/nav-item/<int:nid>/edit", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_nav_item_edit(nid):
     item = db.session.get(FrontendNavItem, nid) or abort(404)
     _apply_nav_item_form(item, request.form)
@@ -1647,7 +1660,7 @@ def frontend_nav_item_edit(nid):
 
 
 @bp.route("/frontend/nav-item/<int:nid>/delete", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_nav_item_delete(nid):
     item = db.session.get(FrontendNavItem, nid) or abort(404)
     db.session.delete(item)
@@ -1657,7 +1670,7 @@ def frontend_nav_item_delete(nid):
 
 
 @bp.route("/frontend/nav-items/reorder", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_nav_item_reorder():
     payload = request.get_json(silent=True) or {}
     for pos, iid in enumerate(payload.get("order") or []):
@@ -1669,7 +1682,7 @@ def frontend_nav_item_reorder():
 
 
 @bp.route("/frontend/nav-item/<int:nid>/megamenu")
-@admin_required
+@frontend_editor_required
 def frontend_nav_megamenu(nid):
     item = db.session.get(FrontendNavItem, nid) or abort(404)
     return render_template("frontend_nav_megamenu.html", item=item, site=_get_site_setting())
@@ -1677,7 +1690,7 @@ def frontend_nav_megamenu(nid):
 
 # ---- Columns ----
 @bp.route("/frontend/nav-item/<int:nid>/column/new", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_nav_column_new(nid):
     item = db.session.get(FrontendNavItem, nid) or abort(404)
     max_pos = max([c.position for c in item.columns] + [-1]) + 1
@@ -1692,7 +1705,7 @@ def frontend_nav_column_new(nid):
 
 
 @bp.route("/frontend/nav-column/<int:cid>/edit", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_nav_column_edit(cid):
     col = db.session.get(FrontendNavColumn, cid) or abort(404)
     col.heading = (request.form.get("heading") or "").strip() or None
@@ -1701,7 +1714,7 @@ def frontend_nav_column_edit(cid):
 
 
 @bp.route("/frontend/nav-column/<int:cid>/delete", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_nav_column_delete(cid):
     col = db.session.get(FrontendNavColumn, cid) or abort(404)
     nid = col.nav_item_id
@@ -1713,7 +1726,7 @@ def frontend_nav_column_delete(cid):
 
 
 @bp.route("/frontend/nav-item/<int:nid>/columns/reorder", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_nav_columns_reorder(nid):
     item = db.session.get(FrontendNavItem, nid) or abort(404)
     payload = request.get_json(silent=True) or {}
@@ -1770,7 +1783,7 @@ def _apply_nav_link_form(link, form):
 
 
 @bp.route("/frontend/nav-column/<int:cid>/link/new", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_nav_link_new(cid):
     col = db.session.get(FrontendNavColumn, cid) or abort(404)
     max_pos = max([l.position for l in col.links] + [-1]) + 1
@@ -1794,7 +1807,7 @@ def frontend_nav_link_new(cid):
 
 
 @bp.route("/frontend/nav-link/<int:lid>/edit", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_nav_link_edit(lid):
     link = db.session.get(FrontendNavLink, lid) or abort(404)
     _apply_nav_link_form(link, request.form)
@@ -1803,7 +1816,7 @@ def frontend_nav_link_edit(lid):
 
 
 @bp.route("/frontend/nav-link/<int:lid>/delete", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_nav_link_delete(lid):
     link = db.session.get(FrontendNavLink, lid) or abort(404)
     nid = link.column.nav_item_id
@@ -1815,7 +1828,7 @@ def frontend_nav_link_delete(lid):
 
 
 @bp.route("/frontend/nav/<int:nid>/megamenu/save-all", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_nav_megamenu_save_all(nid):
     item = db.session.get(FrontendNavItem, nid) or abort(404)
     payload = request.get_json(silent=True) or {}
@@ -1840,7 +1853,7 @@ def frontend_nav_megamenu_save_all(nid):
 
 
 @bp.route("/frontend/nav-column/<int:cid>/links/reorder", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_nav_links_reorder(cid):
     col = db.session.get(FrontendNavColumn, cid) or abort(404)
     payload = request.get_json(silent=True) or {}
@@ -1860,14 +1873,14 @@ def frontend_nav_links_reorder(cid):
 
 
 @bp.route("/frontend/")
-@admin_required
+@frontend_editor_required
 def frontend_dashboard():
     s = _get_site_setting()
     return render_template("frontend_dashboard.html", site=s)
 
 
 @bp.route("/frontend/header")
-@admin_required
+@frontend_editor_required
 def frontend_header():
     from .frontend import HEADER_TEMPLATES
     s = _get_site_setting()
@@ -1876,7 +1889,7 @@ def frontend_header():
 
 
 @bp.route("/frontend/navigation")
-@admin_required
+@frontend_editor_required
 def frontend_navigation():
     from .frontend import MEGAMENU_TEMPLATES
     s = _get_site_setting()
@@ -1887,7 +1900,7 @@ def frontend_navigation():
 
 
 @bp.route("/frontend/megamenu-template", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_megamenu_template_save():
     from .frontend import MEGAMENU_TEMPLATES
     s = _get_site_setting()
@@ -1900,7 +1913,7 @@ def frontend_megamenu_template_save():
 
 
 @bp.route("/frontend/header-template", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_header_template_save():
     from .frontend import HEADER_TEMPLATES
     s = _get_site_setting()
@@ -1914,7 +1927,7 @@ def frontend_header_template_save():
 
 
 @bp.route("/frontend/footer")
-@admin_required
+@frontend_editor_required
 def frontend_footer():
     from .frontend import FOOTER_TEMPLATES
     s = _get_site_setting()
@@ -1923,7 +1936,7 @@ def frontend_footer():
 
 
 @bp.route("/frontend/footer-template", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_footer_template_save():
     from .frontend import FOOTER_TEMPLATES
     s = _get_site_setting()
@@ -1936,7 +1949,7 @@ def frontend_footer_template_save():
 
 
 @bp.route("/frontend/homepage")
-@admin_required
+@frontend_editor_required
 def frontend_homepage():
     from .frontend import HOMEPAGE_TEMPLATES
     s = _get_site_setting()
@@ -1945,7 +1958,7 @@ def frontend_homepage():
 
 
 @bp.route("/frontend/homepage-template", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_homepage_template_save():
     from .frontend import HOMEPAGE_TEMPLATES
     s = _get_site_setting()
@@ -1958,14 +1971,14 @@ def frontend_homepage_template_save():
 
 
 @bp.route("/frontend/pages")
-@admin_required
+@frontend_editor_required
 def frontend_pages():
     s = _get_site_setting()
     return render_template("frontend_pages.html", site=s)
 
 
 @bp.route("/frontend/footer-save", methods=["POST"])
-@admin_required
+@frontend_editor_required
 def frontend_footer_save():
     s = _get_site_setting()
     s.frontend_footer_text = (request.form.get("frontend_footer_text") or "").strip() or None
