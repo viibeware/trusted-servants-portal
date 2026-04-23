@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block heading %}Homepage{% endblock %}
+{% block heading_help %}Edit the content that appears on the public homepage: hero, about, and contact sections.{% endblock %}
+{% block top_actions %}
+<a class="btn" href="{{ url_for('frontend.index') }}" target="_blank" rel="noopener">View frontend ↗</a>
+{% endblock %}
+{% block content %}
+<div class="fe-admin-layout">
+  {% include "_frontend_subnav.html" %}
+  <div class="fe-admin-main">
+
+<section class="card">
+  <div class="card-head">
+    <h2>Template</h2>
+    <span class="muted smaller">Pick a homepage layout. Your copy fills whichever template you activate.</span>
+  </div>
+  <form class="form" method="post" action="{{ url_for('main.frontend_homepage_template_save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% set _active_hp = (site.frontend_homepage_template if site else 'classic') or 'classic' %}
+    <div class="template-library-grid">
+      {% for t in homepage_templates %}
+      <label class="template-card {% if _active_hp == t.key %}active{% endif %}">
+        <input type="radio" name="frontend_homepage_template" value="{{ t.key }}"
+               {% if _active_hp == t.key %}checked{% endif %}>
+        <div class="template-card-preview template-card-preview-homepage">
+          <div class="template-card-preview-homepage-hero"></div>
+          <div class="template-card-preview-homepage-grid">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+        <div class="template-card-info">
+          <div class="template-card-name">{{ t.name }}
+            {% if _active_hp == t.key %}<span class="template-card-badge">Active</span>{% endif %}
+          </div>
+          <div class="template-card-desc muted small">{{ t.description }}</div>
+        </div>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="form-actions"><button class="btn btn-primary">Use this template</button></div>
+  </form>
+</section>
+
+<form class="form" method="post" action="{{ url_for('main.frontend_save') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <section class="card">
+    <div class="card-head"><h2>Branding</h2></div>
+    <label>Site name
+      <input type="text" name="frontend_title" value="{{ (site.frontend_title if site else '') or '' }}" placeholder="Trusted Servants">
+    </label>
+    <label>Tagline <span class="muted small">(shown under the site name in the footer)</span>
+      <input type="text" name="frontend_tagline" value="{{ (site.frontend_tagline if site else '') or '' }}" placeholder="A recovery fellowship portal.">
+    </label>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Hero</h2></div>
+    <label>Heading
+      <input type="text" name="frontend_hero_heading" value="{{ (site.frontend_hero_heading if site else '') or '' }}" placeholder="You are not alone.">
+    </label>
+    <label>Subheading
+      <textarea name="frontend_hero_subheading" rows="2" placeholder="Find meetings, connect with your community…">{{ (site.frontend_hero_subheading if site else '') or '' }}</textarea>
+    </label>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>About section</h2></div>
+    <label>Heading
+      <input type="text" name="frontend_about_heading" value="{{ (site.frontend_about_heading if site else '') or '' }}" placeholder="About the Fellowship">
+    </label>
+    <label>Body <span class="muted small">(Markdown supported; leave blank to hide this section)</span>
+      <textarea name="frontend_about_body" rows="8" placeholder="## Who we are&#10;&#10;Write the story of your fellowship here…">{{ (site.frontend_about_body if site else '') or '' }}</textarea>
+    </label>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Contact / help section</h2></div>
+    <label>Heading
+      <input type="text" name="frontend_contact_heading" value="{{ (site.frontend_contact_heading if site else '') or '' }}" placeholder="Need Help Right Now?">
+    </label>
+    <label>Body <span class="muted small">(Markdown supported)</span>
+      <textarea name="frontend_contact_body" rows="5">{{ (site.frontend_contact_body if site else '') or '' }}</textarea>
+    </label>
+  </section>
+
+  <div class="form-actions"><button class="btn btn-primary">Save Homepage</button></div>
+</form>
+  </div>
+</div>
+{% endblock %}

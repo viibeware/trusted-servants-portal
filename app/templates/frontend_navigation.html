@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block heading %}Navigation{% endblock %}
+{% block heading_help %}Top-level header links, mega-menu columns, and the menu's appearance.{% endblock %}
+{% block top_actions %}
+<a class="btn" href="{{ url_for('frontend.index') }}" target="_blank" rel="noopener">View frontend ↗</a>
+{% endblock %}
+{% block content %}
+<div class="fe-admin-layout">
+  {% include "_frontend_subnav.html" %}
+  <div class="fe-admin-main">
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Mega menu template</h2>
+        <span class="muted smaller">Pick a layout for the full-width dropdown. Nav items and links are shared across templates.</span>
+      </div>
+      <form class="form" method="post" action="{{ url_for('main.frontend_megamenu_template_save') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% set _active_mm = (site.frontend_megamenu_template if site else 'dccma') or 'dccma' %}
+        <div class="template-library-grid">
+          {% for t in megamenu_templates %}
+          <label class="template-card {% if _active_mm == t.key %}active{% endif %}">
+            <input type="radio" name="frontend_megamenu_template" value="{{ t.key }}"
+                   {% if _active_mm == t.key %}checked{% endif %}>
+            <div class="template-card-preview template-card-preview-megamenu">
+              <div class="template-card-preview-mm-bar"></div>
+              <div class="template-card-preview-mm-grid">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+            <div class="template-card-info">
+              <div class="template-card-name">{{ t.name }}
+                {% if _active_mm == t.key %}<span class="template-card-badge">Active</span>{% endif %}
+              </div>
+              <div class="template-card-desc muted small">{{ t.description }}</div>
+            </div>
+          </label>
+          {% endfor %}
+        </div>
+        <div class="form-actions"><button class="btn btn-primary">Use this template</button></div>
+      </form>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Nav items</h2>
+        <div class="card-head-actions">
+          <button type="button" class="btn btn-sm btn-primary" data-save-reorder-for="#nav-items-sortable">Save order</button>
+          <button type="button" class="btn btn-sm btn-primary" data-open-modal="nav-item-new-modal">+ Add nav item</button>
+        </div>
+      </div>
+      <p class="muted small">Top-level links shown on the right of the header. Each item can be a simple text link, a pill-button CTA, or a two-line stacked style (like "New to CMA? / Start here"). Items with a mega menu reveal a full-width dropdown on hover.</p>
+      {% if nav_items %}
+      <p class="muted smaller">Drag the handle in the first column to reorder, then click <b>Save order</b>.</p>
+      <div class="fe-tbl-scroll">
+      <table class="tbl">
+        <thead><tr><th style="width:28px;"></th><th style="width:32px;"></th><th>Label</th><th>Style</th><th>URL</th><th>Mega menu</th><th></th></tr></thead>
+        <tbody id="nav-items-sortable" class="file-list-sortable"
+               data-reorder-url="{{ url_for('main.frontend_nav_item_reorder') }}"
+               data-reorder-manual="1">
+          {% for ni in nav_items %}
+          <tr data-item-id="{{ ni.id }}" draggable="true">
+            <td class="drag-handle-cell drag-handle" title="Drag to reorder">{{ icon('grip-vertical') }}</td>
+            <td class="muted">{{ loop.index }}.</td>
+            <td>
+              {% if ni.style == 'two-line' %}
+              <b>{{ ni.line1 or '' }}</b><br><span class="muted smaller">{{ ni.line2 or '' }}</span>
+              {% else %}<b>{{ ni.label or '—' }}</b>{% endif %}
+            </td>
+            <td><span class="chip">{{ ni.style }}</span></td>
+            <td class="muted small trunc" style="max-width: 260px;">{{ ni.url or '—' }}</td>
+            <td>{% if ni.has_megamenu %}<span class="chip">{{ ni.columns|length }} col · {{ ni.columns|map(attribute='links')|map('length')|sum }} links</span>{% else %}—{% endif %}</td>
+            <td class="row-actions">
+              {% if ni.has_megamenu %}
+              <a class="btn btn-sm" href="{{ url_for('main.frontend_nav_megamenu', nid=ni.id) }}">Mega menu</a>
+              {% endif %}
+              <button type="button" class="btn btn-sm" data-open-modal="nav-item-edit-{{ ni.id }}">Edit</button>
+              <form method="post" action="{{ url_for('main.frontend_nav_item_delete', nid=ni.id) }}"
+                    onsubmit="return confirm('Delete this nav item?');" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-danger">{{ icon('x') }}</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <p class="muted">No nav items yet. Add one to populate the header.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Mega menu appearance</h2></div>
+      <form class="form" method="post" action="{{ url_for('main.frontend_nav_appearance_save') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="alert-bar-color-row">
+          <label>Background color
+            <input type="color" name="frontend_mega_bg_color" value="{{ site.frontend_mega_bg_color or '#0B5CFF' }}">
+          </label>
+          <label>Text color
+            <input type="color" name="frontend_mega_text_color" value="{{ site.frontend_mega_text_color or '#ffffff' }}">
+          </label>
+        </div>
+        <div class="alert-bar-icon-row">
+          <label>Bottom-left radius <span class="muted small">(0–60 px)</span>
+            <input type="number" name="frontend_mega_radius_bl" min="0" max="60" step="1"
+                   value="{{ site.frontend_mega_radius_bl if site else 18 }}">
+          </label>
+          <label>Bottom-right radius <span class="muted small">(0–60 px)</span>
+            <input type="number" name="frontend_mega_radius_br" min="0" max="60" step="1"
+                   value="{{ site.frontend_mega_radius_br if site else 18 }}">
+          </label>
+        </div>
+        <div class="form-actions"><button class="btn btn-primary">Save Appearance</button></div>
+      </form>
+    </section>
+
+  </div>
+</div>
+
+{# ---- New item modal ---- #}
+<div class="modal" id="nav-item-new-modal" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true">
+    <form class="form" method="post" action="{{ url_for('main.frontend_nav_item_new') }}" data-nav-item-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-head"><h2>Add nav item</h2>
+        <button type="button" class="icon-btn" data-close>{{ icon('x') }}</button></div>
+      <div class="modal-body">
+        {% include "_nav_item_fields.html" %}
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Add item</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ---- Per-item edit modals ---- #}
+{% for ni in nav_items %}
+<div class="modal" id="nav-item-edit-{{ ni.id }}" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true">
+    <form class="form" method="post"
+          action="{{ url_for('main.frontend_nav_item_edit', nid=ni.id) }}" data-nav-item-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-head"><h2>Edit nav item</h2>
+        <button type="button" class="icon-btn" data-close>{{ icon('x') }}</button></div>
+      <div class="modal-body">
+        {% set _item = ni %}
+        {% include "_nav_item_fields.html" %}
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+<script>
+  document.querySelectorAll('[data-nav-item-form]').forEach(form => {
+    const radios = form.querySelectorAll('input[name="style"]');
+    const panes = form.querySelectorAll('[data-nav-style-pane]');
+    const apply = () => {
+      const v = [...radios].find(r => r.checked)?.value || 'text';
+      panes.forEach(p => p.hidden = p.dataset.navStylePane !== v);
+    };
+    radios.forEach(r => r.addEventListener('change', apply));
+    apply();
+  });
+</script>
+{% endblock %}

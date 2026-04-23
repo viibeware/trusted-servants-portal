@@ -19,7 +19,7 @@
     {% if _flogo %}
     <div class="login-hero-footer">
       {% set _flogo_is_svg = _flogo.lower().endswith('.svg') %}
-      <img src="{{ url_for('main.site_footer_logo') }}" alt="" class="login-hero-brand{% if _flogo_is_svg %} login-hero-brand-white{% endif %}">
+      <img src="{{ url_for('public.site_footer_logo') }}" alt="" class="login-hero-brand{% if _flogo_is_svg %} login-hero-brand-white{% endif %}">
     </div>
     {% endif %}
   </aside>
@@ -67,7 +67,7 @@
     <canvas class="login-warp-canvas"></canvas>
     <div class="login-warp-logo-wrap">
       {% if site and site.footer_logo_filename %}
-      <img class="login-warp-logo" src="{{ url_for('main.site_footer_logo') }}" alt="">
+      <img class="login-warp-logo" src="{{ url_for('public.site_footer_logo') }}" alt="">
       {% else %}
       <img class="login-warp-logo" src="{{ url_for('static', filename='img/logo_tspro_white.svg') }}" alt="">
       {% endif %}
@@ -81,7 +81,7 @@
   <div class="modal-panel request-access-panel" role="dialog" aria-modal="true">
     <button type="button" class="request-access-close icon-btn" data-close aria-label="Close">{{ icon('x') }}</button>
     <h2 class="request-access-title">Trusted Servants Pro<br>Access Request</h2>
-    <form method="post" action="{{ url_for('main.request_access_submit') }}" class="form request-access-form">
+    <form method="post" action="{{ url_for('public.request_access_submit') }}" class="form request-access-form">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label>
         <span>Name <span class="req">*</span></span>

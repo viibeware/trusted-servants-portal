@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block heading %}Web Frontend{% endblock %}
+{% block heading_help %}Manage the public-facing website served at the root URL. The admin portal lives at <code>/tspro</code>.{% endblock %}
+{% block top_actions %}
+<a class="btn" href="{{ url_for('frontend.index') }}" target="_blank" rel="noopener">View frontend ↗</a>
+{% endblock %}
+{% block content %}
+<div class="fe-admin-layout">
+  {% include "_frontend_subnav.html" %}
+  <div class="fe-admin-main">
+    <section class="card">
+      <div class="card-head"><h2>Overview</h2></div>
+      <li class="special-page-row fe-status-row">
+        <div class="special-page-info">
+          <div class="u-name">Public web frontend
+            {% if site and site.frontend_enabled %}
+              <span class="fe-status-pill on">● Live</span>
+            {% else %}
+              <span class="fe-status-pill off">● Off</span>
+            {% endif %}
+          </div>
+          <p class="muted small">
+            {% if site and site.frontend_enabled %}
+              Visible to everyone at the root URL. Flip off to hide it from the public — admins and editors can still preview.
+            {% else %}
+              Hidden from the public. You and other signed-in editors and admins can still preview and keep building.
+            {% endif %}
+          </p>
+        </div>
+        <form method="post" action="{{ url_for('main.frontend_toggle') }}" class="special-page-toggle-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="mode-toggle" title="Toggle public web frontend">
+            <input type="checkbox" name="frontend_enabled" value="1"
+                   onchange="this.form.submit()"
+                   {% if site and site.frontend_enabled %}checked{% endif %}>
+            <span class="mode-track"><span class="mode-thumb"></span></span>
+          </label>
+          <noscript><button class="btn btn-sm btn-primary">Save</button></noscript>
+        </form>
+      </li>
+      <p class="muted" style="margin-top: 20px;">Pick a section on the left to edit:</p>
+      <ul class="list">
+        <li><a href="{{ url_for('main.frontend_header') }}"><b>Header</b><span class="muted">Width, padding, and navigation links</span></a></li>
+        <li><a href="{{ url_for('main.frontend_footer') }}"><b>Footer</b><span class="muted">Footer copy and links</span></a></li>
+        <li><a href="{{ url_for('main.frontend_homepage') }}"><b>Homepage</b><span class="muted">Hero, about, and contact content</span></a></li>
+        <li><a href="{{ url_for('main.frontend_pages') }}"><b>Pages</b><span class="muted">Additional content pages (coming soon)</span></a></li>
+      </ul>
+    </section>
+  </div>
+</div>
+{% endblock %}

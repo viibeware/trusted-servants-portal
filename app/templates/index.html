@@ -128,7 +128,7 @@
       {% if recent_files %}
       <ul class="list">
         {% for f in recent_files %}
-        <li><a href="{{ url_for('main.public_file', filename=f.original_filename) }}" target="_blank"><span>{{ f.original_filename }}</span><span class="muted">{{ f.created_at.strftime('%b %d') }}</span></a></li>
+        <li><a href="{{ url_for('public.public_file', filename=f.original_filename) }}" target="_blank"><span>{{ f.original_filename }}</span><span class="muted">{{ f.created_at.strftime('%b %d') }}</span></a></li>
         {% endfor %}
       </ul>
       {% else %}<p class="muted">No files uploaded yet.</p>{% endif %}

@@ -8,7 +8,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from .models import db, User, SiteSetting, LoginFailure, ROLES
 from .crypto import decrypt
 
-bp = Blueprint("auth", __name__, url_prefix="/auth")
+bp = Blueprint("auth", __name__, url_prefix="/tspro/auth")
 
 TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 

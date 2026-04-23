@@ -75,7 +75,7 @@
       {% for m in items %}
       {% set t = media_type(m.original_filename) %}
       <tr data-media-id="{{ m.id }}" data-stored="{{ m.stored_filename }}" data-original="{{ m.original_filename }}">
-        <td class="media-name-cell"><a href="{{ url_for('main.public_file', filename=m.original_filename) }}" target="_blank">{{ m.original_filename }}</a></td>
+        <td class="media-name-cell"><a href="{{ url_for('public.public_file', filename=m.original_filename) }}" target="_blank">{{ m.original_filename }}</a></td>
         <td><span class="ftype ftype-{{ t }} ftype-sm">{{ t|upper }}</span></td>
         <td class="muted">{{ (m.size_bytes or 0) // 1024 }} KB</td>
         <td class="muted hide-sm">{{ m.uploader.username if m.uploader else '—' }}</td>
@@ -83,12 +83,12 @@
           {% if picker %}
           <button type="button" class="btn btn-sm media-preview"
                   data-media-preview
-                  data-pub-url="{{ url_for('main.public_file', filename=m.original_filename) }}"
+                  data-pub-url="{{ url_for('public.public_file', filename=m.original_filename) }}"
                   data-download-url="{{ url_for('main.media_download', mid=m.id) }}"
                   data-filename="{{ m.original_filename }}">Preview</button>
           <button type="button" class="btn btn-sm btn-primary media-select">Select</button>
           {% else %}
-          <button type="button" class="btn btn-sm btn-copy" data-copy-url="{{ url_for('main.public_file', filename=m.original_filename) }}">Copy Link</button>
+          <button type="button" class="btn btn-sm btn-copy" data-copy-url="{{ url_for('public.public_file', filename=m.original_filename) }}">Copy Link</button>
           <a class="btn btn-sm" href="{{ url_for('main.media_download', mid=m.id) }}">Download</a>
           {% if current_user.can_edit() %}
           <button type="button" class="btn btn-sm media-rename">Rename</button>

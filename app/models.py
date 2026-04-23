@@ -204,6 +204,52 @@ class SiteSetting(db.Model):
     og_title = db.Column(db.String(200))
     og_description = db.Column(db.Text)
     og_image_filename = db.Column(db.String(500))
+    # Public-facing web frontend
+    # Module gate: when False, hides Web Frontend from the sidebar entirely,
+    # blocks the admin editor routes, and the public homepage won't serve.
+    frontend_module_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    # Public visibility: when False (but module is enabled), signed-in editors
+    # and admins can still preview while the public root redirects to login.
+    frontend_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    frontend_title = db.Column(db.String(200))
+    frontend_tagline = db.Column(db.String(500))
+    frontend_hero_heading = db.Column(db.String(200))
+    frontend_hero_subheading = db.Column(db.String(500))
+    frontend_about_heading = db.Column(db.String(200))
+    frontend_about_body = db.Column(db.Text)
+    frontend_contact_heading = db.Column(db.String(200))
+    frontend_contact_body = db.Column(db.Text)
+    frontend_footer_text = db.Column(db.Text)
+    # Header layout
+    frontend_header_width_mode = db.Column(db.String(16), nullable=False, default="boxed")  # 'boxed' | 'full'
+    frontend_header_max_width = db.Column(db.Integer, nullable=False, default=1160)
+    frontend_header_padding_pct = db.Column(db.Integer, nullable=False, default=5)
+    frontend_header_height = db.Column(db.Integer, nullable=False, default=72)
+    frontend_header_template = db.Column(db.String(64), nullable=False, default="classic")
+    frontend_footer_template = db.Column(db.String(64), nullable=False, default="classic")
+    frontend_homepage_template = db.Column(db.String(64), nullable=False, default="classic")
+    frontend_megamenu_template = db.Column(db.String(64), nullable=False, default="dccma")
+    # Mega menu appearance
+    frontend_mega_bg_color = db.Column(db.String(16), nullable=False, default="#0B5CFF")
+    frontend_mega_text_color = db.Column(db.String(16), nullable=False, default="#ffffff")
+    frontend_mega_radius_bl = db.Column(db.Integer, nullable=False, default=18)
+    frontend_mega_radius_br = db.Column(db.Integer, nullable=False, default=18)
+    frontend_logo_filename = db.Column(db.String(500))
+    frontend_logo_width = db.Column(db.Integer, nullable=False, default=40)
+    # Top alert bar (above header)
+    top_alert_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    top_alert_message = db.Column(db.Text)
+    top_alert_bg_color = db.Column(db.String(16))
+    top_alert_text_color = db.Column(db.String(16))
+    top_alert_icon = db.Column(db.String(32))
+    top_alert_icon_position = db.Column(db.String(8), nullable=False, default="before")  # 'before' | 'after'
+    # Under-header alert bar
+    header_alert_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    header_alert_message = db.Column(db.Text)
+    header_alert_bg_color = db.Column(db.String(16))
+    header_alert_text_color = db.Column(db.String(16))
+    header_alert_icon = db.Column(db.String(32))
+    header_alert_icon_position = db.Column(db.String(8), nullable=False, default="before")
     setup_complete = db.Column(db.Boolean, nullable=False, default=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -310,6 +356,57 @@ class UrlRedirect(db.Model):
     source_path = db.Column(db.String(2000), unique=True, nullable=False, index=True)
     target_path = db.Column(db.String(2000), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class FrontendNavItem(db.Model):
+    """Top-level navigation item on the public header."""
+    __tablename__ = "frontend_nav_item"
+    id = db.Column(db.Integer, primary_key=True)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    style = db.Column(db.String(16), nullable=False, default="text")  # text | button | two-line
+    label = db.Column(db.String(160))
+    line1 = db.Column(db.String(120))
+    line2 = db.Column(db.String(120))
+    url = db.Column(db.String(500))
+    has_megamenu = db.Column(db.Boolean, nullable=False, default=False)
+    open_in_new_tab = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    columns = db.relationship(
+        "FrontendNavColumn",
+        cascade="all, delete-orphan",
+        order_by="FrontendNavColumn.position, FrontendNavColumn.id",
+        backref="nav_item",
+    )
+
+
+class FrontendNavColumn(db.Model):
+    __tablename__ = "frontend_nav_column"
+    id = db.Column(db.Integer, primary_key=True)
+    nav_item_id = db.Column(db.Integer, db.ForeignKey("frontend_nav_item.id", ondelete="CASCADE"), nullable=False)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    heading = db.Column(db.String(160))
+    links = db.relationship(
+        "FrontendNavLink",
+        cascade="all, delete-orphan",
+        order_by="FrontendNavLink.position, FrontendNavLink.id",
+        backref="column",
+    )
+
+
+class FrontendNavLink(db.Model):
+    """A block inside a mega-menu column. Despite the legacy "link" name,
+    this can be a title, link, button, or section divider — see `kind`."""
+    __tablename__ = "frontend_nav_link"
+    id = db.Column(db.Integer, primary_key=True)
+    column_id = db.Column(db.Integer, db.ForeignKey("frontend_nav_column.id", ondelete="CASCADE"), nullable=False)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    kind = db.Column(db.String(16), nullable=False, default="link")  # link | title | button | section
+    label = db.Column(db.String(200), nullable=False)
+    url = db.Column(db.String(500))
+    icon_before = db.Column(db.String(32))
+    icon_after = db.Column(db.String(32))
+    button_style = db.Column(db.String(16), nullable=False, default="pill")  # pill | rounded
+    open_in_new_tab = db.Column(db.Boolean, nullable=False, default=False)
 
 
 class LoginFailure(db.Model):

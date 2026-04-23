@@ -1,0 +1,33 @@
+<article id="nav-megacol-{{ col.id }}" class="nav-megacol" data-item-id="{{ col.id }}" draggable="true">
+  <div class="nav-megacol-head">
+    <span class="drag-handle" title="Drag to reorder column">{{ icon('grip-vertical') }}</span>
+    <span class="nav-megacol-label muted smaller"></span>
+    <form method="post" action="{{ url_for('main.frontend_nav_column_delete', cid=col.id) }}"
+          onsubmit="return confirm('Delete this column and all its links?');"
+          class="nav-megacol-del-form" data-delete-column-form data-target-item="#nav-megacol-{{ col.id }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-danger" title="Delete column">{{ icon('x') }}</button>
+    </form>
+  </div>
+
+  <ul id="nav-megacol-links-{{ col.id }}" class="nav-megacol-links file-list-sortable"
+      data-reorder-url="{{ url_for('main.frontend_nav_links_reorder', cid=col.id) }}"
+      data-reorder-toast="Block order">
+    {% for link in col.links %}
+      {% include "_nav_megalink.html" %}
+    {% endfor %}
+  </ul>
+
+  <div class="nav-megacol-add-row">
+    {% for _k, _lbl in [('link','+ Link'), ('title','+ Title'),
+                        ('button','+ Button'), ('section','+ Section')] %}
+    <form method="post" action="{{ url_for('main.frontend_nav_link_new', cid=col.id) }}"
+          class="nav-megacol-addlink-form"
+          data-add-block-target="#nav-megacol-links-{{ col.id }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="kind" value="{{ _k }}">
+      <button class="btn btn-sm">{{ _lbl }}</button>
+    </form>
+    {% endfor %}
+  </div>
+</article>

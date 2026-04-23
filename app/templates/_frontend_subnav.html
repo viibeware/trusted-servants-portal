@@ -1,0 +1,49 @@
+{# Secondary sidebar for the Web Frontend admin area. Used inside every
+   /tspro/frontend/* page to give the GitHub-style grouped settings layout. #}
+<aside class="fe-subnav" aria-label="Web Frontend sections">
+  <div class="fe-subnav-head">
+    <div class="fe-subnav-title">Web Frontend</div>
+    <div class="fe-subnav-sub">
+      {% if site and site.frontend_enabled %}
+        <span class="fe-subnav-status on">● Live</span>
+      {% else %}
+        <span class="fe-subnav-status off">● Off</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <nav class="fe-subnav-nav">
+    <a href="{{ url_for('main.frontend_dashboard') }}"
+       class="fe-subnav-link {% if request.endpoint == 'main.frontend_dashboard' %}active{% endif %}">
+      {{ icon('layout-grid') }}<span>Overview</span>
+    </a>
+
+    <div class="fe-subnav-group">
+      <div class="fe-subnav-group-label">Structure</div>
+      <a href="{{ url_for('main.frontend_header') }}"
+         class="fe-subnav-link {% if request.endpoint == 'main.frontend_header' %}active{% endif %}">
+        {{ icon('panel-top') }}<span>Header</span>
+      </a>
+      <a href="{{ url_for('main.frontend_footer') }}"
+         class="fe-subnav-link {% if request.endpoint == 'main.frontend_footer' %}active{% endif %}">
+        {{ icon('panel-bottom') }}<span>Footer</span>
+      </a>
+      <a href="{{ url_for('main.frontend_navigation') }}"
+         class="fe-subnav-link {% if request.endpoint in ('main.frontend_navigation', 'main.frontend_nav_megamenu') %}active{% endif %}">
+        {{ icon('layout-grid') }}<span>Navigation</span>
+      </a>
+    </div>
+
+    <div class="fe-subnav-group">
+      <div class="fe-subnav-group-label">Content</div>
+      <a href="{{ url_for('main.frontend_homepage') }}"
+         class="fe-subnav-link {% if request.endpoint == 'main.frontend_homepage' %}active{% endif %}">
+        {{ icon('home') }}<span>Homepage</span>
+      </a>
+      <a href="{{ url_for('main.frontend_pages') }}"
+         class="fe-subnav-link {% if request.endpoint == 'main.frontend_pages' %}active{% endif %}">
+        {{ icon('file-text') }}<span>Pages</span>
+      </a>
+    </div>
+  </nav>
+</aside>

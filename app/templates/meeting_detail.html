@@ -172,13 +172,13 @@
         <span class="ftype ftype-{{ ft }}" aria-label="{{ ft }}">{{ ft|upper }}</span>
         {% endif %}
         <div class="file-main">
-          <a href="{% if r.stored_filename %}{{ url_for('main.public_file', filename=r.original_filename) }}{% elif r.url %}{{ r.url }}{% else %}{{ url_for('main.reading_view', rid=r.id) }}{% endif %}" target="_blank">{{ r.title }}</a>
+          <a href="{% if r.stored_filename %}{{ url_for('public.public_file', filename=r.original_filename) }}{% elif r.url %}{{ r.url }}{% else %}{{ url_for('main.reading_view', rid=r.id) }}{% endif %}" target="_blank">{{ r.title }}</a>
           {% if r.original_filename %}<div class="muted smaller">{{ r.original_filename }}</div>{% endif %}
           {% if r.url %}<div class="muted smaller trunc">{{ r.url }}</div>{% endif %}
         </div>
         <div class="row-actions">
           {% if r.stored_filename %}
-          <button type="button" class="btn btn-sm btn-copy" data-copy-url="{{ url_for('main.public_file', filename=r.original_filename) }}">Copy Link</button>
+          <button type="button" class="btn btn-sm btn-copy" data-copy-url="{{ url_for('public.public_file', filename=r.original_filename) }}">Copy Link</button>
           {% elif r.url %}
           <button type="button" class="btn btn-sm btn-copy" data-copy-url="{{ r.url }}">Copy Link</button>
           {% endif %}
@@ -205,14 +205,14 @@
       {% set ft = f|file_type %}
       <span class="ftype ftype-{{ ft }}" aria-label="{{ ft }}">{{ ft|upper }}</span>
       <div class="file-main">
-        <a href="{% if f.stored_filename %}{{ url_for('main.public_file', filename=f.original_filename) }}{% elif f.url %}{{ f.url }}{% else %}{{ url_for('main.file_view', fid=f.id) }}{% endif %}" target="_blank">{{ f.title }}</a>
+        <a href="{% if f.stored_filename %}{{ url_for('public.public_file', filename=f.original_filename) }}{% elif f.url %}{{ f.url }}{% else %}{{ url_for('main.file_view', fid=f.id) }}{% endif %}" target="_blank">{{ f.title }}</a>
         {% if f.description %}<div class="muted small">{{ f.description }}</div>{% endif %}
         {% if f.original_filename %}<div class="muted smaller">{{ f.original_filename }}</div>{% endif %}
         {% if f.url %}<div class="muted smaller trunc">{{ f.url }}</div>{% endif %}
       </div>
       <div class="row-actions">
         {% if f.stored_filename %}
-        <button type="button" class="btn btn-sm btn-copy" data-copy-url="{{ url_for('main.public_file', filename=f.original_filename) }}">Copy Link</button>
+        <button type="button" class="btn btn-sm btn-copy" data-copy-url="{{ url_for('public.public_file', filename=f.original_filename) }}">Copy Link</button>
         {% elif f.url %}
         <button type="button" class="btn btn-sm btn-copy" data-copy-url="{{ f.url }}">Copy Link</button>
         {% endif %}

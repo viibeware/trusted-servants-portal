@@ -12,7 +12,8 @@ from datetime import datetime, timedelta
 from .models import (db, User, Meeting, MeetingFile, MeetingSchedule, MeetingLibrary,
                      ZoomAccount, ZoomOtpEmail, Location, Library, Reading,
                      MediaItem, NavLink, SiteSetting, IntergroupAccount,
-                     AccessRequest, FILE_CATEGORIES, DAYS_OF_WEEK)
+                     AccessRequest, FrontendNavItem, FrontendNavColumn,
+                     FrontendNavLink, FILE_CATEGORIES, DAYS_OF_WEEK)
 
 INTERGROUP_DEFAULT_ACCOUNTS = [
     ('Chair', 'chair@dccma.com'),
@@ -71,7 +72,12 @@ def _get_otp_email():
 MEETING_TYPES = ("in_person", "online", "hybrid")
 from .crypto import encrypt, decrypt
 
-bp = Blueprint("main", __name__)
+# Admin app blueprint: everything mounted under /tspro.
+bp = Blueprint("main", __name__, url_prefix="/tspro")
+
+# Truly public routes (served at the root, no auth or lax auth):
+# /pub/*, /site-branding/footer-logo, /site-branding/og-image, /request-access.
+public_bp = Blueprint("public", __name__)
 
 CATEGORY_LABELS = {
     "readings": "Readings",
@@ -136,6 +142,28 @@ DASHBOARD_WIDGET_KEYS = ("server-metrics", "meetings", "libraries", "files", "ac
 
 ONLINE_WINDOW = timedelta(minutes=5)
 LAST_SEEN_THROTTLE = timedelta(seconds=60)
+
+
+@bp.before_request
+def _guard_frontend_module():
+    """When the Web Frontend module is disabled, block the /tspro/frontend/*
+    editor routes so they can't be reached by URL. The settings-modal toggle
+    (and its handler) stay reachable because they live under /tspro/site/*."""
+    if not request.path.startswith("/tspro/frontend"):
+        return None
+    # The module-enable toggle handler itself must always be reachable so an
+    # admin can turn the module back on. Everything else is gated.
+    if request.endpoint == "main.frontend_module_toggle":
+        return None
+    try:
+        s = SiteSetting.query.first()
+    except Exception:
+        return None
+    if s is None or getattr(s, "frontend_module_enabled", True):
+        return None
+    if getattr(current_user, "is_authenticated", False):
+        flash("Web Frontend module is disabled. Enable it in Settings → Web Frontend.", "warning")
+    return redirect(url_for("main.index"))
 
 
 @bp.before_app_request
@@ -237,6 +265,13 @@ def dashboard_customize():
 def api_server_metrics():
     from .metrics import snapshot
     return jsonify(snapshot())
+
+
+@bp.route("/api/version")
+@login_required
+def api_version():
+    from .version import __version__
+    return jsonify(version=__version__)
 
 
 @bp.route("/api/online-users")
@@ -1115,13 +1150,244 @@ def data_import():
         shutil.rmtree(staging, ignore_errors=True)
 
 
+# Settings on SiteSetting that make up the public frontend. Used by the
+# scoped frontend export/import so a single site can ship its look-and-feel
+# (content + navigation + assets) without carrying the whole database.
+_FRONTEND_SETTING_KEYS = (
+    # Core content
+    "frontend_enabled", "frontend_title", "frontend_tagline",
+    "frontend_hero_heading", "frontend_hero_subheading",
+    "frontend_about_heading", "frontend_about_body",
+    "frontend_contact_heading", "frontend_contact_body",
+    "frontend_footer_text",
+    # Layout / templates
+    "frontend_header_width_mode", "frontend_header_max_width",
+    "frontend_header_padding_pct", "frontend_header_height",
+    "frontend_header_template", "frontend_footer_template",
+    "frontend_homepage_template", "frontend_megamenu_template",
+    # Mega menu styling
+    "frontend_mega_bg_color", "frontend_mega_text_color",
+    "frontend_mega_radius_bl", "frontend_mega_radius_br",
+    # Logos
+    "frontend_logo_filename", "frontend_logo_width",
+    "footer_logo_filename", "footer_logo_url", "footer_logo_width",
+    # Alerts (frontend-only)
+    "top_alert_enabled", "top_alert_message",
+    "top_alert_bg_color", "top_alert_text_color",
+    "top_alert_icon", "top_alert_icon_position",
+    "header_alert_enabled", "header_alert_message",
+    "header_alert_bg_color", "header_alert_text_color",
+    "header_alert_icon", "header_alert_icon_position",
+    # Social sharing — public-facing
+    "og_enabled", "og_title", "og_description", "og_image_filename",
+)
+
+# Setting keys that point at an uploaded filename. These drive asset bundling.
+_FRONTEND_ASSET_KEYS = (
+    "frontend_logo_filename", "footer_logo_filename", "og_image_filename",
+)
+
+
+def _frontend_export_payload():
+    from .models import SiteSetting
+    s = _get_site_setting()
+    settings = {k: getattr(s, k, None) for k in _FRONTEND_SETTING_KEYS}
+    nav_items = []
+    items = FrontendNavItem.query.order_by(FrontendNavItem.position).all()
+    for it in items:
+        cols = []
+        for c in sorted(it.columns, key=lambda x: x.position):
+            links = []
+            for l in sorted(c.links, key=lambda x: x.position):
+                links.append({
+                    "position": l.position, "kind": l.kind, "label": l.label,
+                    "url": l.url, "icon_before": l.icon_before,
+                    "icon_after": l.icon_after, "button_style": l.button_style,
+                    "open_in_new_tab": bool(l.open_in_new_tab),
+                })
+            cols.append({
+                "position": c.position, "heading": c.heading, "links": links,
+            })
+        nav_items.append({
+            "position": it.position, "style": it.style, "label": it.label,
+            "line1": it.line1, "line2": it.line2, "url": it.url,
+            "has_megamenu": bool(it.has_megamenu),
+            "open_in_new_tab": bool(it.open_in_new_tab),
+            "columns": cols,
+        })
+    assets = sorted({fn for fn in (settings.get(k) for k in _FRONTEND_ASSET_KEYS) if fn})
+    return {
+        "kind": "frontend", "format_version": 1,
+        "settings": settings, "nav_items": nav_items,
+        "assets": list(assets),
+    }
+
+
+@bp.route("/settings/frontend-export")
+@admin_required
+def data_frontend_export():
+    import io, json, tempfile, zipfile
+    from datetime import datetime
+    from flask import send_file
+
+    upload_dir = current_app.config["UPLOAD_FOLDER"]
+    payload = _frontend_export_payload()
+    manifest = {
+        "app": "trusted-servants-pro",
+        "kind": "frontend",
+        "format_version": 1,
+        "exported_at": datetime.utcnow().isoformat() + "Z",
+        "content_filename": "frontend.json",
+        "assets_dir": "assets/",
+        "note": "Scoped frontend bundle. Import via the Data tab on another install to overlay frontend content, navigation, and assets without touching users, meetings, or libraries.",
+    }
+
+    tmp_zip = tempfile.NamedTemporaryFile(prefix="tsp-fe-export-", suffix=".zip", delete=False)
+    tmp_zip.close()
+    with zipfile.ZipFile(tmp_zip.name, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as z:
+        z.writestr("manifest.json", json.dumps(manifest, indent=2))
+        z.writestr("frontend.json", json.dumps(payload, indent=2))
+        for fn in payload["assets"]:
+            src = os.path.join(upload_dir, fn)
+            if os.path.isfile(src):
+                z.write(src, arcname=os.path.join("assets", fn))
+
+    stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    response = send_file(tmp_zip.name, mimetype="application/zip",
+                         as_attachment=True, download_name=f"tsp-frontend-{stamp}.zip")
+    @response.call_on_close
+    def _cleanup():
+        try: os.unlink(tmp_zip.name)
+        except OSError: pass
+    return response
+
+
+@bp.route("/settings/frontend-import", methods=["POST"])
+@admin_required
+def data_frontend_import():
+    import json, shutil, tempfile, zipfile
+
+    f = request.files.get("archive")
+    if not f or not f.filename:
+        flash("Choose a frontend bundle (.zip) to import", "danger")
+        return redirect(request.referrer or url_for("main.index"))
+    if request.form.get("confirm") != "REPLACE":
+        flash('Type REPLACE in the confirmation box to overwrite frontend content', "danger")
+        return redirect(request.referrer or url_for("main.index"))
+
+    upload_dir = current_app.config["UPLOAD_FOLDER"]
+    data_dir = os.path.dirname(upload_dir.rstrip("/"))
+    staging = tempfile.mkdtemp(prefix="tsp-fe-import-", dir=data_dir)
+    try:
+        zip_path = os.path.join(staging, "in.zip")
+        f.save(zip_path)
+        try:
+            with zipfile.ZipFile(zip_path) as z:
+                names = z.namelist()
+                for n in names:
+                    if n.startswith("/") or ".." in n.split("/"):
+                        flash(f"Archive contains unsafe path: {n}", "danger")
+                        return redirect(request.referrer or url_for("main.index"))
+                if "frontend.json" not in names or "manifest.json" not in names:
+                    flash("Archive is missing frontend.json or manifest.json — not a valid frontend bundle", "danger")
+                    return redirect(request.referrer or url_for("main.index"))
+                try:
+                    manifest = json.loads(z.read("manifest.json").decode("utf-8"))
+                except (ValueError, UnicodeDecodeError):
+                    flash("Archive manifest.json is invalid", "danger")
+                    return redirect(request.referrer or url_for("main.index"))
+                if manifest.get("app") not in ("trusted-servants-pro", "trusted-servants-portal"):
+                    flash("Archive manifest does not identify a Trusted Servants Pro export", "danger")
+                    return redirect(request.referrer or url_for("main.index"))
+                if manifest.get("kind") != "frontend":
+                    flash("This looks like a full archive, not a frontend bundle. Use the Import &amp; Replace form instead.", "danger")
+                    return redirect(request.referrer or url_for("main.index"))
+                try:
+                    payload = json.loads(z.read("frontend.json").decode("utf-8"))
+                except (ValueError, UnicodeDecodeError):
+                    flash("Archive frontend.json is invalid", "danger")
+                    return redirect(request.referrer or url_for("main.index"))
+                extract_dir = os.path.join(staging, "extracted")
+                os.makedirs(extract_dir, exist_ok=True)
+                z.extractall(extract_dir)
+        except zipfile.BadZipFile:
+            flash("File is not a valid zip archive", "danger")
+            return redirect(request.referrer or url_for("main.index"))
+
+        # 1. Copy assets into uploads/ (preserve filenames — they're already
+        #    UUID-prefixed on the source install and won't collide in practice).
+        assets_src = os.path.join(extract_dir, "assets")
+        os.makedirs(upload_dir, exist_ok=True)
+        if os.path.isdir(assets_src):
+            for entry in os.listdir(assets_src):
+                src = os.path.join(assets_src, entry)
+                if os.path.isfile(src):
+                    shutil.copy2(src, os.path.join(upload_dir, entry))
+
+        # 2. Apply settings onto the singleton SiteSetting row.
+        s = _get_site_setting()
+        incoming = payload.get("settings") or {}
+        for key in _FRONTEND_SETTING_KEYS:
+            if key in incoming:
+                setattr(s, key, incoming[key])
+
+        # 3. Rebuild the nav tree. Cascade deletes columns + links.
+        for it in FrontendNavItem.query.all():
+            db.session.delete(it)
+        db.session.flush()
+
+        for ni in payload.get("nav_items") or []:
+            item = FrontendNavItem(
+                position=int(ni.get("position") or 0),
+                style=(ni.get("style") or "text"),
+                label=ni.get("label"),
+                line1=ni.get("line1"), line2=ni.get("line2"),
+                url=ni.get("url"),
+                has_megamenu=bool(ni.get("has_megamenu")),
+                open_in_new_tab=bool(ni.get("open_in_new_tab")),
+            )
+            db.session.add(item)
+            db.session.flush()
+            for nc in (ni.get("columns") or []):
+                col = FrontendNavColumn(
+                    nav_item_id=item.id,
+                    position=int(nc.get("position") or 0),
+                    heading=nc.get("heading"),
+                )
+                db.session.add(col)
+                db.session.flush()
+                for nl in (nc.get("links") or []):
+                    link = FrontendNavLink(
+                        column_id=col.id,
+                        position=int(nl.get("position") or 0),
+                        kind=(nl.get("kind") or "link"),
+                        label=(nl.get("label") or ""),
+                        url=nl.get("url"),
+                        icon_before=nl.get("icon_before"),
+                        icon_after=nl.get("icon_after"),
+                        button_style=(nl.get("button_style") or "pill"),
+                        open_in_new_tab=bool(nl.get("open_in_new_tab")),
+                    )
+                    db.session.add(link)
+
+        db.session.commit()
+
+        from . import _backfill_media
+        _backfill_media(current_app)
+
+        flash("Frontend bundle imported — content, navigation, and assets are in place.", "success")
+        return redirect(request.referrer or url_for("main.frontend_dashboard"))
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
 @bp.route("/uploads/<path:stored>")
 @login_required
 def upload_raw(stored):
     return send_from_directory(current_app.config["UPLOAD_FOLDER"], stored)
 
 
-@bp.route("/pub/<path:filename>")
+@public_bp.route("/pub/<path:filename>")
 def public_file(filename):
     if ".." in filename or filename.startswith("/"):
         abort(404)
@@ -1158,7 +1424,7 @@ def intergroup_toggle():
     return redirect(request.referrer or url_for("main.index"))
 
 
-@bp.route("/site-branding/footer-logo")
+@public_bp.route("/site-branding/footer-logo")
 def site_footer_logo():
     s = _get_site_setting()
     if not s.footer_logo_filename:
@@ -1166,7 +1432,557 @@ def site_footer_logo():
     return send_from_directory(current_app.config["UPLOAD_FOLDER"], s.footer_logo_filename)
 
 
-@bp.route("/site-branding/og-image")
+@bp.route("/frontend/save", methods=["POST"])
+@admin_required
+def frontend_save():
+    """Save homepage content fields. Toggle state and footer text are handled
+    by frontend_toggle / frontend_footer_save so this never clobbers them."""
+    s = _get_site_setting()
+    for col in ("frontend_title", "frontend_tagline", "frontend_hero_heading",
+                "frontend_hero_subheading", "frontend_about_heading",
+                "frontend_contact_heading"):
+        setattr(s, col, (request.form.get(col) or "").strip() or None)
+    for col in ("frontend_about_body", "frontend_contact_body"):
+        setattr(s, col, (request.form.get(col) or "").strip() or None)
+    db.session.commit()
+    flash("Homepage content saved", "success")
+    return redirect(url_for("main.frontend_homepage"))
+
+
+@bp.route("/frontend/toggle", methods=["POST"])
+@admin_required
+def frontend_toggle():
+    """Flip the public-frontend on/off switch without touching content fields."""
+    s = _get_site_setting()
+    s.frontend_enabled = request.form.get("frontend_enabled") == "1"
+    db.session.commit()
+    flash(
+        "Public frontend enabled" if s.frontend_enabled else "Public frontend disabled",
+        "success"
+    )
+    return redirect(url_for("main.frontend_dashboard"))
+
+
+@bp.route("/frontend/module-toggle", methods=["POST"])
+@admin_required
+def frontend_module_toggle():
+    """Enable or disable the Web Frontend module entirely. When disabled the
+    sidebar entry is hidden, the admin editor routes are blocked, and the
+    public homepage stops serving regardless of the public-visibility toggle."""
+    s = _get_site_setting()
+    s.frontend_module_enabled = request.form.get("frontend_module_enabled") == "1"
+    db.session.commit()
+    flash(
+        "Web Frontend module enabled" if s.frontend_module_enabled
+        else "Web Frontend module disabled",
+        "success",
+    )
+    # When disabling from the settings modal we stay on the current page;
+    # when enabling, jump into the dashboard so the admin can keep going.
+    if s.frontend_module_enabled:
+        return redirect(url_for("main.frontend_dashboard"))
+    return redirect(request.referrer or url_for("main.index"))
+
+
+ALERT_ICONS = {
+    "", "info", "alert-triangle", "bell", "megaphone", "star", "heart",
+    "calendar", "zap", "mail", "phone", "help-circle",
+}
+HEX_RE = None
+
+
+def _apply_alert_form(s, form, prefix):
+    """Save one alert-bar (top or header) from a POST form. prefix is 'top' or 'header'."""
+    import re
+    global HEX_RE
+    if HEX_RE is None:
+        HEX_RE = re.compile(r"#[0-9a-fA-F]{6}")
+    setattr(s, f"{prefix}_alert_enabled", form.get(f"{prefix}_alert_enabled") == "1")
+    setattr(s, f"{prefix}_alert_message",
+            (form.get(f"{prefix}_alert_message") or "").strip() or None)
+    for color_col in ("bg_color", "text_color"):
+        val = (form.get(f"{prefix}_alert_{color_col}") or "").strip()
+        setattr(s, f"{prefix}_alert_{color_col}", val if HEX_RE.fullmatch(val) else None)
+    icon = (form.get(f"{prefix}_alert_icon") or "").strip()
+    setattr(s, f"{prefix}_alert_icon", icon if icon in ALERT_ICONS and icon else None)
+    pos = (form.get(f"{prefix}_alert_icon_position") or "before").strip()
+    setattr(s, f"{prefix}_alert_icon_position", pos if pos in ("before", "after") else "before")
+
+
+@bp.route("/frontend/top-alert-save", methods=["POST"])
+@admin_required
+def frontend_top_alert_save():
+    s = _get_site_setting()
+    _apply_alert_form(s, request.form, "top")
+    db.session.commit()
+    flash("Top alert bar saved", "success")
+    return redirect(url_for("main.frontend_header"))
+
+
+@bp.route("/frontend/header-alert-save", methods=["POST"])
+@admin_required
+def frontend_header_alert_save():
+    s = _get_site_setting()
+    _apply_alert_form(s, request.form, "header")
+    db.session.commit()
+    flash("Under-header alert bar saved", "success")
+    return redirect(url_for("main.frontend_header"))
+
+
+@bp.route("/frontend/logo-save", methods=["POST"])
+@admin_required
+def frontend_logo_save():
+    """Upload / clear / resize the public-frontend logo."""
+    s = _get_site_setting()
+    try:
+        w = int(request.form.get("frontend_logo_width") or 40)
+    except ValueError:
+        w = 40
+    s.frontend_logo_width = max(16, min(w, 200))
+    if request.form.get("clear_frontend_logo") == "1":
+        old = s.frontend_logo_filename
+        s.frontend_logo_filename = None
+        _cleanup_retired_asset(old)
+    uploaded = request.files.get("frontend_logo")
+    if uploaded and uploaded.filename:
+        old = s.frontend_logo_filename
+        stored, _original = _save_upload(uploaded)
+        s.frontend_logo_filename = stored
+        if old and old != stored:
+            _cleanup_retired_asset(old)
+    db.session.commit()
+    flash("Logo saved", "success")
+    return redirect(url_for("main.frontend_header"))
+
+
+@bp.route("/frontend/header-save", methods=["POST"])
+@admin_required
+def frontend_header_save():
+    """Persist header layout settings (width mode + sizing)."""
+    s = _get_site_setting()
+    mode = (request.form.get("frontend_header_width_mode") or "boxed").strip()
+    s.frontend_header_width_mode = mode if mode in ("boxed", "full") else "boxed"
+    try:
+        mw = int(request.form.get("frontend_header_max_width") or 1160)
+    except ValueError:
+        mw = 1160
+    s.frontend_header_max_width = max(600, min(mw, 2400))
+    try:
+        pp = int(request.form.get("frontend_header_padding_pct") or 5)
+    except ValueError:
+        pp = 5
+    s.frontend_header_padding_pct = max(0, min(pp, 20))
+    try:
+        hh = int(request.form.get("frontend_header_height") or 72)
+    except ValueError:
+        hh = 72
+    s.frontend_header_height = max(48, min(hh, 100))
+    db.session.commit()
+    flash("Header settings saved", "success")
+    return redirect(url_for("main.frontend_dashboard"))
+
+
+# ------------------------------------------------------------------
+# Navigation CRUD (top-level items, mega-menu columns, mega-menu links)
+# ------------------------------------------------------------------
+import re as _re
+_HEX = _re.compile(r"#[0-9a-fA-F]{6}")
+
+
+@bp.route("/frontend/nav-appearance", methods=["POST"])
+@admin_required
+def frontend_nav_appearance_save():
+    s = _get_site_setting()
+    bg = (request.form.get("frontend_mega_bg_color") or "").strip()
+    fg = (request.form.get("frontend_mega_text_color") or "").strip()
+    if _HEX.fullmatch(bg): s.frontend_mega_bg_color = bg
+    if _HEX.fullmatch(fg): s.frontend_mega_text_color = fg
+    try:
+        bl = int(request.form.get("frontend_mega_radius_bl") or 18)
+        br = int(request.form.get("frontend_mega_radius_br") or 18)
+    except ValueError:
+        bl, br = 18, 18
+    s.frontend_mega_radius_bl = max(0, min(bl, 60))
+    s.frontend_mega_radius_br = max(0, min(br, 60))
+    db.session.commit()
+    flash("Mega menu appearance saved", "success")
+    return redirect(url_for("main.frontend_navigation"))
+
+
+def _apply_nav_item_form(item, form):
+    style = (form.get("style") or "text").strip()
+    item.style = style if style in ("text", "button", "button-rounded", "two-line") else "text"
+    item.url = (form.get("url") or "").strip() or None
+    item.has_megamenu = form.get("has_megamenu") == "1"
+    item.open_in_new_tab = form.get("open_in_new_tab") == "1"
+    if item.style == "two-line":
+        item.line1 = (form.get("line1") or "").strip() or None
+        item.line2 = (form.get("line2") or "").strip() or None
+        item.label = item.line1 or item.line2
+    else:
+        item.label = (form.get("label") or "").strip() or None
+        item.line1 = item.line2 = None
+
+
+@bp.route("/frontend/nav-item/new", methods=["POST"])
+@admin_required
+def frontend_nav_item_new():
+    max_pos = db.session.query(db.func.max(FrontendNavItem.position)).scalar() or 0
+    item = FrontendNavItem(position=max_pos + 1)
+    _apply_nav_item_form(item, request.form)
+    db.session.add(item)
+    db.session.commit()
+    flash("Nav item added", "success")
+    return redirect(url_for("main.frontend_navigation"))
+
+
+@bp.route("/frontend/nav-item/<int:nid>/edit", methods=["POST"])
+@admin_required
+def frontend_nav_item_edit(nid):
+    item = db.session.get(FrontendNavItem, nid) or abort(404)
+    _apply_nav_item_form(item, request.form)
+    db.session.commit()
+    flash("Nav item updated", "success")
+    return redirect(request.referrer or url_for("main.frontend_header"))
+
+
+@bp.route("/frontend/nav-item/<int:nid>/delete", methods=["POST"])
+@admin_required
+def frontend_nav_item_delete(nid):
+    item = db.session.get(FrontendNavItem, nid) or abort(404)
+    db.session.delete(item)
+    db.session.commit()
+    flash("Nav item deleted", "success")
+    return redirect(url_for("main.frontend_navigation"))
+
+
+@bp.route("/frontend/nav-items/reorder", methods=["POST"])
+@admin_required
+def frontend_nav_item_reorder():
+    payload = request.get_json(silent=True) or {}
+    for pos, iid in enumerate(payload.get("order") or []):
+        row = db.session.get(FrontendNavItem, int(iid)) if str(iid).isdigit() else None
+        if row:
+            row.position = pos
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+@bp.route("/frontend/nav-item/<int:nid>/megamenu")
+@admin_required
+def frontend_nav_megamenu(nid):
+    item = db.session.get(FrontendNavItem, nid) or abort(404)
+    return render_template("frontend_nav_megamenu.html", item=item, site=_get_site_setting())
+
+
+# ---- Columns ----
+@bp.route("/frontend/nav-item/<int:nid>/column/new", methods=["POST"])
+@admin_required
+def frontend_nav_column_new(nid):
+    item = db.session.get(FrontendNavItem, nid) or abort(404)
+    max_pos = max([c.position for c in item.columns] + [-1]) + 1
+    col = FrontendNavColumn(nav_item_id=item.id, position=max_pos,
+                            heading=(request.form.get("heading") or "New column").strip())
+    db.session.add(col)
+    db.session.commit()
+    if request.headers.get("X-Requested-With") == "fetch":
+        html = render_template("_nav_megacol.html", col=col, _icons=[])
+        return jsonify(ok=True, id=col.id, html=html)
+    return redirect(url_for("main.frontend_nav_megamenu", nid=item.id))
+
+
+@bp.route("/frontend/nav-column/<int:cid>/edit", methods=["POST"])
+@admin_required
+def frontend_nav_column_edit(cid):
+    col = db.session.get(FrontendNavColumn, cid) or abort(404)
+    col.heading = (request.form.get("heading") or "").strip() or None
+    db.session.commit()
+    return redirect(url_for("main.frontend_nav_megamenu", nid=col.nav_item_id))
+
+
+@bp.route("/frontend/nav-column/<int:cid>/delete", methods=["POST"])
+@admin_required
+def frontend_nav_column_delete(cid):
+    col = db.session.get(FrontendNavColumn, cid) or abort(404)
+    nid = col.nav_item_id
+    db.session.delete(col)
+    db.session.commit()
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify(ok=True)
+    return redirect(url_for("main.frontend_nav_megamenu", nid=nid))
+
+
+@bp.route("/frontend/nav-item/<int:nid>/columns/reorder", methods=["POST"])
+@admin_required
+def frontend_nav_columns_reorder(nid):
+    item = db.session.get(FrontendNavItem, nid) or abort(404)
+    payload = request.get_json(silent=True) or {}
+    valid_ids = {c.id for c in item.columns}
+    for pos, cid in enumerate(payload.get("order") or []):
+        try:
+            cid_int = int(cid)
+        except (TypeError, ValueError):
+            continue
+        if cid_int not in valid_ids:
+            continue
+        col = db.session.get(FrontendNavColumn, cid_int)
+        if col:
+            col.position = pos
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+# ---- Links (blocks) ----
+_NAV_ICONS = {
+    "", "info", "alert-triangle", "bell", "megaphone", "star", "heart",
+    "calendar", "zap", "mail", "phone", "help-circle",
+    "arrow-right", "file-text", "home", "panel-top", "panel-bottom", "layout-grid",
+}
+_NAV_BLOCK_KINDS = {"link", "title", "button", "section"}
+_NAV_BUTTON_STYLES = {"pill", "rounded"}
+_NAV_DEFAULT_LABEL = {
+    "link": "New link", "title": "Section title",
+    "button": "Call to action", "section": "Group heading",
+}
+
+
+def _apply_nav_link_form(link, form):
+    kind = (form.get("kind") or link.kind or "link").strip()
+    link.kind = kind if kind in _NAV_BLOCK_KINDS else "link"
+    link.label = (form.get("label") or "").strip() or link.label
+    if link.kind in ("link", "button"):
+        link.url = (form.get("url") or "").strip() or None
+        link.open_in_new_tab = form.get("open_in_new_tab") == "1"
+        ib = (form.get("icon_before") or "").strip()
+        ia = (form.get("icon_after") or "").strip()
+        link.icon_before = ib if ib and ib in _NAV_ICONS else None
+        link.icon_after = ia if ia and ia in _NAV_ICONS else None
+    else:
+        link.url = None
+        link.open_in_new_tab = False
+        link.icon_before = None
+        link.icon_after = None
+    if link.kind == "button":
+        bs = (form.get("button_style") or "pill").strip()
+        link.button_style = bs if bs in _NAV_BUTTON_STYLES else "pill"
+    else:
+        link.button_style = "pill"
+
+
+@bp.route("/frontend/nav-column/<int:cid>/link/new", methods=["POST"])
+@admin_required
+def frontend_nav_link_new(cid):
+    col = db.session.get(FrontendNavColumn, cid) or abort(404)
+    max_pos = max([l.position for l in col.links] + [-1]) + 1
+    kind = (request.form.get("kind") or "link").strip()
+    if kind not in _NAV_BLOCK_KINDS:
+        kind = "link"
+    link = FrontendNavLink(
+        column_id=col.id, position=max_pos, kind=kind,
+        label=_NAV_DEFAULT_LABEL[kind],
+    )
+    _apply_nav_link_form(link, request.form)
+    db.session.add(link)
+    db.session.commit()
+    if request.headers.get("X-Requested-With") == "fetch":
+        icons = ["info", "alert-triangle", "bell", "megaphone", "star", "heart",
+                 "calendar", "zap", "mail", "phone", "help-circle", "arrow-right",
+                 "file-text", "home", "panel-top", "panel-bottom", "layout-grid"]
+        html = render_template("_nav_megalink.html", link=link, _icons=icons)
+        return jsonify(ok=True, id=link.id, html=html)
+    return redirect(url_for("main.frontend_nav_megamenu", nid=col.nav_item_id))
+
+
+@bp.route("/frontend/nav-link/<int:lid>/edit", methods=["POST"])
+@admin_required
+def frontend_nav_link_edit(lid):
+    link = db.session.get(FrontendNavLink, lid) or abort(404)
+    _apply_nav_link_form(link, request.form)
+    db.session.commit()
+    return redirect(url_for("main.frontend_nav_megamenu", nid=link.column.nav_item_id))
+
+
+@bp.route("/frontend/nav-link/<int:lid>/delete", methods=["POST"])
+@admin_required
+def frontend_nav_link_delete(lid):
+    link = db.session.get(FrontendNavLink, lid) or abort(404)
+    nid = link.column.nav_item_id
+    db.session.delete(link)
+    db.session.commit()
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify(ok=True)
+    return redirect(url_for("main.frontend_nav_megamenu", nid=nid))
+
+
+@bp.route("/frontend/nav/<int:nid>/megamenu/save-all", methods=["POST"])
+@admin_required
+def frontend_nav_megamenu_save_all(nid):
+    item = db.session.get(FrontendNavItem, nid) or abort(404)
+    payload = request.get_json(silent=True) or {}
+    valid_ids = {l.id for col in item.columns for l in col.links}
+    updated = 0
+    for block in payload.get("blocks") or []:
+        try:
+            lid = int(block.get("id"))
+        except (TypeError, ValueError):
+            continue
+        if lid not in valid_ids:
+            continue
+        link = db.session.get(FrontendNavLink, lid)
+        if not link:
+            continue
+        form = {k: ("1" if v is True else "" if v is False else ("" if v is None else str(v)))
+                for k, v in block.items() if k != "id"}
+        _apply_nav_link_form(link, form)
+        updated += 1
+    db.session.commit()
+    return jsonify(ok=True, updated=updated)
+
+
+@bp.route("/frontend/nav-column/<int:cid>/links/reorder", methods=["POST"])
+@admin_required
+def frontend_nav_links_reorder(cid):
+    col = db.session.get(FrontendNavColumn, cid) or abort(404)
+    payload = request.get_json(silent=True) or {}
+    valid_ids = {l.id for l in col.links}
+    for pos, lid in enumerate(payload.get("order") or []):
+        try:
+            lid_int = int(lid)
+        except (TypeError, ValueError):
+            continue
+        if lid_int not in valid_ids:
+            continue
+        link = db.session.get(FrontendNavLink, lid_int)
+        if link:
+            link.position = pos
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+@bp.route("/frontend/")
+@admin_required
+def frontend_dashboard():
+    s = _get_site_setting()
+    return render_template("frontend_dashboard.html", site=s)
+
+
+@bp.route("/frontend/header")
+@admin_required
+def frontend_header():
+    from .frontend import HEADER_TEMPLATES
+    s = _get_site_setting()
+    return render_template("frontend_header.html", site=s,
+                           header_templates=HEADER_TEMPLATES)
+
+
+@bp.route("/frontend/navigation")
+@admin_required
+def frontend_navigation():
+    from .frontend import MEGAMENU_TEMPLATES
+    s = _get_site_setting()
+    nav_items = FrontendNavItem.query.order_by(FrontendNavItem.position,
+                                               FrontendNavItem.id).all()
+    return render_template("frontend_navigation.html", site=s, nav_items=nav_items,
+                           megamenu_templates=MEGAMENU_TEMPLATES)
+
+
+@bp.route("/frontend/megamenu-template", methods=["POST"])
+@admin_required
+def frontend_megamenu_template_save():
+    from .frontend import MEGAMENU_TEMPLATES
+    s = _get_site_setting()
+    key = (request.form.get("frontend_megamenu_template") or "").strip()
+    if key in {t["key"] for t in MEGAMENU_TEMPLATES}:
+        s.frontend_megamenu_template = key
+        db.session.commit()
+        flash(f"Mega menu template set to {key}", "success")
+    return redirect(url_for("main.frontend_navigation"))
+
+
+@bp.route("/frontend/header-template", methods=["POST"])
+@admin_required
+def frontend_header_template_save():
+    from .frontend import HEADER_TEMPLATES
+    s = _get_site_setting()
+    key = (request.form.get("frontend_header_template") or "").strip()
+    allowed = {t["key"] for t in HEADER_TEMPLATES}
+    if key in allowed:
+        s.frontend_header_template = key
+        db.session.commit()
+        flash(f"Header template set to {key}", "success")
+    return redirect(url_for("main.frontend_header"))
+
+
+@bp.route("/frontend/footer")
+@admin_required
+def frontend_footer():
+    from .frontend import FOOTER_TEMPLATES
+    s = _get_site_setting()
+    return render_template("frontend_footer.html", site=s,
+                           footer_templates=FOOTER_TEMPLATES)
+
+
+@bp.route("/frontend/footer-template", methods=["POST"])
+@admin_required
+def frontend_footer_template_save():
+    from .frontend import FOOTER_TEMPLATES
+    s = _get_site_setting()
+    key = (request.form.get("frontend_footer_template") or "").strip()
+    if key in {t["key"] for t in FOOTER_TEMPLATES}:
+        s.frontend_footer_template = key
+        db.session.commit()
+        flash(f"Footer template set to {key}", "success")
+    return redirect(url_for("main.frontend_footer"))
+
+
+@bp.route("/frontend/homepage")
+@admin_required
+def frontend_homepage():
+    from .frontend import HOMEPAGE_TEMPLATES
+    s = _get_site_setting()
+    return render_template("frontend_homepage.html", site=s,
+                           homepage_templates=HOMEPAGE_TEMPLATES)
+
+
+@bp.route("/frontend/homepage-template", methods=["POST"])
+@admin_required
+def frontend_homepage_template_save():
+    from .frontend import HOMEPAGE_TEMPLATES
+    s = _get_site_setting()
+    key = (request.form.get("frontend_homepage_template") or "").strip()
+    if key in {t["key"] for t in HOMEPAGE_TEMPLATES}:
+        s.frontend_homepage_template = key
+        db.session.commit()
+        flash(f"Homepage template set to {key}", "success")
+    return redirect(url_for("main.frontend_homepage"))
+
+
+@bp.route("/frontend/pages")
+@admin_required
+def frontend_pages():
+    s = _get_site_setting()
+    return render_template("frontend_pages.html", site=s)
+
+
+@bp.route("/frontend/footer-save", methods=["POST"])
+@admin_required
+def frontend_footer_save():
+    s = _get_site_setting()
+    s.frontend_footer_text = (request.form.get("frontend_footer_text") or "").strip() or None
+    db.session.commit()
+    flash("Footer saved", "success")
+    return redirect(url_for("main.frontend_footer"))
+
+
+@public_bp.route("/site-branding/frontend-logo")
+def site_frontend_logo():
+    s = SiteSetting.query.first()
+    if not s or not s.frontend_logo_filename:
+        abort(404)
+    return send_from_directory(current_app.config["UPLOAD_FOLDER"], s.frontend_logo_filename)
+
+
+@public_bp.route("/site-branding/og-image")
 def site_og_image():
     s = _get_site_setting()
     if not s.og_image_filename:
@@ -1603,8 +2419,13 @@ BLOCKED_UPLOAD_EXTENSIONS = {
     ".jar", ".war",
     # HTML/XML can carry XSS if served inline; bleach output is only applied
     # at template time. Block raw HTML uploads to be safe.
-    ".html", ".htm", ".xhtml", ".svg", ".xml",
+    ".html", ".htm", ".xhtml", ".xml",
 }
+# SVG is allowed only for admins. It can contain inline <script> that
+# executes when the file is opened directly, but admins already control
+# site branding and can upload arbitrary content, so the risk is accepted
+# in exchange for letting them upload vector logos.
+ADMIN_ONLY_UPLOAD_EXTENSIONS = {".svg"}
 
 
 def _save_upload(uploaded):
@@ -1613,6 +2434,9 @@ def _save_upload(uploaded):
     ext = os.path.splitext(original)[1].lower()
     if ext in BLOCKED_UPLOAD_EXTENSIONS:
         abort(400, description=f"File type '{ext}' is not allowed.")
+    if ext in ADMIN_ONLY_UPLOAD_EXTENSIONS:
+        if not getattr(current_user, "is_authenticated", False) or not current_user.is_admin():
+            abort(400, description=f"File type '{ext}' is only allowed for admins.")
     data = uploaded.read()
     h = hashlib.sha256(data).hexdigest()
     existing = MediaItem.query.filter_by(content_hash=h).first()
@@ -1676,14 +2500,17 @@ def _delete_upload(stored):
 
 def _interface_stored_filenames():
     """Stored filenames currently used by site-wide interface assets
-    (branding logo, Open Graph image). These are hidden from the File
-    Browser so administrative uploads don't clutter the content library."""
+    (branding logo, frontend logo, Open Graph image). These are hidden
+    from the File Browser so administrative uploads don't clutter the
+    content library."""
     s = SiteSetting.query.first()
     if not s:
         return set()
     names = set()
     if s.footer_logo_filename:
         names.add(s.footer_logo_filename)
+    if s.frontend_logo_filename:
+        names.add(s.frontend_logo_filename)
     if s.og_image_filename:
         names.add(s.og_image_filename)
     return names
@@ -1697,7 +2524,7 @@ def _cleanup_retired_asset(stored):
     if not stored:
         return
     s = SiteSetting.query.first()
-    if s and stored in (s.footer_logo_filename, s.og_image_filename):
+    if s and stored in (s.footer_logo_filename, s.frontend_logo_filename, s.og_image_filename):
         return  # still referenced by another interface asset
     refs = (MeetingFile.query.filter_by(stored_filename=stored).count()
             + Reading.query.filter_by(stored_filename=stored).count()
@@ -1949,7 +2776,7 @@ ACCESS_ROLE_OPTIONS = [
 ]
 
 
-@bp.route("/request-access", methods=["POST"])
+@public_bp.route("/request-access", methods=["POST"])
 def request_access_submit():
     import json
     from flask import jsonify as _jsonify

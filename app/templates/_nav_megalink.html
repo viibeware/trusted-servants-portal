@@ -1,0 +1,63 @@
+{% set _kind = link.kind or 'link' %}
+<li id="nav-megalink-{{ link.id }}" class="nav-megalink nav-megalink-{{ _kind }}"
+    data-item-id="{{ link.id }}" data-block-kind="{{ _kind }}" draggable="true">
+  <div class="nav-megalink-top">
+    <span class="drag-handle nav-megalink-drag" title="Drag to reorder">{{ icon('grip-vertical') }}</span>
+    <span class="nav-megalink-kind chip">{{ _kind }}</span>
+    <form method="post" action="{{ url_for('main.frontend_nav_link_delete', lid=link.id) }}"
+          onsubmit="return confirm('Delete this block?');" class="nav-megalink-del-form"
+          data-delete-block-form data-target-item="#nav-megalink-{{ link.id }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-danger" title="Delete block">{{ icon('x') }}</button>
+    </form>
+  </div>
+  <div class="nav-megalink-form">
+    {% if _kind == 'title' or _kind == 'section' %}
+      <div class="nav-megalink-row nav-megalink-row-single">
+        <input type="text" data-block-field="label" value="{{ link.label }}"
+               placeholder="{% if _kind == 'section' %}Group heading{% else %}Title text{% endif %}" required>
+      </div>
+    {% else %}
+      <div class="nav-megalink-row nav-megalink-row-text">
+        <input type="text" data-block-field="label" value="{{ link.label }}" placeholder="Text" required>
+        <input type="text" data-block-field="url" value="{{ link.url or '' }}" placeholder="https://…">
+      </div>
+      <div class="nav-megalink-row nav-megalink-row-icons">
+        <div class="nav-megalink-field">
+          <span class="nav-megalink-field-lbl">Icon before</span>
+          <select data-block-field="icon_before">
+            <option value="">— none —</option>
+            {% for ic in _icons %}
+            <option value="{{ ic }}" {% if (link.icon_before or '') == ic %}selected{% endif %}>{{ ic }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="nav-megalink-field">
+          <span class="nav-megalink-field-lbl">Icon after</span>
+          <select data-block-field="icon_after">
+            <option value="">— none —</option>
+            {% for ic in _icons %}
+            <option value="{{ ic }}" {% if (link.icon_after or '') == ic %}selected{% endif %}>{{ ic }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% if _kind == 'button' %}
+        <div class="nav-megalink-field">
+          <span class="nav-megalink-field-lbl">Style</span>
+          <select data-block-field="button_style">
+            <option value="pill" {% if (link.button_style or 'pill') == 'pill' %}selected{% endif %}>Pill</option>
+            <option value="rounded" {% if link.button_style == 'rounded' %}selected{% endif %}>Rounded</option>
+          </select>
+        </div>
+        {% endif %}
+      </div>
+      <div class="nav-megalink-row nav-megalink-row-footer">
+        <label class="nav-megalink-newtab">
+          <input type="checkbox" data-block-field="open_in_new_tab" value="1"
+                 {% if link.open_in_new_tab %}checked{% endif %}>
+          <span>Open in new tab</span>
+        </label>
+      </div>
+    {% endif %}
+  </div>
+</li>

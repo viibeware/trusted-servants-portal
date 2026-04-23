@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="csrf-token" content="{{ csrf_token() }}">
+<meta name="app-version" content="{{ app_version }}" data-check-url="{{ url_for('main.api_version') }}">
 <title>{% block title %}Trusted Servants Pro{% endblock %}</title>
 {% if site and site.og_enabled %}
 {% set _og_title = site.og_title or 'Trusted Servants Pro' %}
@@ -12,16 +13,14 @@
 <meta property="og:url" content="{{ request.url }}">
 <meta property="og:site_name" content="Trusted Servants Pro">
 {% if site.og_description %}<meta property="og:description" content="{{ site.og_description }}">{% endif %}
-{% if site.og_image_filename %}<meta property="og:image" content="{{ url_for('main.site_og_image', _external=True) }}">{% endif %}
+{% if site.og_image_filename %}<meta property="og:image" content="{{ url_for('public.site_og_image', _external=True) }}">{% endif %}
 <meta name="twitter:card" content="{% if site.og_image_filename %}summary_large_image{% else %}summary{% endif %}">
 <meta name="twitter:title" content="{{ _og_title }}">
 {% if site.og_description %}<meta name="twitter:description" content="{{ site.og_description }}">{% endif %}
-{% if site.og_image_filename %}<meta name="twitter:image" content="{{ url_for('main.site_og_image', _external=True) }}">{% endif %}
+{% if site.og_image_filename %}<meta name="twitter:image" content="{{ url_for('public.site_og_image', _external=True) }}">{% endif %}
 {% if site.og_description %}<meta name="description" content="{{ site.og_description }}">{% endif %}
 {% endif %}
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <script>
   (function(){
     var t = null;
@@ -78,6 +77,10 @@
       <a href="{{ url_for('main.access_requests') }}" class="{% if 'access_request' in request.endpoint %}active{% endif %}">
         Access Requests{% if pending_access_count %}<span class="nav-badge">{{ pending_access_count }}</span>{% endif %}
       </a>
+      {% if site and site.frontend_module_enabled %}
+      <a href="{{ url_for('main.frontend_dashboard') }}"
+         class="{% if request.endpoint and request.endpoint.startswith('main.frontend_') %}active{% endif %}">Web Frontend{% if not site.frontend_enabled %} <span class="nav-badge nav-badge-muted" title="Public access is off — only signed-in editors and admins can preview">Off</span>{% endif %}</a>
+      {% endif %}
       {% endif %}
     </nav>
     <div class="sidebar-footer">
@@ -85,7 +88,7 @@
       {% set _furl = (site.footer_logo_url if site else None) or '' %}
       {% set _fw = (site.footer_logo_width if site else None) or 32 %}
       <a class="dccma-link" id="sidebar-footer-link" href="{{ _furl or '#' }}" target="_blank" rel="noopener"{% if not _flogo %} hidden{% endif %}>
-        <img id="sidebar-footer-logo" src="{{ url_for('main.site_footer_logo') if _flogo else '' }}" alt=""{% if _fw %} style="width: {{ _fw }}px"{% endif %}>
+        <img id="sidebar-footer-logo" src="{{ url_for('public.site_footer_logo') if _flogo else '' }}" alt=""{% if _fw %} style="width: {{ _fw }}px"{% endif %}>
       </a>
       <div class="brand-version">v{{ app_version }}</div>
       <div class="user-chip">
@@ -154,6 +157,7 @@
       <button type="button" class="settings-tab" data-tab="special-pages">Special Sections</button>
       <button type="button" class="settings-tab" data-tab="email">Email</button>
       <button type="button" class="settings-tab" data-tab="security">Security</button>
+      <button type="button" class="settings-tab" data-tab="web-frontend">Web Frontend</button>
       <button type="button" class="settings-tab" data-tab="data">Data</button>
       {% endif %}
       <button type="button" class="settings-tab" data-tab="about">About</button>
@@ -189,7 +193,7 @@
           <div class="u-name">Sidebar Footer Logo</div>
           <p class="muted small">Replaces the logo shown at the bottom of the sidebar and the link it opens.</p>
           {% set _has_logo = site and site.footer_logo_filename %}
-          {% set _current_logo_src = url_for('main.site_footer_logo') if _has_logo else '' %}
+          {% set _current_logo_src = url_for('public.site_footer_logo') if _has_logo else '' %}
           {% set _current_width = site.footer_logo_width if (site and site.footer_logo_width) else 32 %}
           <div class="branding-row">
             <div class="branding-preview-wrap">
@@ -338,7 +342,7 @@
             <div class="branding-preview-wrap">
               <div class="muted smaller">Preview image</div>
               <div class="og-preview-mock">
-                <img id="og-preview-img" src="{{ url_for('main.site_og_image') if _og_has_image else '' }}" alt="" style="max-width:100%; max-height:160px; border-radius:6px;"{% if not _og_has_image %} hidden{% endif %}>
+                <img id="og-preview-img" src="{{ url_for('public.site_og_image') if _og_has_image else '' }}" alt="" style="max-width:100%; max-height:160px; border-radius:6px;"{% if not _og_has_image %} hidden{% endif %}>
                 <div class="og-preview-empty muted smaller"{% if _og_has_image %} hidden{% endif %}>No image set</div>
               </div>
               <p class="muted smaller" style="margin-top:6px;">Recommended: 1200×630 px, JPG or PNG, under 5 MB.</p>
@@ -604,6 +608,22 @@
           </div>
         </div>
       </div>
+      <div class="settings-pane" data-pane="web-frontend">
+        <form class="form" method="post" action="{{ url_for('main.frontend_module_toggle') }}" data-reload-on-save="1">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <li class="special-page-row" style="list-style:none;">
+            <div class="special-page-info">
+              <div class="u-name">Web Frontend module</div>
+              <p class="muted small">Turn the entire Web Frontend module on or off. When off, the <b>Web Frontend</b> entry disappears from the sidebar, the editor routes are blocked, and the public homepage won't serve. Turn this back on to resume editing and previewing the site.</p>
+            </div>
+            <label class="mode-toggle" title="Toggle Web Frontend module">
+              <input type="checkbox" name="frontend_module_enabled" value="1" {% if site and site.frontend_module_enabled %}checked{% endif %}>
+              <span class="mode-track"><span class="mode-thumb"></span></span>
+            </label>
+          </li>
+          <div class="form-actions"><button class="btn btn-primary">Save</button></div>
+        </form>
+      </div>
       <div class="settings-pane" data-pane="data">
         <div class="data-grid">
           <div class="data-col">
@@ -634,6 +654,42 @@
             </p>
             <div class="form-actions">
               <a class="btn btn-primary" href="{{ url_for('main.data_export') }}">Export full archive (.zip)</a>
+            </div>
+          </div>
+        </div>
+
+        <hr class="settings-rule">
+
+        <div class="u-name">Frontend bundle</div>
+        <p class="muted small">
+          Export just the public frontend — content, navigation (nav items, mega menu columns and
+          blocks), template choices, colors, alerts, and referenced logos/assets — as a portable
+          bundle. Import it on a fresh install to drop your frontend into place without touching
+          users, meetings, libraries, or uploads tied to meetings.
+        </p>
+        <div class="data-grid">
+          <div class="data-col">
+            <div class="u-name">Import frontend</div>
+            <p class="muted small">
+              Overwrites all frontend settings, nav items, and referenced assets with the bundle's
+              contents. Other data (users, meetings, libraries) is left alone. Type
+              <code>REPLACE</code> to confirm.
+            </p>
+            <form class="form" method="post" action="{{ url_for('main.data_frontend_import') }}" enctype="multipart/form-data" data-no-ajax="1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label>Frontend bundle (.zip)<input type="file" name="archive" accept=".zip,application/zip" required></label>
+              <label>Type <code>REPLACE</code> to confirm<input type="text" name="confirm" placeholder="REPLACE" autocomplete="off" required></label>
+              <div class="form-actions"><button class="btn btn-danger">Import frontend bundle</button></div>
+            </form>
+          </div>
+          <div class="data-col">
+            <div class="u-name">Export frontend</div>
+            <p class="muted small">
+              Download a scoped <code>.zip</code> containing <code>frontend.json</code> (settings +
+              nav tree) and an <code>assets/</code> folder with every file the frontend references.
+            </p>
+            <div class="form-actions">
+              <a class="btn btn-primary" href="{{ url_for('main.data_frontend_export') }}">Export frontend bundle (.zip)</a>
             </div>
           </div>
         </div>
@@ -689,6 +745,24 @@
 
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
+            <li>
+              <div class="u-name">1.6.0</div>
+              <div class="muted smaller">April 2026</div>
+              <ul>
+                <li><b>Web Frontend module</b> — brand-new admin section that serves a configurable public marketing site at the root URL (<code>/</code>). Admin pages stay under <code>/tspro</code>. A new <code>frontend</code> blueprint, a <code>Web Frontend</code> sidebar entry, and a grouped secondary sub-nav (Overview, Header, Footer, Navigation, Homepage, Pages) drive the editing experience.</li>
+                <li><b>Swappable templates per region</b> — Header, Footer, Homepage, and Mega Menu each ship two layout presets (<b>Classic</b> and <b>DCCMA</b>). Picking a new preset never wipes your content — settings (widths, colors, logo, alerts, nav tree) are shared across all templates. Switching is two clicks.</li>
+                <li><b>Full navigation editor with mega menus</b> — drag-sortable top-level nav items (text / button / two-line styles), a per-item mega-menu editor with sortable columns, and per-column sortable content blocks (titles, links, buttons, section dividers). Live preview in the admin; hover-to-open with a blurred backdrop on the public site.</li>
+                <li><b>Alert bars</b> — two stackable bars (above the header and below it) with a message, icon, icon position, and independent foreground/background colors. Great for announcements, maintenance windows, or event promos.</li>
+                <li><b>Module gate + public-visibility split</b> — two independent toggles. <b>Settings → Web Frontend</b> turns the whole module on or off (hides the sidebar entry, blocks editor routes, stops serving the public homepage). <b>Web Frontend → Overview</b> flips public visibility alone; when off, signed-in editors and admins can still preview and keep building.</li>
+                <li><b>Admin-only preview banner</b> — when the public toggle is off but an editor/admin visits <code>/</code>, an amber <i>Preview mode</i> bar renders above the header noting that the site is only visible to signed-in editors and admins. Anonymous visitors get redirected to the admin login instead.</li>
+                <li><b>Mega-menu anchoring fix</b> — the dropdown now measures the header's viewport-relative bottom edge (not just height) and recomputes on scroll, so it drops cleanly below the header whether or not the preview banner (or any future above-header chrome) is visible.</li>
+                <li><b>Frontend bundle import / export</b> — a new <b>Data → Frontend bundle</b> section exports every public-frontend setting, the full nav tree, template picks, colors, alerts, and referenced logos/assets as a portable <code>.zip</code>. Import it on a fresh install to drop your frontend into place without touching users, meetings, libraries, or meeting uploads.</li>
+                <li><b>Settings modal refresh-on-save hook</b> — forms can opt in with <code>data-reload-on-save="1"</code> so side-effect-heavy saves (like toggling the module) cleanly refresh the page after the AJAX save succeeds, updating the sidebar without a manual reload.</li>
+                <li><b>Public-asset blueprint</b> — the site's footer logo and Open Graph image now live under a new <code>public</code> blueprint so they stay reachable without the <code>/tspro</code> prefix; matching refs in <code>base.html</code>, <code>og_meta</code>, and the frontend templates were swapped over.</li>
+                <li><b>Pasted-font pipeline</b> — Google Fonts preconnect links dropped in favor of self-hosted font files served from <code>app/static/fonts/</code>, so the public frontend renders without third-party font fetches.</li>
+                <li><b>Settings modal "Web Frontend" pane</b> — dedicated tab with a clean 2rem-padded column layout containing the module toggle.</li>
+              </ul>
+            </li>
             <li>
               <div class="u-name">1.4.0</div>
               <div class="muted smaller">April 2026</div>

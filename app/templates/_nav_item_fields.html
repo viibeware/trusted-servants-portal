@@ -1,0 +1,82 @@
+{# Shared fields for the Add / Edit nav-item modals.
+   Expects `_item` to be defined for edit mode; undefined → new item. #}
+{% set _style = (_item.style if _item is defined and _item else 'text') %}
+<fieldset class="fieldset fieldset-inline">
+  <legend>Style</legend>
+  <ul class="radio-list">
+    <li><label>
+      <input type="radio" name="style" value="text" {% if _style == 'text' %}checked{% endif %}>
+      Text link
+    </label></li>
+    <li><label>
+      <input type="radio" name="style" value="button" {% if _style == 'button' %}checked{% endif %}>
+      Button (pill CTA)
+    </label></li>
+    <li><label>
+      <input type="radio" name="style" value="button-rounded" {% if _style == 'button-rounded' %}checked{% endif %}>
+      Button (rounded corners)
+    </label></li>
+    <li><label>
+      <input type="radio" name="style" value="two-line" {% if _style == 'two-line' %}checked{% endif %}>
+      Two-line stacked
+    </label></li>
+  </ul>
+</fieldset>
+
+<div data-nav-style-pane="text"{% if _style != 'text' %} hidden{% endif %}>
+  <label>Label
+    <input type="text" name="label" maxlength="160"
+           value="{{ (_item.label if _item is defined and _item else '') or '' }}" placeholder="Meetings">
+  </label>
+</div>
+<div data-nav-style-pane="button"{% if _style != 'button' %} hidden{% endif %}>
+  <label>Button label
+    <input type="text" name="label" maxlength="160"
+           value="{{ (_item.label if _item is defined and _item else '') or '' }}" placeholder="Donate">
+  </label>
+</div>
+<div data-nav-style-pane="button-rounded"{% if _style != 'button-rounded' %} hidden{% endif %}>
+  <label>Button label
+    <input type="text" name="label" maxlength="160"
+           value="{{ (_item.label if _item is defined and _item else '') or '' }}" placeholder="Get involved">
+  </label>
+</div>
+<div data-nav-style-pane="two-line"{% if _style != 'two-line' %} hidden{% endif %}>
+  <label>Top line <span class="muted small">(small, muted)</span>
+    <input type="text" name="line1" maxlength="120"
+           value="{{ (_item.line1 if _item is defined and _item else '') or '' }}" placeholder="New to CMA?">
+  </label>
+  <label>Bottom line <span class="muted small">(bold accent)</span>
+    <input type="text" name="line2" maxlength="120"
+           value="{{ (_item.line2 if _item is defined and _item else '') or '' }}" placeholder="Start here">
+  </label>
+</div>
+
+<label>URL <span class="muted small">(leave blank if this item only reveals a mega menu)</span>
+  <input type="text" name="url" maxlength="500"
+         value="{{ (_item.url if _item is defined and _item else '') or '' }}" placeholder="/meetings or https://…">
+</label>
+
+<li class="special-page-row" style="list-style:none; padding: 6px 0 0;">
+  <div class="special-page-info">
+    <div class="u-name">Mega menu</div>
+    <p class="muted small">When on, this item reveals a full-width dropdown. You can manage columns and links after saving.</p>
+  </div>
+  <label class="mode-toggle">
+    <input type="checkbox" name="has_megamenu" value="1"
+           {% if _item is defined and _item and _item.has_megamenu %}checked{% endif %}>
+    <span class="mode-track"><span class="mode-thumb"></span></span>
+  </label>
+</li>
+
+<li class="special-page-row" style="list-style:none; padding: 6px 0 0;">
+  <div class="special-page-info">
+    <div class="u-name">Open in new tab</div>
+    <p class="muted small">When on, the link opens in a new browser tab (adds <code>target="_blank"</code>).</p>
+  </div>
+  <label class="mode-toggle">
+    <input type="checkbox" name="open_in_new_tab" value="1"
+           {% if _item is defined and _item and _item.open_in_new_tab %}checked{% endif %}>
+    <span class="mode-track"><span class="mode-thumb"></span></span>
+  </label>
+</li>

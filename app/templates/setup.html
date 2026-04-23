@@ -6,8 +6,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Setup — Trusted Servants Pro</title>
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <script>
   (function(){
     var t = null;
@@ -143,7 +141,7 @@
       {% if step_key == 'branding' %}
       {% if site.footer_logo_filename %}
       <div class="setup-logo-preview">
-        <img src="{{ url_for('main.site_footer_logo') }}" alt="Current logo"
+        <img src="{{ url_for('public.site_footer_logo') }}" alt="Current logo"
              style="width: {{ site.footer_logo_width or 80 }}px">
         <span class="muted smaller">Current logo</span>
       </div>

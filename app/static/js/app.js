@@ -213,7 +213,7 @@
       const fd = new FormData();
       fd.append("body", content);
       try {
-        const r = await fetch("/markdown-preview", {
+        const r = await fetch("/tspro/markdown-preview", {
           method: "POST", body: fd, credentials: "same-origin",
           headers: { "X-Requested-With": "fetch" },
         });
@@ -259,7 +259,7 @@
         titleEl.textContent = title;
         docTitleEl.textContent = title;
         contentEl.innerHTML = tmpl ? tmpl.innerHTML : "";
-        pdfLink.href = "/readings/" + rid + "/pdf";
+        pdfLink.href = "/tspro/readings/" + rid + "/pdf";
         openModal("reading-lightbox");
         const body = modal.querySelector(".reading-lightbox-body");
         if (body) body.scrollTop = 0;
@@ -489,6 +489,10 @@
           }
           showSettingsToast("Saved");
           f.dispatchEvent(new CustomEvent("settings:saved", { bubbles: true, detail: data }));
+          if (f.dataset.reloadOnSave === "1") {
+            // Brief delay so the "Saved" toast is visible before the reload.
+            setTimeout(() => window.location.reload(), 400);
+          }
         }).catch(err => {
           showSettingsToast("Save failed: " + err.message, "danger");
         }).finally(() => {
@@ -556,7 +560,7 @@
         const fd = new FormData();
         fd.append("file", file);
         try {
-          const res = await fetch("/files/upload", {
+          const res = await fetch("/tspro/files/upload", {
             method: "POST", body: fd, credentials: "same-origin",
             headers: { "X-Requested-With": "XMLHttpRequest" },
           });
@@ -583,7 +587,7 @@
       if (!next || next === current) return;
       const fd = new FormData();
       fd.append("name", next);
-      const res = await fetch(`/files/${id}/rename`, {
+      const res = await fetch(`/tspro/files/${id}/rename`, {
         method: "POST", body: fd, credentials: "same-origin",
       });
       if (res.ok) {
@@ -646,7 +650,7 @@
     btn.addEventListener("click", () => {
       currentMediaTarget = btn.dataset.mediaPicker;
       const frame = document.getElementById("media-picker-frame");
-      if (frame && frame.src === "about:blank") frame.src = "/files?picker=1&embed=1";
+      if (frame && frame.src === "about:blank") frame.src = "/tspro/files?picker=1&embed=1";
       openModal("media-picker-modal");
     });
   });
@@ -677,53 +681,160 @@
   });
 
   // Drag-and-drop reorder for .file-list-sortable
-  document.querySelectorAll(".file-list-sortable").forEach(list => {
+  // Works with <ul><li>, <tbody><tr>, or any parent with direct-child [data-item-id] elements.
+  // Detects horizontal vs. vertical layout automatically so it can handle flex-row column editors.
+  function initSortable(list) {
+    if (list.__tspSortableInit) return;
+    list.__tspSortableInit = true;
     const url = list.dataset.reorderUrl;
     const category = list.dataset.reorderCategory || null;
     let dragging = null;
-    list.querySelectorAll("li[draggable='true']").forEach(li => {
-      li.addEventListener("dragstart", (e) => {
-        // Don't initiate drag when grabbing inside a form/button
-        if (e.target.closest("form, button, input, textarea, a")) {
-          if (!e.target.classList?.contains("drag-handle")) { e.preventDefault(); return; }
+    const isHorizontal = () => {
+      const first = list.querySelector(":scope > [data-item-id]");
+      const second = first?.nextElementSibling;
+      if (!first || !second) return false;
+      const a = first.getBoundingClientRect();
+      const b = second.getBoundingClientRect();
+      return Math.abs(b.left - a.left) > Math.abs(b.top - a.top);
+    };
+    const bindItem = (item) => {
+      if (item.__tspSortableBound) return;
+      item.__tspSortableBound = true;
+      // Only make the item draggable while the user is pressing on the drag
+      // handle. Otherwise text selection inside nested inputs would get
+      // hijacked by a container drag.
+      item.addEventListener("mousedown", (e) => {
+        item.draggable = !!e.target.closest?.(".drag-handle");
+      });
+      const restoreDraggable = () => { item.draggable = true; };
+      item.addEventListener("mouseup", restoreDraggable);
+      item.addEventListener("mouseleave", restoreDraggable);
+      item.addEventListener("dragstart", (e) => {
+        const handle = e.target.closest?.(".drag-handle");
+        if (!handle) {
+          e.preventDefault();
+          return;
         }
-        dragging = li;
-        li.classList.add("dragging");
+        dragging = item;
+        item.classList.add("dragging");
         e.dataTransfer.effectAllowed = "move";
-        try { e.dataTransfer.setData("text/plain", li.dataset.itemId || ""); } catch (_) {}
+        try { e.dataTransfer.setData("text/plain", item.dataset.itemId || ""); } catch (_) {}
       });
-      li.addEventListener("dragend", () => {
-        li.classList.remove("dragging");
-        list.querySelectorAll("li.drag-over").forEach(x => x.classList.remove("drag-over"));
+      item.addEventListener("dragend", () => {
+        item.classList.remove("dragging");
+        list.querySelectorAll(":scope > .drag-over").forEach(x => x.classList.remove("drag-over"));
         dragging = null;
+        item.draggable = true;
       });
-      li.addEventListener("dragover", (e) => {
-        if (!dragging || dragging === li) return;
+      item.addEventListener("dragover", (e) => {
+        if (!dragging || dragging === item) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
-        const rect = li.getBoundingClientRect();
-        const after = (e.clientY - rect.top) > rect.height / 2;
-        li.classList.add("drag-over");
-        if (after) li.parentNode.insertBefore(dragging, li.nextSibling);
-        else li.parentNode.insertBefore(dragging, li);
+        const rect = item.getBoundingClientRect();
+        const after = isHorizontal()
+          ? (e.clientX - rect.left) > rect.width / 2
+          : (e.clientY - rect.top) > rect.height / 2;
+        item.classList.add("drag-over");
+        if (after) item.parentNode.insertBefore(dragging, item.nextSibling);
+        else item.parentNode.insertBefore(dragging, item);
       });
-      li.addEventListener("dragleave", () => li.classList.remove("drag-over"));
-      li.addEventListener("drop", async (e) => {
+      item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
+      item.addEventListener("drop", async (e) => {
         e.preventDefault();
-        li.classList.remove("drag-over");
+        item.classList.remove("drag-over");
         if (!url) return;
-        const order = Array.from(list.querySelectorAll("li[data-item-id]"))
+        if (list.dataset.reorderManual === "1") {
+          list.dispatchEvent(new CustomEvent("reorder-changed", { bubbles: true }));
+          return;
+        }
+        const order = Array.from(list.querySelectorAll(":scope > [data-item-id]"))
           .map(x => x.dataset.itemId);
         const payload = category ? { order, category } : { order };
+        const label = list.dataset.reorderToast;
         try {
-          await fetch(url, {
+          const res = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
             credentials: "same-origin",
             body: JSON.stringify(payload),
           });
-        } catch (_) {}
+          if (res.ok) showToast(label ? (label + " saved") : "Order saved");
+          else showToast("Save failed — retry", "error");
+        } catch (_) {
+          showToast("Save failed — retry", "error");
+        }
       });
+    };
+    list.__tspBindItem = bindItem;
+    list.querySelectorAll(":scope > [draggable='true'][data-item-id]").forEach(bindItem);
+  }
+  document.querySelectorAll(".file-list-sortable").forEach(initSortable);
+  window.tspInitSortable = initSortable;
+
+  // Minimal toast helper — one element reused for every save.
+  function ensureToastHost() {
+    let host = document.getElementById("tsp-toast-host");
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "tsp-toast-host";
+      host.className = "tsp-toast-host";
+      document.body.appendChild(host);
+    }
+    return host;
+  }
+  function showToast(msg, kind) {
+    const host = ensureToastHost();
+    const el = document.createElement("div");
+    el.className = "tsp-toast" + (kind === "error" ? " tsp-toast-error" : "");
+    el.textContent = msg;
+    host.appendChild(el);
+    // Trigger transition next frame.
+    requestAnimationFrame(() => el.classList.add("tsp-toast-in"));
+    setTimeout(() => {
+      el.classList.remove("tsp-toast-in");
+      el.addEventListener("transitionend", () => el.remove(), { once: true });
+      // Fallback cleanup in case transitionend doesn't fire.
+      setTimeout(() => el.remove(), 500);
+    }, 1600);
+  }
+  // Expose for manual "Save order" button and other callers.
+  window.tspShowToast = showToast;
+
+  // Manual "Save order" buttons for data-reorder-manual sortables.
+  document.querySelectorAll("[data-save-reorder-for]").forEach(btn => {
+    const sel = btn.dataset.saveReorderFor;
+    const list = document.querySelector(sel);
+    if (!list) return;
+    btn.dataset.labelIdle = btn.textContent.trim();
+    list.addEventListener("reorder-changed", () => {
+      btn.classList.add("is-dirty");
+      btn.textContent = "Save order *";
+    });
+    btn.addEventListener("click", async () => {
+      const url = list.dataset.reorderUrl;
+      if (!url) return;
+      const order = Array.from(list.querySelectorAll(":scope > [data-item-id]"))
+        .map(x => x.dataset.itemId);
+      const category = list.dataset.reorderCategory || null;
+      const payload = category ? { order, category } : { order };
+      btn.disabled = true;
+      const orig = btn.dataset.labelIdle;
+      btn.textContent = "Saving…";
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+          credentials: "same-origin",
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error("Save failed");
+        btn.textContent = "Saved ✓";
+        btn.classList.remove("is-dirty");
+        setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1400);
+      } catch (_) {
+        btn.textContent = "Failed — retry";
+        setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1800);
+      }
     });
   });
 
@@ -1068,4 +1179,269 @@
     const h = setInterval(tick, 30000);
     window.addEventListener("beforeunload", () => clearInterval(h));
   })();
+})();
+
+// ── MEGA MENU AJAX (ADD BLOCK / ADD COLUMN / DELETE) ────────────────────────
+// Keep the admin on the page so in-progress edits aren't lost. The server
+// returns rendered HTML for add operations and {ok} for deletes; JS splices
+// the DOM directly.
+(function () {
+  const toast = (msg, kind) => (window.tspShowToast || (() => {}))(msg, kind);
+
+  async function postForm(form, extraHeaders) {
+    const r = await fetch(form.action, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: Object.assign(
+        { "X-Requested-With": "fetch", "Accept": "application/json" },
+        extraHeaders || {}
+      ),
+      body: new FormData(form),
+    });
+    if (!r.ok) throw new Error("request failed");
+    return r.json();
+  }
+
+  function htmlToNode(html) {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = (html || "").trim();
+    return tmp.firstElementChild;
+  }
+
+  // Rebind any .file-list-sortable containers introduced by a newly-added
+  // column so drag-and-drop works on their nested items.
+  function rebindSortable(root) {
+    root.querySelectorAll?.(".file-list-sortable").forEach((list) => {
+      if (list.__tspSortableHost) return;
+      // Skip — handled by the DOMContentLoaded binder below. But for nodes
+      // added after DOMContentLoaded, we simulate the same binding by
+      // triggering our sortable init pass on this element.
+    });
+  }
+
+  // Add block (+ Link / + Title / + Button / + Section)
+  document.addEventListener("submit", async (e) => {
+    const form = e.target.closest?.("form[data-add-block-target]");
+    if (!form) return;
+    e.preventDefault();
+    const target = document.querySelector(form.getAttribute("data-add-block-target"));
+    if (!target) return;
+    const btn = form.querySelector("button");
+    if (btn) btn.disabled = true;
+    try {
+      const data = await postForm(form);
+      const node = htmlToNode(data && data.html);
+      if (!node) throw new Error("empty html");
+      target.appendChild(node);
+      if (typeof target.__tspBindItem === "function") target.__tspBindItem(node);
+      node.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      const labelInput = node.querySelector('input[data-block-field="label"]');
+      if (labelInput) { labelInput.focus(); labelInput.select(); }
+    } catch (_) {
+      toast("Could not add block — retry", "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  // Add column
+  document.addEventListener("submit", async (e) => {
+    const form = e.target.closest?.("form[data-add-column-form]");
+    if (!form) return;
+    e.preventDefault();
+    const target = document.querySelector(form.getAttribute("data-target"));
+    if (!target) return;
+    const btn = form.querySelector("button");
+    if (btn) btn.disabled = true;
+    try {
+      const data = await postForm(form);
+      const node = htmlToNode(data && data.html);
+      if (!node) throw new Error("empty html");
+      target.appendChild(node);
+      // Bind drag on the new column itself (sibling of existing columns)
+      if (typeof target.__tspBindItem === "function") target.__tspBindItem(node);
+      // The new column contains its own .file-list-sortable <ul> for blocks;
+      // initialise it so future block adds / drags work.
+      if (typeof window.tspInitSortable === "function") {
+        node.querySelectorAll(".file-list-sortable").forEach(window.tspInitSortable);
+      }
+      rebindSortable(node);
+      node.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (_) {
+      toast("Could not add column — retry", "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  // Delete block / delete column (shared)
+  document.addEventListener("submit", async (e) => {
+    const form = e.target.closest?.("form[data-delete-block-form], form[data-delete-column-form]");
+    if (!form) return;
+    e.preventDefault();
+    // The existing inline onsubmit="return confirm(...)" was bypassed by our
+    // preventDefault; ask here instead.
+    const isCol = form.hasAttribute("data-delete-column-form");
+    const msg = isCol ? "Delete this column and all its links?" : "Delete this block?";
+    if (!window.confirm(msg)) return;
+    const targetSel = form.getAttribute("data-target-item");
+    const targetNode = targetSel ? document.querySelector(targetSel) : null;
+    try {
+      const r = await fetch(form.action, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "X-Requested-With": "fetch", "Accept": "application/json" },
+        body: new FormData(form),
+      });
+      if (!r.ok) throw new Error("delete failed");
+      if (targetNode) targetNode.remove();
+      toast(isCol ? "Column removed" : "Block removed", "success");
+    } catch (_) {
+      toast("Could not delete — retry", "error");
+    }
+  });
+})();
+
+// ── MEGA MENU BULK SAVE ─────────────────────────────────────────────────────
+// Gather all block inputs inside an editor and POST them as one JSON payload.
+// Triggered by any button with [data-save-megamenu-for="<selector>"].
+(function () {
+  function collectBlocks(editor) {
+    const out = [];
+    editor.querySelectorAll("li.nav-megalink[data-item-id]").forEach((li) => {
+      const id = li.getAttribute("data-item-id");
+      const kind = li.getAttribute("data-block-kind") || "link";
+      const block = { id, kind };
+      li.querySelectorAll("[data-block-field]").forEach((el) => {
+        const name = el.getAttribute("data-block-field");
+        if (el.type === "checkbox") block[name] = el.checked;
+        else block[name] = el.value;
+      });
+      out.push(block);
+    });
+    return out;
+  }
+
+  async function save(btn) {
+    const sel = btn.getAttribute("data-save-megamenu-for");
+    const url = btn.getAttribute("data-save-url");
+    const editor = sel && document.querySelector(sel);
+    if (!editor || !url) return;
+    const toast = window.tspShowToast || (() => {});
+    const origLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ blocks: collectBlocks(editor) }),
+      });
+      if (!r.ok) throw new Error("save failed");
+      editor.querySelectorAll(".nav-megalink.is-dirty").forEach((el) =>
+        el.classList.remove("is-dirty"));
+      btn.classList.remove("is-dirty");
+      toast("Changes saved", "success");
+    } catch (_) {
+      toast("Save failed — retry", "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origLabel;
+    }
+  }
+
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-save-megamenu-for]");
+    if (!btn) return;
+    e.preventDefault();
+    save(btn);
+  });
+
+  // Mark the editor + save button dirty on any field change, so the user has a
+  // visible "unsaved changes" signal until they click Save.
+  document.addEventListener("input", (e) => {
+    const el = e.target.closest("[data-block-field]");
+    if (!el) return;
+    const li = el.closest("li.nav-megalink");
+    if (li) li.classList.add("is-dirty");
+    const editor = el.closest(".nav-megamenu-editor");
+    if (!editor) return;
+    const btn = document.querySelector(
+      '[data-save-megamenu-for="#' + editor.id + '"]'
+    );
+    if (btn) btn.classList.add("is-dirty");
+  });
+  document.addEventListener("change", (e) => {
+    const el = e.target.closest("[data-block-field]");
+    if (!el) return;
+    const li = el.closest("li.nav-megalink");
+    if (li) li.classList.add("is-dirty");
+    const editor = el.closest(".nav-megamenu-editor");
+    if (!editor) return;
+    const btn = document.querySelector(
+      '[data-save-megamenu-for="#' + editor.id + '"]'
+    );
+    if (btn) btn.classList.add("is-dirty");
+  });
+})();
+
+// ── VERSION WATCHER ─────────────────────────────────────────────────────────
+// Polls /api/version once a minute. If the deployed APP_VERSION has moved
+// past the version this page was served with, a non-blocking banner appears
+// offering a reload. We never auto-reload — the user clicks Reload when
+// they're at a safe stopping point.
+(function () {
+  const meta = document.querySelector('meta[name="app-version"]');
+  const bootVersion = meta ? (meta.content || "").trim() : "";
+  const checkUrl = meta ? (meta.getAttribute("data-check-url") || "/api/version") : "/api/version";
+  if (!bootVersion) return;
+
+  const CHECK_INTERVAL_MS = 60 * 1000;
+  const REPROMPT_AFTER_MS = 10 * 60 * 1000;
+  let bannerShown = false;
+
+  async function check() {
+    if (bannerShown) return;
+    try {
+      const r = await fetch(checkUrl, { cache: "no-store", credentials: "same-origin" });
+      if (!r.ok) return;
+      const data = await r.json();
+      const serverVersion = (data && data.version) || "";
+      if (serverVersion && serverVersion !== bootVersion) showBanner(serverVersion);
+    } catch (_) { /* silent — try again next tick */ }
+  }
+
+  function showBanner(newVersion) {
+    if (bannerShown) return;
+    bannerShown = true;
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
+      {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]
+    ));
+    const el = document.createElement("div");
+    el.id = "tsp-version-banner";
+    el.className = "version-update-banner";
+    el.setAttribute("role", "status");
+    el.setAttribute("aria-live", "polite");
+    el.innerHTML =
+      '<div class="version-update-banner-main">' +
+        '<div class="version-update-banner-title">Update available — v' + esc(newVersion) + '</div>' +
+        '<div class="version-update-banner-sub">Reload when you’re at a stopping point to pick up the latest changes.</div>' +
+      '</div>' +
+      '<div class="version-update-banner-actions">' +
+        '<button type="button" class="btn btn-sm" data-version-dismiss>Later</button>' +
+        '<button type="button" class="btn btn-sm btn-primary" data-version-reload>Reload now</button>' +
+      '</div>';
+    document.body.appendChild(el);
+    el.querySelector("[data-version-dismiss]").addEventListener("click", () => {
+      el.remove();
+      setTimeout(() => { bannerShown = false; check(); }, REPROMPT_AFTER_MS);
+    });
+    el.querySelector("[data-version-reload]").addEventListener("click", () => {
+      window.location.reload();
+    });
+  }
+
+  setTimeout(check, 10000);
+  setInterval(check, CHECK_INTERVAL_MS);
 })();

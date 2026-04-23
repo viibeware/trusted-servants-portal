@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block heading %}Mega menu — {{ item.label or item.line1 or 'untitled' }}{% endblock %}
+{% block heading_help %}Columns and links shown in the full-width dropdown under this nav item.{% endblock %}
+{% block top_actions %}
+<a class="btn" href="{{ url_for('main.frontend_header') }}">← Back to Header</a>
+<a class="btn" href="{{ url_for('frontend.index') }}" target="_blank" rel="noopener">View frontend ↗</a>
+{% endblock %}
+{% block content %}
+<div class="fe-admin-layout">
+  {% include "_frontend_subnav.html" %}
+  <div class="fe-admin-main">
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Columns</h2>
+        <div class="card-head-actions">
+          <form method="post" action="{{ url_for('main.frontend_nav_column_new', nid=item.id) }}"
+                style="display:inline; margin:0"
+                data-add-column-form data-target="#megamenu-editor">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm">+ Add column</button>
+          </form>
+          <button type="button" class="btn btn-sm btn-primary"
+                  data-save-megamenu-for="#megamenu-editor"
+                  data-save-url="{{ url_for('main.frontend_nav_megamenu_save_all', nid=item.id) }}">
+            Save changes
+          </button>
+        </div>
+      </div>
+      <p class="muted small">A mega menu can have up to three columns side-by-side. Add a <b>Title</b> block inside a column to show a heading on the frontend.</p>
+
+      {% if not item.columns %}
+      <p class="muted">No columns yet. Add one to get started.</p>
+      {% else %}
+      <p class="muted smaller">Drag the handle to reorder columns, or the handle on each link to reorder links within a column.</p>
+      {% set _icons = ['info','alert-triangle','bell','megaphone','star','heart','calendar','zap','mail','phone','help-circle','arrow-right','file-text','home','panel-top','panel-bottom','layout-grid'] %}
+      <div id="megamenu-editor" class="nav-megamenu-editor file-list-sortable"
+           data-reorder-url="{{ url_for('main.frontend_nav_columns_reorder', nid=item.id) }}"
+           data-reorder-toast="Column order">
+        {% for col in item.columns %}
+          {% include "_nav_megacol.html" %}
+        {% endfor %}
+      </div>
+      {% endif %}
+    </section>
+
+  </div>
+</div>
+{% endblock %}

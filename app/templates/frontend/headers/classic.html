@@ -1,0 +1,36 @@
+{# "Classic" header — the original layout we built.
+   Sticky glassy bar, logo on the left, nav on the right, mobile hamburger.
+   Respects SiteSetting width/padding/height configs. #}
+{% set _header_full = site and site.frontend_header_width_mode == 'full' %}
+{% set _header_max = (site.frontend_header_max_width if site else 1160) or 1160 %}
+{% set _header_pct = (site.frontend_header_padding_pct if site else 5) or 0 %}
+{% set _header_h = (site.frontend_header_height if site else 72) or 72 %}
+<header class="fe-header{% if _header_full %} fe-header-full{% endif %}" id="fe-header"
+        style="--fe-header-h: {{ _header_h }}px;">
+  <div class="fe-header-inner{% if not _header_full %} fe-container{% endif %}"
+       {% if _header_full %}style="padding-left: {{ _header_pct }}%; padding-right: {{ _header_pct }}%; min-height: {{ _header_h }}px;"{% else %}style="max-width: {{ _header_max }}px; min-height: {{ _header_h }}px;"{% endif %}>
+    {% set _fe_logo = site and site.frontend_logo_filename %}
+    {% set _fe_logo_w = (site.frontend_logo_width if site else 40) or 40 %}
+    <a class="fe-brand" href="{{ url_for('frontend.index') }}">
+      {% if _fe_logo %}
+      <img src="{{ url_for('public.site_frontend_logo') }}" alt="{{ frontend_title }}"
+           class="fe-brand-logo" style="width: {{ _fe_logo_w }}px; height: auto;">
+      {% else %}
+      <span class="fe-brand-name">{{ frontend_title }}</span>
+      {% endif %}
+    </a>
+    <nav class="fe-nav">
+      <a href="{{ url_for('frontend.index') }}#meetings">Meetings</a>
+      <a href="{{ url_for('frontend.index') }}#about">About</a>
+      <a href="{{ url_for('frontend.index') }}#contact">Help</a>
+      {% if current_user.is_authenticated %}
+      <a href="{{ url_for('main.index') }}" class="fe-nav-cta">Dashboard</a>
+      {% else %}
+      <a href="{{ url_for('auth.login') }}" class="fe-nav-cta">Sign in</a>
+      {% endif %}
+    </nav>
+    <button type="button" class="fe-menu-btn" id="fe-menu-btn" aria-label="Toggle menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</header>

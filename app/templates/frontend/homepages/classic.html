@@ -1,0 +1,138 @@
+{# "Classic" homepage — animated-blob hero, 4 quick-link cards, meetings
+   preview, about pillars, dark contact CTA. Our original. #}
+<section class="fe-hero">
+  <div class="fe-hero-bg" aria-hidden="true">
+    <div class="fe-hero-blob fe-hero-blob-a"></div>
+    <div class="fe-hero-blob fe-hero-blob-b"></div>
+    <div class="fe-hero-blob fe-hero-blob-c"></div>
+  </div>
+  <div class="fe-container fe-hero-inner">
+    <p class="fe-hero-eyebrow">{{ frontend_tagline }}</p>
+    <h1 class="fe-hero-heading">{{ frontend_hero_heading }}</h1>
+    <p class="fe-hero-sub">{{ frontend_hero_subheading }}</p>
+    <div class="fe-hero-cta">
+      <a href="#meetings" class="fe-btn fe-btn-primary">Find a Meeting</a>
+      <a href="#contact" class="fe-btn fe-btn-ghost">Need Help Now?</a>
+    </div>
+  </div>
+</section>
+
+<section class="fe-quick" aria-label="Quick links">
+  <div class="fe-container fe-quick-grid">
+    <a class="fe-quick-card" href="#meetings">
+      <div class="fe-quick-icon">◈</div>
+      <h3>Meetings</h3>
+      <p>Find an in-person, online, or hybrid meeting that fits your schedule.</p>
+    </a>
+    <a class="fe-quick-card" href="#about">
+      <div class="fe-quick-icon">◉</div>
+      <h3>About Us</h3>
+      <p>Learn who we are, what we stand for, and how we serve the fellowship.</p>
+    </a>
+    <a class="fe-quick-card" href="#contact">
+      <div class="fe-quick-icon">◎</div>
+      <h3>Get Help</h3>
+      <p>Connect with someone today. We're here to answer the call, 24/7.</p>
+    </a>
+    <a class="fe-quick-card" href="{{ url_for('auth.login') }}">
+      <div class="fe-quick-icon">◊</div>
+      <h3>Trusted Servants</h3>
+      <p>Portal sign-in for meeting hosts, intergroup members, and volunteers.</p>
+    </a>
+  </div>
+</section>
+
+<section class="fe-section fe-meetings" id="meetings">
+  <div class="fe-container">
+    <div class="fe-section-head">
+      <h2>Upcoming Meetings</h2>
+      <p>A quick look at what's on the schedule. Sign in to the portal for full details, host accounts, and one-tap Zoom links.</p>
+    </div>
+    {% if meetings %}
+    <div class="fe-meeting-grid">
+      {% for m in meetings %}
+      <article class="fe-meeting-card">
+        <div class="fe-meeting-type fe-meeting-type-{{ m.meeting_type }}">
+          {% if m.meeting_type == 'in_person' %}In Person
+          {% elif m.meeting_type == 'online' %}Online
+          {% else %}Hybrid{% endif %}
+        </div>
+        <h3>{{ m.name }}</h3>
+        {% if m.schedules %}
+        <ul class="fe-meeting-sched">
+          {% for s in m.schedules[:3] %}
+          <li><span class="fe-meeting-day">{{ s.day_name }}</span> · {{ s.start_time|fmt12h }}</li>
+          {% endfor %}
+          {% if m.schedules|length > 3 %}
+          <li class="muted smaller">+ {{ m.schedules|length - 3 }} more</li>
+          {% endif %}
+        </ul>
+        {% else %}
+        <p class="muted smaller">Schedule coming soon.</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">No meetings have been published yet.</p>
+    {% endif %}
+    <div class="fe-section-foot">
+      <a class="fe-btn fe-btn-ghost" href="{{ url_for('auth.login') }}">Sign in for full details →</a>
+    </div>
+  </div>
+</section>
+
+{% if frontend_about_body %}
+<section class="fe-section fe-about" id="about">
+  <div class="fe-container fe-about-inner">
+    <div class="fe-about-text">
+      <h2>{{ frontend_about_heading }}</h2>
+      <div class="fe-about-body">{{ frontend_about_body|markdown }}</div>
+    </div>
+    <div class="fe-about-side">
+      <div class="fe-about-pillar">
+        <div class="fe-about-pillar-num">01</div>
+        <div class="fe-about-pillar-body">
+          <h4>Service</h4>
+          <p>Trusted servants keep the fellowship running — every meeting, every day.</p>
+        </div>
+      </div>
+      <div class="fe-about-pillar">
+        <div class="fe-about-pillar-num">02</div>
+        <div class="fe-about-pillar-body">
+          <h4>Unity</h4>
+          <p>We welcome anyone seeking recovery. Our common welfare comes first.</p>
+        </div>
+      </div>
+      <div class="fe-about-pillar">
+        <div class="fe-about-pillar-num">03</div>
+        <div class="fe-about-pillar-body">
+          <h4>Recovery</h4>
+          <p>One day at a time, one meeting at a time. The door is always open.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="fe-section fe-contact" id="contact">
+  <div class="fe-container fe-contact-inner">
+    <h2>{{ frontend_contact_heading }}</h2>
+    {% if frontend_contact_body %}
+    <div class="fe-contact-body">{{ frontend_contact_body|markdown }}</div>
+    {% endif %}
+    {% if site and site.pic_name %}
+    <div class="fe-contact-card">
+      <div class="fe-contact-role">Public Information Chair</div>
+      <div class="fe-contact-name">{{ site.pic_name }}</div>
+      <div class="fe-contact-lines">
+        {% if site.pic_phone %}<a href="tel:{{ site.pic_phone }}">{{ site.pic_phone }}</a>{% endif %}
+        {% if site.pic_phone and site.pic_email %} · {% endif %}
+        {% if site.pic_email %}<a href="mailto:{{ site.pic_email }}">{{ site.pic_email }}</a>{% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</section>
+

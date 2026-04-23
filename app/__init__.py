@@ -164,9 +164,12 @@ def create_app():
         return db.session.get(User, int(user_id))
 
     from .auth import bp as auth_bp
-    from .routes import bp as main_bp
+    from .routes import bp as main_bp, public_bp
+    from .frontend import bp as frontend_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
+    app.register_blueprint(public_bp)
+    app.register_blueprint(frontend_bp)
 
     @app.before_request
     def _legacy_redirect():
@@ -370,6 +373,43 @@ def _migrate_sqlite(app):
                          ("og_title", "VARCHAR(200)"),
                          ("og_description", "TEXT"),
                          ("og_image_filename", "VARCHAR(500)"),
+                         ("frontend_module_enabled", "BOOLEAN NOT NULL DEFAULT 1"),
+                         ("frontend_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("frontend_title", "VARCHAR(200)"),
+                         ("frontend_tagline", "VARCHAR(500)"),
+                         ("frontend_hero_heading", "VARCHAR(200)"),
+                         ("frontend_hero_subheading", "VARCHAR(500)"),
+                         ("frontend_about_heading", "VARCHAR(200)"),
+                         ("frontend_about_body", "TEXT"),
+                         ("frontend_contact_heading", "VARCHAR(200)"),
+                         ("frontend_contact_body", "TEXT"),
+                         ("frontend_footer_text", "TEXT"),
+                         ("frontend_header_width_mode", "VARCHAR(16) NOT NULL DEFAULT 'boxed'"),
+                         ("frontend_header_max_width", "INTEGER NOT NULL DEFAULT 1160"),
+                         ("frontend_header_padding_pct", "INTEGER NOT NULL DEFAULT 5"),
+                         ("frontend_header_height", "INTEGER NOT NULL DEFAULT 72"),
+                         ("frontend_header_template", "VARCHAR(64) NOT NULL DEFAULT 'classic'"),
+                         ("frontend_footer_template", "VARCHAR(64) NOT NULL DEFAULT 'classic'"),
+                         ("frontend_homepage_template", "VARCHAR(64) NOT NULL DEFAULT 'classic'"),
+                         ("frontend_megamenu_template", "VARCHAR(64) NOT NULL DEFAULT 'dccma'"),
+                         ("frontend_mega_bg_color", "VARCHAR(16) NOT NULL DEFAULT '#0B5CFF'"),
+                         ("frontend_mega_text_color", "VARCHAR(16) NOT NULL DEFAULT '#ffffff'"),
+                         ("frontend_mega_radius_bl", "INTEGER NOT NULL DEFAULT 18"),
+                         ("frontend_mega_radius_br", "INTEGER NOT NULL DEFAULT 18"),
+                         ("frontend_logo_filename", "VARCHAR(500)"),
+                         ("frontend_logo_width", "INTEGER NOT NULL DEFAULT 40"),
+                         ("top_alert_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("top_alert_message", "TEXT"),
+                         ("top_alert_bg_color", "VARCHAR(16)"),
+                         ("top_alert_text_color", "VARCHAR(16)"),
+                         ("top_alert_icon", "VARCHAR(32)"),
+                         ("top_alert_icon_position", "VARCHAR(8) NOT NULL DEFAULT 'before'"),
+                         ("header_alert_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("header_alert_message", "TEXT"),
+                         ("header_alert_bg_color", "VARCHAR(16)"),
+                         ("header_alert_text_color", "VARCHAR(16)"),
+                         ("header_alert_icon", "VARCHAR(32)"),
+                         ("header_alert_icon_position", "VARCHAR(8) NOT NULL DEFAULT 'before'"),
                          ("setup_complete", "BOOLEAN NOT NULL DEFAULT 0")):
             add("site_setting", col, ddl)
         for col, ddl in (("url", "VARCHAR(1000)"),
@@ -389,6 +429,12 @@ def _migrate_sqlite(app):
                          ("dash_order_json", "TEXT"),
                          ("last_seen_at", "DATETIME")):
             add("user", col, ddl)
+        for col, ddl in (("open_in_new_tab", "BOOLEAN NOT NULL DEFAULT 0"),):
+            add("frontend_nav_item", col, ddl)
+        for col, ddl in (("kind", "VARCHAR(16) NOT NULL DEFAULT 'link'"),
+                         ("button_style", "VARCHAR(16) NOT NULL DEFAULT 'pill'"),
+                         ("open_in_new_tab", "BOOLEAN NOT NULL DEFAULT 0")):
+            add("frontend_nav_link", col, ddl)
 
 
 def _seed_admin(app):

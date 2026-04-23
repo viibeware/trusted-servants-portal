@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}{{ frontend_title }}{% endblock %}</title>
+{% if site and site.og_enabled %}
+{% set _og_title = site.og_title or frontend_title %}
+<meta property="og:title" content="{{ _og_title }}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ request.url }}">
+<meta property="og:site_name" content="{{ frontend_title }}">
+{% if site.og_description %}<meta property="og:description" content="{{ site.og_description }}">{% endif %}
+{% if site.og_image_filename %}<meta property="og:image" content="{{ url_for('public.site_og_image', _external=True) }}">{% endif %}
+<meta name="twitter:card" content="{% if site.og_image_filename %}summary_large_image{% else %}summary{% endif %}">
+<meta name="twitter:title" content="{{ _og_title }}">
+{% if site.og_description %}<meta name="twitter:description" content="{{ site.og_description }}">{% endif %}
+{% if site.og_image_filename %}<meta name="twitter:image" content="{{ url_for('public.site_og_image', _external=True) }}">{% endif %}
+{% if site.og_description %}<meta name="description" content="{{ site.og_description }}">{% endif %}
+{% elif frontend_tagline %}
+<meta name="description" content="{{ frontend_tagline }}">
+{% endif %}
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/frontend.css') }}">
+<script>
+  // Apply saved frontend theme before first paint so there's no flash.
+  try {
+    var t = localStorage.getItem('fe-theme');
+    if (t === 'dark' || t === 'light') {
+      document.documentElement.setAttribute('data-theme', t);
+    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  } catch (e) {}
+</script>
+</head>
+<body class="frontend-body">
+{% if site and not site.frontend_enabled and current_user.is_authenticated and current_user.can_edit() %}
+<div class="fe-admin-preview-bar" role="status">
+  <div class="fe-container fe-admin-preview-inner">
+    <span class="fe-admin-preview-msg">
+      <b>Preview mode —</b> the public web frontend is turned off. Only signed-in admins and editors can see this page.
+    </span>
+    <a class="fe-admin-preview-cta" href="{{ url_for('main.frontend_dashboard') }}">Open admin ↗</a>
+  </div>
+</div>
+{% endif %}
+{% macro fe_alert_bar(s, prefix) %}
+  {% if s and (s|attr(prefix ~ '_alert_enabled')) and ((s|attr(prefix ~ '_alert_message'))) %}
+    {% set _bg = (s|attr(prefix ~ '_alert_bg_color')) or '#0b5cff' %}
+    {% set _fg = (s|attr(prefix ~ '_alert_text_color')) or '#ffffff' %}
+    {% set _msg = (s|attr(prefix ~ '_alert_message')) %}
+    {% set _icon = (s|attr(prefix ~ '_alert_icon')) %}
+    {% set _pos  = (s|attr(prefix ~ '_alert_icon_position')) or 'before' %}
+    <div class="fe-alertbar fe-alertbar-{{ prefix }}"
+         style="background: {{ _bg }}; color: {{ _fg }};" role="status">
+      <div class="fe-container fe-alertbar-inner">
+        {% if _icon and _pos == 'before' %}<span class="fe-alertbar-icon">{{ icon(_icon) }}</span>{% endif %}
+        <span class="fe-alertbar-msg">{{ _msg }}</span>
+        {% if _icon and _pos == 'after' %}<span class="fe-alertbar-icon">{{ icon(_icon) }}</span>{% endif %}
+      </div>
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{{ fe_alert_bar(site, 'top') }}
+
+{% include header_template_partial|default('frontend/headers/classic.html') %}
+
+{# ── Mega menu panels (one per nav item with has_megamenu) ── #}
+{% if nav_items %}
+{% for ni in nav_items if ni.has_megamenu and ni.columns %}
+  {% include megamenu_template_partial|default('frontend/megamenus/dccma.html') %}
+{% endfor %}
+
+{# Backdrop that blurs everything BELOW the header when any mega menu is open. #}
+<div class="fe-megamenu-backdrop" aria-hidden="true"></div>
+{% endif %}
+
+{{ fe_alert_bar(site, 'header') }}
+
+<main class="fe-page" id="fe-page">
+{% block content %}{% endblock %}
+</main>
+
+
+
+{% include footer_template_partial|default('frontend/footers/classic.html') %}
+
+<script>
+  (function(){
+    const btn = document.getElementById('fe-menu-btn');
+    const header = document.getElementById('fe-header');
+    if (btn && header) {
+      btn.addEventListener('click', () => header.classList.toggle('fe-nav-open'));
+    }
+    const onScroll = () => {
+      if (!header) return;
+      header.classList.toggle('fe-header-scrolled', window.scrollY > 10);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    // Measure where the header ends (viewport-relative) so mega-menu + backdrop
+    // drop right under it. We use rect.bottom rather than rect.height so the
+    // anchor accounts for anything above the sticky header (like the admin
+    // preview banner, flash messages, etc.) while the page is unscrolled —
+    // and collapses back to just the header's height once those scroll away.
+    (function measureHeader(){
+      const h = document.getElementById('fe-header');
+      if (!h) return;
+      const setH = () => {
+        const r = h.getBoundingClientRect();
+        const bottom = Math.max(0, r.bottom);
+        document.documentElement.style.setProperty('--fe-header-full-h', bottom + 'px');
+      };
+      setH();
+      window.addEventListener('resize', setH, { passive: true });
+      window.addEventListener('scroll', setH, { passive: true });
+      if (window.ResizeObserver) new ResizeObserver(setH).observe(h);
+    })();
+
+    // Mega menu: show the matching panel on hover, hide on mouseleave, close on ESC.
+    (function initMegaMenu(){
+      const parents = document.querySelectorAll('[data-megamenu]');
+      if (!parents.length) return;
+      const panels  = document.querySelectorAll('[data-megamenu-panel]');
+      const backdrop = document.querySelector('.fe-megamenu-backdrop');
+      const body = document.body;
+      let closeTimer = null;
+      let activeId = null;
+      function open(id) {
+        clearTimeout(closeTimer);
+        activeId = id;
+        panels.forEach(p => {
+          const match = p.dataset.megamenuPanel === String(id);
+          p.classList.toggle('open', match);
+          p.setAttribute('aria-hidden', match ? 'false' : 'true');
+        });
+        parents.forEach(p => {
+          p.classList.toggle('mega-active', p.dataset.megamenu === String(id));
+        });
+        if (backdrop) backdrop.classList.add('open');
+        body.classList.add('fe-megamenu-open');
+      }
+      function close(force) {
+        activeId = null;
+        panels.forEach(p => {
+          p.classList.remove('open'); p.setAttribute('aria-hidden', 'true');
+        });
+        parents.forEach(p => p.classList.remove('mega-active'));
+        if (backdrop) backdrop.classList.remove('open');
+        body.classList.remove('fe-megamenu-open');
+      }
+      function scheduleClose() {
+        clearTimeout(closeTimer);
+        closeTimer = setTimeout(() => close(true), 140);
+      }
+      parents.forEach(parent => {
+        const id = parent.dataset.megamenu;
+        parent.addEventListener('mouseenter', () => open(id));
+        parent.addEventListener('focus', () => open(id));
+        parent.addEventListener('mouseleave', scheduleClose);
+      });
+      panels.forEach(p => {
+        p.addEventListener('mouseenter', () => clearTimeout(closeTimer));
+        p.addEventListener('mouseleave', scheduleClose);
+      });
+      if (backdrop) backdrop.addEventListener('click', () => close(true));
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') close(true); });
+    })();
+
+    // Frontend light/dark toggle. Applies to <html>, persists to localStorage.
+    function syncThemeBtn() {
+      const cur = document.documentElement.getAttribute('data-theme') || 'light';
+      document.querySelectorAll('[data-fe-theme-toggle]').forEach(el => {
+        el.setAttribute('aria-pressed', cur === 'dark' ? 'true' : 'false');
+        el.setAttribute('aria-label', cur === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+      });
+    }
+    function setTheme(next) {
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('fe-theme', next); } catch (e) {}
+      syncThemeBtn();
+    }
+    document.querySelectorAll('[data-fe-theme-toggle]').forEach(el => {
+      el.addEventListener('click', () => {
+        const cur = document.documentElement.getAttribute('data-theme') || 'light';
+        setTheme(cur === 'dark' ? 'light' : 'dark');
+      });
+    });
+    syncThemeBtn();
+  })();
+</script>
+</body>
+</html>

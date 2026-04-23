@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block heading %}Pages{% endblock %}
+{% block heading_help %}Additional content pages beyond the homepage.{% endblock %}
+{% block top_actions %}
+<a class="btn" href="{{ url_for('frontend.index') }}" target="_blank" rel="noopener">View frontend ↗</a>
+{% endblock %}
+{% block content %}
+<div class="fe-admin-layout">
+  {% include "_frontend_subnav.html" %}
+  <div class="fe-admin-main">
+    <section class="card">
+      <div class="card-head"><h2>Coming soon</h2></div>
+      <p class="muted">A page editor for additional frontend pages (Markdown, slugs, navigation placement) is planned for a future release.</p>
+    </section>
+  </div>
+</div>
+{% endblock %}
