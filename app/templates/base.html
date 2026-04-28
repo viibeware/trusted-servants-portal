@@ -863,6 +863,13 @@
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
             <li>
+              <div class="u-name">1.7.2</div>
+              <div class="muted smaller">April 2026</div>
+              <ul>
+                <li><b>Zoom Tech images render again</b> — Zoom Tech rich-content blocks (and any other content) saved with image <code>src</code> values like <code>/uploads/&lt;stored&gt;</code> went 404 after the 1.6.0 release moved the admin under <code>/tspro</code>: the legacy URLs resolved at the root, where there was no route. Added a back-compat alias on the public blueprint at <code>/uploads/&lt;path:stored&gt;</code> that hands off to the same <code>send_from_directory(UPLOAD_FOLDER, stored)</code> call as <code>/tspro/uploads/&lt;stored&gt;</code>, with the same <code>@login_required</code> guard so anonymous visitors can't probe upload filenames. No data migration needed — old saved content just works.</li>
+              </ul>
+            </li>
+            <li>
               <div class="u-name">1.7.1</div>
               <div class="muted smaller">April 2026</div>
               <ul>

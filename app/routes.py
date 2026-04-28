@@ -1608,6 +1608,18 @@ def upload_raw(stored):
     return send_from_directory(current_app.config["UPLOAD_FOLDER"], stored)
 
 
+# Back-compat alias for content saved before the admin moved under
+# /tspro in 1.6.0 — Zoom Tech blocks (and any other rich-content area)
+# stored image src values like "/uploads/<stored>" that resolved at the
+# root when the admin lived there. Without this shim those URLs 404.
+# Same login_required guard as /tspro/uploads/<stored> so anonymous
+# visitors can't probe upload filenames.
+@public_bp.route("/uploads/<path:stored>")
+@login_required
+def upload_raw_root(stored):
+    return send_from_directory(current_app.config["UPLOAD_FOLDER"], stored)
+
+
 @public_bp.route("/pub/<path:filename>")
 def public_file(filename):
     if ".." in filename or filename.startswith("/"):
