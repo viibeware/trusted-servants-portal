@@ -19,7 +19,7 @@
 <a class="btn" href="{{ url_for('frontend.index') }}" target="_blank" rel="noopener">View frontend ↗</a>
 {% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/frontend.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/frontend.css', v=app_build_id) }}">
 <div class="fe-admin-layout">
   {% include "_frontend_subnav.html" %}
   <div class="fe-admin-main">
@@ -1110,7 +1110,7 @@
 </div>
 {% endfor %}
 
-<script src="{{ url_for('static', filename='js/login_fx.js') }}"></script>
+<script src="{{ url_for('static', filename='js/login_fx.js', v=app_build_id) }}"></script>
 <script>
   // Live-update slider readouts (size %, hue °, angle °, blur px, etc.)
   document.querySelectorAll('[data-slider-input]').forEach(inp => {

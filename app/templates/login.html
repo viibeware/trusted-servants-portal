@@ -117,7 +117,7 @@
     </form>
   </div>
 </div>
-<script src="{{ url_for('static', filename='js/login_fx.js') }}"></script>
+<script src="{{ url_for('static', filename='js/login_fx.js', v=app_build_id) }}"></script>
 <script>
 (function surfaceStashedFlash(){
   // Pick up a flash stashed by a previous failed login so the user sees

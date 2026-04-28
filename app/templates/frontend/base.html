@@ -28,8 +28,8 @@
 {% else %}
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
 {% endif %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/frontend.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v=app_build_id) }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/frontend.css', v=app_build_id) }}">
 {# Admin-added custom fonts. Both upload and google sources are served
    entirely from this server — Google CSS is pre-fetched at add time and
    rewritten to reference local binaries, so nothing leaks to fonts.google.com
@@ -52,7 +52,7 @@
 <link rel="stylesheet" href="{{ url_for('public.public_custom_font', fid=cf.id) }}">
 {% endfor %}
 {% endif %}
-<script src="{{ url_for('static', filename='js/login_fx.js') }}"></script>
+<script src="{{ url_for('static', filename='js/login_fx.js', v=app_build_id) }}"></script>
 <script>
   // Apply saved frontend theme before first paint so there's no flash.
   try {

@@ -34,7 +34,7 @@
     } catch(e){}
   })();
 </script>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v=app_build_id) }}">
 </head>
 {% set embed = request.args.get('embed') == '1' %}
 <body class="{% if embed %}embed{% endif %}">
@@ -341,7 +341,7 @@
           });
         })();
         </script>
-        <script src="{{ url_for('static', filename='js/login_fx.js') }}"></script>
+        <script src="{{ url_for('static', filename='js/login_fx.js', v=app_build_id) }}"></script>
         <script>
         (function(){
           const effectSel = document.getElementById('login-fx-effect');
@@ -1242,7 +1242,7 @@
 <script>
   window.tspUser = { role: "{{ current_user.role if current_user.is_authenticated else '' }}" };
 </script>
-<script src="{{ url_for('static', filename='js/app.js') }}"></script>
-<script src="{{ url_for('static', filename='js/tour.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js', v=app_build_id) }}"></script>
+<script src="{{ url_for('static', filename='js/tour.js', v=app_build_id) }}"></script>
 </body>
 </html>
