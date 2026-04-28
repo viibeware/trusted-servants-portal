@@ -21,6 +21,7 @@
 {% if site.og_description %}<meta name="description" content="{{ site.og_description }}">{% endif %}
 {% endif %}
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+<link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/apple-touch-icon_tspro.png') }}">
 <script>
   (function(){
     var t = null;
@@ -867,6 +868,7 @@
               <div class="muted smaller">April 2026</div>
               <ul>
                 <li><b>Zoom Tech images render again</b> — Zoom Tech rich-content blocks (and any other content) saved with image <code>src</code> values like <code>/uploads/&lt;stored&gt;</code> went 404 after the 1.6.0 release moved the admin under <code>/tspro</code>: the legacy URLs resolved at the root, where there was no route. Added a back-compat alias on the public blueprint at <code>/uploads/&lt;path:stored&gt;</code> that hands off to the same <code>send_from_directory(UPLOAD_FOLDER, stored)</code> call as <code>/tspro/uploads/&lt;stored&gt;</code>, with the same <code>@login_required</code> guard so anonymous visitors can't probe upload filenames. No data migration needed — old saved content just works.</li>
+                <li><b>Apple touch icons</b> — bundled <code>apple-touch-icon_tspro.png</code> and <code>apple-touch-icon_dccma.png</code> under <code>app/static/img/</code> and wired them into the right templates so adding the site to an iOS / iPadOS home screen picks the correct icon: the tspro icon shows on every <code>/tspro</code> admin page, the login screen, and the setup wizard; the dccma icon shows on every public web frontend page (homepage, meeting detail, event detail, etc.). Both at the standard 180×180 size.</li>
               </ul>
             </li>
             <li>
