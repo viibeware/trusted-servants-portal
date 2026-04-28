@@ -1215,11 +1215,21 @@ html[data-theme="dark"] .post-chip-draft        { background: rgba(100, 116, 139
   box-shadow: 0 8px 22px rgba(202, 138, 4, 0.28);
   animation: fe-save-appear 220ms ease-out both;
 }
+/* Non-frontend admin pages (library detail, etc.) shift the bar 2rem
+   further right of where the frontend admin save bar sits, so it visually
+   aligns with the start of the page's content column instead of sitting
+   flush against the sidebar gutter. */
+.fe-save-bar-content {
+  left: calc(var(--sidebar-w, 248px) + 28px + 2rem);
+}
 @media (max-width: 900px) {
   /* On mobile the .fe-admin-layout collapses to one column and the main
      sidebar usually doesn't reserve a column either; show the bar full-
-     width at the screen bottom. */
-  .fe-save-bar { left: 12px; right: 12px; bottom: 12px; width: auto; }
+     width at the screen bottom — applies to both variants. */
+  .fe-save-bar,
+  .fe-save-bar-content {
+    left: 12px; right: 12px; bottom: 12px; width: auto;
+  }
 }
 @keyframes fe-save-appear {
   from { opacity: 0; transform: translateY(8px); }
@@ -1810,10 +1820,29 @@ label.content-mode-switch {
   display: inline-flex; align-items: center; }
 .drag-handle .icon { font-size: 1.1rem; }
 .drag-handle:active { cursor: grabbing; }
-.file-list-sortable li { transition: background-color 100ms ease; }
-.file-list-sortable li.drag-over { background-color: var(--brand-soft); }
+.file-list-sortable li { transition: background-color 100ms ease; position: relative; }
 .file-list-sortable li.dragging { opacity: 0.4; }
-.file-list-sortable > tr { transition: background-color 100ms ease; }
+.file-list-sortable > tr { transition: background-color 100ms ease; position: relative; }
+/* Precise drop-target indicator: 3px brand-coloured line on the exact edge
+   where the dragged row will land. Replaces the full-row tint that used
+   to flash on dragover — the line is unambiguous about insertion point. */
+.file-list-sortable li.drop-before::before,
+.file-list-sortable li.drop-after::after,
+.file-list-sortable > tr.drop-before::before,
+.file-list-sortable > tr.drop-after::after {
+  content: ""; position: absolute; left: 0; right: 0;
+  height: 3px; background: var(--brand);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--panel), 0 2px 6px rgba(11, 92, 255, 0.35);
+  pointer-events: none; z-index: 2;
+}
+.file-list-sortable li.drop-before::before,
+.file-list-sortable > tr.drop-before::before { top: -2px; }
+.file-list-sortable li.drop-after::after,
+.file-list-sortable > tr.drop-after::after { bottom: -2px; }
+/* Back-compat: keep the old .drag-over class working for any sortable that
+   hasn't migrated yet. Still a soft tint, just less prominent. */
+.file-list-sortable li.drag-over,
 .file-list-sortable > tr.drag-over { background-color: var(--brand-soft); }
 .file-list-sortable > tr.dragging { opacity: 0.4; }
 .file-list-sortable > article { transition: background-color 100ms ease, transform 100ms ease; }

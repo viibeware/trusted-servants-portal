@@ -32,7 +32,8 @@
   <div class="card-head"><h2>Files</h2></div>
   {% if rs %}
   <ul class="file-list{% if can_edit %} file-list-sortable{% endif %}"
-      {% if can_edit %}data-reorder-url="{{ url_for('main.library_readings_reorder', lid=library.id) }}"{% endif %}>
+      {% if can_edit %}data-reorder-url="{{ url_for('main.library_readings_reorder', lid=library.id) }}"
+       data-reorder-manual="1" data-reorder-savebar="1"{% endif %}>
     {% for r in rs %}
     {% set edit_id = 'edit-library-file-' ~ r.id %}
     <li data-item-id="{{ r.id }}" {% if can_edit %}draggable="true"{% endif %}>
@@ -259,6 +260,18 @@
       </div>
     </form>
   </div>
+</div>
+{% endif %}
+
+{% if can_edit %}
+{# Yellow save bar — pops up after any drag-reorder change to this
+   page's sortable list, matching the Web Frontend admin pattern. The
+   ``fe-save-bar-content`` modifier shifts it 2rem to the right so it
+   doesn't sit flush against the main app sidebar like it does on the
+   frontend admin pages. #}
+<div class="fe-save-bar fe-save-bar-content" id="library-reorder-save-bar" hidden>
+  <span class="fe-save-bar-msg">Unsaved changes</span>
+  <button type="button" class="btn fe-save-bar-btn" id="library-reorder-save-btn">Save</button>
 </div>
 {% endif %}
 {% endblock %}

@@ -753,14 +753,23 @@
   });
 
   // Drag-and-drop reorder for .file-list-sortable
-  // Works with <ul><li>, <tbody><tr>, or any parent with direct-child [data-item-id] elements.
-  // Detects horizontal vs. vertical layout automatically so it can handle flex-row column editors.
+  // Works with <ul><li>, <tbody><tr>, or any parent with direct-child
+  // [data-item-id] elements. Detects horizontal vs. vertical layout
+  // automatically so it can handle flex-row column editors.
+  //
+  // Save firing: the order snapshot from dragstart is compared against the
+  // post-drag order on `dragend` and the save (or `reorder-changed` event)
+  // fires whenever they differ. This used to live in `drop`, but `drop`
+  // only fires when the user releases ON a valid drop target — releasing
+  // in the gap between rows or just outside the list silently dropped the
+  // reorder and snapped the row back on next refresh.
   function initSortable(list) {
     if (list.__tspSortableInit) return;
     list.__tspSortableInit = true;
     const url = list.dataset.reorderUrl;
     const category = list.dataset.reorderCategory || null;
     let dragging = null;
+    let originalOrder = null;
     const isHorizontal = () => {
       const first = list.querySelector(":scope > [data-item-id]");
       const second = first?.nextElementSibling;
@@ -769,6 +778,32 @@
       const b = second.getBoundingClientRect();
       return Math.abs(b.left - a.left) > Math.abs(b.top - a.top);
     };
+    const clearMarkers = () => {
+      list.querySelectorAll(":scope > .drop-before, :scope > .drop-after, :scope > .drag-over")
+        .forEach(x => x.classList.remove("drop-before", "drop-after", "drag-over"));
+    };
+    const snapshotOrder = () => Array.from(list.querySelectorAll(":scope > [data-item-id]"))
+      .map(x => x.dataset.itemId);
+    const orderEqual = (a, b) => a && b && a.length === b.length &&
+      a.every((id, i) => id === b[i]);
+
+    async function commitImmediate(order) {
+      const payload = category ? { order, category } : { order };
+      const label = list.dataset.reorderToast;
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+          credentials: "same-origin",
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) showToast(label ? (label + " saved") : "Order saved");
+        else showToast("Save failed — retry", "error");
+      } catch (_) {
+        showToast("Save failed — retry", "error");
+      }
+    }
+
     const bindItem = (item) => {
       if (item.__tspSortableBound) return;
       item.__tspSortableBound = true;
@@ -789,14 +824,25 @@
         }
         dragging = item;
         item.classList.add("dragging");
+        originalOrder = snapshotOrder();
         e.dataTransfer.effectAllowed = "move";
         try { e.dataTransfer.setData("text/plain", item.dataset.itemId || ""); } catch (_) {}
       });
       item.addEventListener("dragend", () => {
         item.classList.remove("dragging");
-        list.querySelectorAll(":scope > .drag-over").forEach(x => x.classList.remove("drag-over"));
+        clearMarkers();
+        const currentOrder = snapshotOrder();
+        const changed = originalOrder && !orderEqual(originalOrder, currentOrder);
         dragging = null;
         mousedownOnHandle = false;
+        const wasOriginal = originalOrder;
+        originalOrder = null;
+        if (!changed || !url) return;
+        if (list.dataset.reorderManual === "1") {
+          list.dispatchEvent(new CustomEvent("reorder-changed", { bubbles: true }));
+        } else {
+          commitImmediate(currentOrder);
+        }
       });
       item.addEventListener("dragover", (e) => {
         if (!dragging || dragging === item) return;
@@ -806,35 +852,23 @@
         const after = isHorizontal()
           ? (e.clientX - rect.left) > rect.width / 2
           : (e.clientY - rect.top) > rect.height / 2;
-        item.classList.add("drag-over");
+        // Tighten the drop indicator: show an inserting line on the
+        // exact edge of the target instead of a full-row tint, so the
+        // user can see precisely where the row will land.
+        clearMarkers();
+        item.classList.add(after ? "drop-after" : "drop-before");
         if (after) item.parentNode.insertBefore(dragging, item.nextSibling);
         else item.parentNode.insertBefore(dragging, item);
       });
-      item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
-      item.addEventListener("drop", async (e) => {
+      item.addEventListener("dragleave", () => {
+        item.classList.remove("drop-before", "drop-after", "drag-over");
+      });
+      // `drop` is intentionally a no-op for the reorder save path — `dragend`
+      // is the canonical commit point because it always fires regardless of
+      // whether the cursor was over a valid target on release.
+      item.addEventListener("drop", (e) => {
         e.preventDefault();
-        item.classList.remove("drag-over");
-        if (!url) return;
-        if (list.dataset.reorderManual === "1") {
-          list.dispatchEvent(new CustomEvent("reorder-changed", { bubbles: true }));
-          return;
-        }
-        const order = Array.from(list.querySelectorAll(":scope > [data-item-id]"))
-          .map(x => x.dataset.itemId);
-        const payload = category ? { order, category } : { order };
-        const label = list.dataset.reorderToast;
-        try {
-          const res = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-            credentials: "same-origin",
-            body: JSON.stringify(payload),
-          });
-          if (res.ok) showToast(label ? (label + " saved") : "Order saved");
-          else showToast("Save failed — retry", "error");
-        } catch (_) {
-          showToast("Save failed — retry", "error");
-        }
+        clearMarkers();
       });
     };
     list.__tspBindItem = bindItem;
@@ -909,6 +943,63 @@
       }
     });
   });
+
+  // Yellow save-bar wireup for any data-reorder-manual + data-reorder-savebar
+  // sortable list. Matches the Web Frontend admin's save-bar pattern: drag a
+  // row, the bar fades in at the bottom-left of the viewport, click Save to
+  // commit the order and reload so the rendered list matches the saved one.
+  // Used on the library detail page so admins reorder readings without
+  // each individual drop firing a save.
+  (function reorderSaveBar(){
+    const lists = document.querySelectorAll('[data-reorder-savebar="1"]');
+    if (!lists.length) return;
+    const bar = document.getElementById('library-reorder-save-bar');
+    const btn = document.getElementById('library-reorder-save-btn');
+    if (!bar || !btn) return;
+    const msg = bar.querySelector('.fe-save-bar-msg');
+    let dirtyList = null;
+
+    lists.forEach(list => {
+      list.addEventListener('reorder-changed', () => {
+        dirtyList = list;
+        bar.hidden = false;
+        bar.classList.remove('is-leaving');
+        if (msg) msg.textContent = 'Unsaved changes';
+        btn.disabled = false;
+        btn.textContent = 'Save';
+      });
+    });
+
+    btn.addEventListener('click', async () => {
+      if (!dirtyList) { bar.hidden = true; return; }
+      const url = dirtyList.dataset.reorderUrl;
+      if (!url) return;
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      const order = Array.from(dirtyList.querySelectorAll(':scope > [data-item-id]'))
+        .map(x => x.dataset.itemId);
+      const category = dirtyList.dataset.reorderCategory || null;
+      const payload = category ? { order, category } : { order };
+      try {
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload),
+        });
+        if (!r.ok) throw new Error('save failed: ' + r.status);
+        if (msg) msg.textContent = 'Saved';
+        const reload = () => window.location.reload();
+        bar.addEventListener('animationend', reload, { once: true });
+        bar.classList.add('is-leaving');
+        setTimeout(reload, 360);
+      } catch (_) {
+        btn.disabled = false;
+        btn.textContent = 'Save';
+        if (msg) msg.textContent = 'Save failed — try again';
+      }
+    });
+  })();
 
   // Inline save for per-file edit accordions (keep modal open)
   document.querySelectorAll("form[data-inline-save]").forEach(form => {
