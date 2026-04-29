@@ -212,7 +212,7 @@ p { margin: .25rem 0; }
 .sidebar-footer-img-link { display: flex; justify-content: center; padding: 6px 0 4px; }
 .sidebar-footer-img-link img { max-width: 80px; width: 100%; height: auto; display: block; }
 .brand-version { display: block; width: fit-content; margin: 4px auto; padding: 2px 8px; text-align: center;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.6875rem;
+  font-family: inherit; font-size: 0.6875rem;
   color: var(--muted); background: rgba(127, 127, 127, 0.15); border-radius: 6px; }
 .sidebar nav { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
 .sidebar nav a {
