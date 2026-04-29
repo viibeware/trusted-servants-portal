@@ -154,7 +154,8 @@ def inject_globals():
     pending_access_count = 0
     try:
         if current_user.is_authenticated and current_user.is_admin():
-            pending_access_count = AccessRequest.query.filter_by(status="pending").count()
+            pending_access_count = AccessRequest.query.filter_by(
+                status="pending", is_archived=False).count()
     except Exception:
         pending_access_count = 0
     try:
@@ -252,7 +253,7 @@ def index():
     locked_accounts = []
     if current_user.is_admin():
         access_requests = (AccessRequest.query
-                           .filter_by(status="pending")
+                           .filter_by(status="pending", is_archived=False)
                            .order_by(AccessRequest.created_at.desc())
                            .limit(6).all())
         online_count, online_users = _online_users()
@@ -1156,7 +1157,7 @@ def sidebar_nav_fragment():
     changes immediately without a full page reload."""
     s = _get_site_setting()
     nav_items = NavLink.query.order_by(NavLink.position, NavLink.id).all()
-    pending = AccessRequest.query.filter_by(status="pending").count()
+    pending = AccessRequest.query.filter_by(status="pending", is_archived=False).count()
     return render_template("_sidebar_nav.html",
                            site=s, nav_links=nav_items,
                            pending_access_count=pending)
@@ -4644,17 +4645,27 @@ def request_access_submit():
 @bp.route("/access-requests")
 @admin_required
 def access_requests():
-    items = AccessRequest.query.order_by(AccessRequest.status.asc(),
-                                         AccessRequest.created_at.desc()).all()
-    # Roles are exposed via the read-only ``AccessRequest.roles`` property
-    # — the loop that previously mutated each instance with the parsed
-    # list is gone. ``no-store`` on the response defeats any stale-HTML
-    # render the browser might cache (the modal-driven Create User flow
-    # navigates away and back, which on some browsers can re-paint a
-    # cached version of this list with stale row content).
+    view = (request.args.get("view") or "active").strip().lower()
+    if view not in ("active", "archived"):
+        view = "active"
+    q = AccessRequest.query
+    if view == "archived":
+        q = q.filter(AccessRequest.is_archived.is_(True))
+        items = q.order_by(AccessRequest.archived_at.desc().nullslast(),
+                           AccessRequest.created_at.desc()).all()
+    else:
+        q = q.filter(AccessRequest.is_archived.is_(False))
+        # Active list: pending first (status='pending' > 'handled' alpha,
+        # but we want pending visible at the top, so explicit ordering).
+        items = q.order_by(AccessRequest.status.asc(),
+                           AccessRequest.created_at.desc()).all()
+    archived_count = AccessRequest.query.filter_by(is_archived=True).count()
+    active_count = AccessRequest.query.filter_by(is_archived=False).count()
     resp = current_app.make_response(
-        render_template("access_requests.html", items=items)
+        render_template("access_requests.html", items=items, view=view,
+                        archived_count=archived_count, active_count=active_count)
     )
+    # Defeat stale-HTML caching after the modal-driven Create User flow.
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp.headers["Pragma"] = "no-cache"
     return resp
@@ -4668,7 +4679,40 @@ def access_request_handled(rid):
     r.status = "handled" if r.status == "pending" else "pending"
     r.handled_at = datetime.utcnow() if r.status == "handled" else None
     db.session.commit()
-    return redirect(url_for("main.access_requests"))
+    return redirect(url_for("main.access_requests",
+                            view=request.form.get("view") or "active"))
+
+
+@bp.route("/access-requests/<int:rid>/archive", methods=["POST"])
+@admin_required
+def access_request_archive(rid):
+    """Move a handled request into the archive view. Pending requests
+    are auto-flipped to handled at the same time so the archived row
+    has a coherent status. Reversible via ``access_request_unarchive``.
+    """
+    from datetime import datetime
+    r = db.session.get(AccessRequest, rid) or abort(404)
+    if r.status == "pending":
+        r.status = "handled"
+        r.handled_at = datetime.utcnow()
+    r.is_archived = True
+    r.archived_at = datetime.utcnow()
+    db.session.commit()
+    flash("Request archived", "success")
+    return redirect(url_for("main.access_requests",
+                            view=request.form.get("view") or "active"))
+
+
+@bp.route("/access-requests/<int:rid>/unarchive", methods=["POST"])
+@admin_required
+def access_request_unarchive(rid):
+    r = db.session.get(AccessRequest, rid) or abort(404)
+    r.is_archived = False
+    r.archived_at = None
+    db.session.commit()
+    flash("Request restored from archive", "success")
+    return redirect(url_for("main.access_requests",
+                            view=request.form.get("view") or "archived"))
 
 
 @bp.route("/access-requests/<int:rid>/delete", methods=["POST"])
@@ -4678,7 +4722,8 @@ def access_request_delete(rid):
     db.session.delete(r)
     db.session.commit()
     flash("Request deleted", "success")
-    return redirect(url_for("main.access_requests"))
+    return redirect(url_for("main.access_requests",
+                            view=request.form.get("view") or "active"))
 
 
 # --- First-run setup wizard ---

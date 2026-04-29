@@ -633,6 +633,9 @@ def _migrate_sqlite(app):
         for col, ddl in (("is_draft", "BOOLEAN NOT NULL DEFAULT 0"),
                          ("slug", "VARCHAR(255)")):
             add("post", col, ddl)
+        for col, ddl in (("is_archived", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("archived_at", "DATETIME")):
+            add("access_request", col, ddl)
         for col, ddl in (("kind", "VARCHAR(16) NOT NULL DEFAULT 'link'"),
                          ("button_style", "VARCHAR(16) NOT NULL DEFAULT 'pill'"),
                          ("open_in_new_tab", "BOOLEAN NOT NULL DEFAULT 0"),

@@ -548,6 +548,12 @@ class AccessRequest(db.Model):
     status = db.Column(db.String(16), nullable=False, default="pending")  # pending|handled
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     handled_at = db.Column(db.DateTime)
+    # Soft-archive flag: handled rows that the admin no longer wants
+    # cluttering the active list flip to archived. Independent of
+    # status — an archived row keeps its handled/pending state for
+    # historical context. Browse the archive via ?view=archived.
+    is_archived = db.Column(db.Boolean, nullable=False, default=False)
+    archived_at = db.Column(db.DateTime)
 
     @property
     def roles(self):

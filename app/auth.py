@@ -21,6 +21,95 @@ ROLE_LABELS = {
     "viewer":            "Viewer",
 }
 
+# Plain-text bullet list of capabilities included in the welcome email
+# sent to a freshly-created user. Mirrors the descriptions on the
+# Users-panel "Roles & permissions" card and the dashboard role widget
+# so the recipient gets the same picture of what their role unlocks.
+ROLE_PERMISSIONS = {
+    "admin": [
+        "Full access to every feature in the portal.",
+        "Create, edit, and delete meetings, libraries, readings, and uploads.",
+        "Manage users, access requests, modules, and site settings.",
+        "Edit the Web Frontend (header, footer, homepage, navigation, theme).",
+        "Edit the Intergroup Email Accounts page and Documents/Minutes libraries.",
+    ],
+    "editor": [
+        "Create, edit, and reorder meetings, locations, schedules, and Zoom accounts.",
+        "Create, edit, and reorder libraries and the readings/files inside them.",
+        "Upload media and manage file attachments on meetings.",
+        "Cannot reach Settings, Users, the Web Frontend module, or the Intergroup Email Accounts page.",
+        "Cannot edit the Intergroup Documents or Intergroup Minutes libraries (admin / Intergroup-Member only).",
+    ],
+    "frontend_editor": [
+        "Inherits every Editor capability above.",
+        "Edit the Web Frontend module: header, footer, homepage builder, navigation, mega menus, alert bars, theme/design tokens.",
+        "Toggle public visibility of the Web Frontend.",
+        "Cannot reach Settings, Users, or the Intergroup Email Accounts page.",
+        "Cannot edit the Intergroup Documents or Intergroup Minutes libraries.",
+    ],
+    "intergroup_member": [
+        "Inherits every Editor capability above.",
+        "Exclusive edit access to the Intergroup Documents and Intergroup Minutes libraries — regular Editors and Frontend Editors cannot edit those.",
+        "Cannot edit the Web Frontend module.",
+        "Cannot reach Settings, Users, or the Intergroup Email Accounts page.",
+        "Library and reading deletion remains admin-only.",
+    ],
+    "viewer": [
+        "Read-only access across the portal.",
+        "View meetings, libraries, readings, and uploaded files.",
+        "View Zoom accounts and the calendar.",
+        "Customize your own dashboard widgets and order.",
+        "Cannot edit, upload, or reach admin areas.",
+    ],
+}
+
+
+def _send_welcome_email(user, plaintext_password):
+    """Send a freshly-created user their login credentials + a plain-
+    English breakdown of what their role can do. Returns ``(ok, err)``
+    matching the ``mail.send_mail`` contract; silently no-ops (with an
+    informative reason) when SMTP isn't configured or the user has no
+    email on file."""
+    from .mail import send_mail
+    site = SiteSetting.query.first()
+    if not site or not site.smtp_host or not site.smtp_from_email:
+        return False, "SMTP is not configured"
+    if not user.email:
+        return False, "User has no email address"
+
+    role_label = ROLE_LABELS.get(user.role, user.role)
+    perms = ROLE_PERMISSIONS.get(user.role, [])
+    portal_name = (site.smtp_from_name or "Trusted Servants Pro").strip() or "Trusted Servants Pro"
+    login_url = url_for("auth.login", _external=True)
+
+    lines = [
+        f"Hello {user.username},",
+        "",
+        f"An account has been created for you on {portal_name}.",
+        "",
+        "Your sign-in details:",
+        f"  Username: {user.username}",
+        f"  Email:    {user.email}",
+        f"  Password: {plaintext_password}",
+        f"  Role:     {role_label}",
+        "",
+        f"Sign in at: {login_url}",
+        "",
+        f"What your {role_label} role can do:",
+    ]
+    for p in perms:
+        lines.append(f"  • {p}")
+    lines += [
+        "",
+        "If you did not expect this email, please ignore it or let an administrator know.",
+        "",
+        "— Trusted Servants Pro",
+    ]
+    body = "\n".join(lines)
+    return send_mail(site, user.email,
+                     f"Your {portal_name} account",
+                     body)
+
 TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 
 # DB-backed login rate limiter. Rows persist across gunicorn workers and
@@ -270,6 +359,18 @@ def users_create():
     db.session.add(u)
     db.session.commit()
     flash(f"User {username} created", "success")
+
+    # Optional welcome email. Defaults to opt-in via the form checkbox;
+    # falls back to the success path silently when SMTP isn't configured
+    # or sending fails — the admin keeps the credentials they typed in
+    # the form either way, so a missed email doesn't block account use.
+    if request.form.get("send_welcome_email") == "1":
+        ok, err = _send_welcome_email(u, password)
+        if ok:
+            flash(f"Welcome email sent to {u.email}", "success")
+        else:
+            flash(f"User created but welcome email failed: {err}", "warning")
+
     return redirect(url_for("auth.users", embed=1) if request.form.get("embed") == "1" else url_for("auth.users"))
 
 

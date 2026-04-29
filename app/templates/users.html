@@ -23,6 +23,12 @@
           {% for r in roles %}<option value="{{ r }}">{{ role_labels[r] if role_labels and r in role_labels else r }}</option>{% endfor %}
         </select>
       </label>
+      <label class="check welcome-email-check">
+        <input type="checkbox" name="send_welcome_email" value="1" checked>
+        <span>Email login details to the new user
+          <span class="muted smaller">— sends username, password, and a summary of what their role can do (requires SMTP).</span>
+        </span>
+      </label>
       <div class="form-actions"><button class="btn btn-primary">Create</button></div>
     </form>
   </section>

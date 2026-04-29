@@ -3,9 +3,32 @@
 {% block heading %}Access Requests{% endblock %}
 {% block content %}
 <section class="card">
-  <div class="card-head"><h2>Requests</h2></div>
+  <div class="card-head ar-card-head">
+    <h2>Requests</h2>
+    {# Active vs. Archived view tabs. Default lands on Active. The
+       archive holds historical requests admins want to keep for
+       reference but no longer need cluttering the active list. #}
+    <div class="ar-view-tabs" role="tablist">
+      <a href="{{ url_for('main.access_requests', view='active') }}"
+         class="ar-view-tab {% if view == 'active' %}is-active{% endif %}"
+         role="tab"
+         aria-selected="{{ 'true' if view == 'active' else 'false' }}">
+        Active
+        {% if active_count %}<span class="ar-view-count">{{ active_count }}</span>{% endif %}
+      </a>
+      <a href="{{ url_for('main.access_requests', view='archived') }}"
+         class="ar-view-tab {% if view == 'archived' %}is-active{% endif %}"
+         role="tab"
+         aria-selected="{{ 'true' if view == 'archived' else 'false' }}">
+        Archived
+        {% if archived_count %}<span class="ar-view-count">{{ archived_count }}</span>{% endif %}
+      </a>
+    </div>
+  </div>
   {% if not items %}
-  <p class="muted">No access requests yet.</p>
+  <p class="muted">
+    {% if view == 'archived' %}No archived requests yet. Click <i>Archive</i> on a handled request to move it here.{% else %}No access requests yet.{% endif %}
+  </p>
   {% else %}
   <table class="tbl">
     <thead>
@@ -16,6 +39,7 @@
         <th>Roles</th>
         <th>Meeting</th>
         <th>Submitted</th>
+        {% if view == 'archived' %}<th>Archived</th>{% endif %}
         <th></th>
       </tr>
     </thead>
@@ -37,18 +61,45 @@
         </td>
         <td class="muted">{{ r.meeting_name or '—' }}</td>
         <td class="muted small">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        {% if view == 'archived' %}
+        <td class="muted small">{% if r.archived_at %}{{ r.archived_at.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}</td>
+        {% endif %}
         <td class="nowrap">
+          {% if view == 'active' %}
           <button type="button" class="btn btn-sm btn-primary"
                   data-create-user-from-request
                   data-email="{{ r.email }}"
                   data-name="{{ r.name }}"
                   data-phone="{{ r.phone or '' }}">Create User</button>
           <form method="post" action="{{ url_for('main.access_request_handled', rid=r.id) }}" style="display:inline">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="view" value="{{ view }}">
             <button class="btn btn-sm">{% if r.status == 'pending' %}Mark Handled{% else %}Reopen{% endif %}</button>
           </form>
-          <form method="post" action="{{ url_for('main.access_request_delete', rid=r.id) }}" onsubmit="return confirm('Delete this request?');" style="display:inline">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if r.status == 'handled' %}
+          <form method="post" action="{{ url_for('main.access_request_archive', rid=r.id) }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="view" value="{{ view }}">
+            <button class="btn btn-sm" title="Move to archive for future reference">Archive</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('main.access_request_archive', rid=r.id) }}"
+                onsubmit="return confirm('Archive this pending request? It will be marked handled and moved to the archive.');" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="view" value="{{ view }}">
+            <button class="btn btn-sm" title="Mark handled and move to archive">Archive</button>
+          </form>
+          {% endif %}
+          {% else %}
+          <form method="post" action="{{ url_for('main.access_request_unarchive', rid=r.id) }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="view" value="{{ view }}">
+            <button class="btn btn-sm btn-primary" title="Restore to the active list">Restore</button>
+          </form>
+          {% endif %}
+          <form method="post" action="{{ url_for('main.access_request_delete', rid=r.id) }}" onsubmit="return confirm('Delete this request permanently?');" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="view" value="{{ view }}">
             <button class="btn btn-sm btn-danger">Delete</button>
           </form>
         </td>

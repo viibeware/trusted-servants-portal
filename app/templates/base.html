@@ -63,9 +63,9 @@
       <div class="brand-version">v{{ app_version }}</div>
       <div class="user-chip">
         <div class="avatar">{{ current_user.username[:1].upper() }}</div>
-        <div class="user-chip-name">
+        <div class="user-chip-name" title="{{ current_user.username }}">
           <div class="u-name">{{ current_user.username }}</div>
-          <div class="u-role">{{ current_user.role }}</div>
+          <div class="u-role">{{ current_user.role.replace('_', ' ') }}</div>
         </div>
         <button type="button" class="icon-btn icon-btn-inline" data-open-modal="settings-modal" title="Settings" aria-label="Settings">{{ icon('settings') }}</button>
       </div>
@@ -928,6 +928,16 @@
 
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
+            <li>
+              <div class="u-name">1.7.9</div>
+              <div class="muted smaller">April 2026</div>
+              <ul>
+                <li><b>Archive access requests</b> — handled requests can now be moved out of the active list into an Archive view for future reference. Each row in Active grew an <i>Archive</i> button; the card head grew a pill-style Active / Archived tab strip with live counts; Archive rows can be <i>Restored</i> or permanently deleted. New <code>is_archived</code> + <code>archived_at</code> columns on <code>AccessRequest</code> with an additive migration. The dashboard pending-requests widget and sidebar badge filter <code>is_archived=False</code> so archived rows don't inflate the count.</li>
+                <li><b>Sidebar footer handles long usernames</b> — the user-chip's name + role lines now <code>white-space: nowrap; overflow: hidden; text-overflow: ellipsis</code> with the avatar / settings button locked to <code>flex: 0 0 auto</code> and the footer container clamped with <code>min-width: 0; overflow: hidden</code>. Long usernames clip with an ellipsis instead of pushing the settings button outside the sidebar; the full value is exposed via <code>title=</code> on hover. Role text also picks up nowrap-ellipsis so multi-word roles like "Intergroup member" stay on one line.</li>
+                <li><b>Welcome email on user creation</b> — the Create User form on Settings → Users grew a "Email login details to the new user" checkbox (default on). When ticked and SMTP is configured, the new user receives a plain-text email with their username, email, password, role label, and a bulleted summary of what their role can do — pulled from a new <code>ROLE_PERMISSIONS</code> map keyed by the same role keys used elsewhere. Failures fall back to a warning flash so account creation never blocks on an SMTP issue.</li>
+                <li><b>Expanded role widget on the dashboard</b> — the "Your role" panel inside the Server Stats card now branches per concrete role instead of lumping every editor-tier role together. Editors, Frontend Editors, and Intergroup Members each get a distinct bullet list spelling out what they can edit, what they inherit, and what's still off-limits. Role labels render with underscores stripped (<i>Intergroup member</i>, not <code>intergroup_member</code>).</li>
+              </ul>
+            </li>
             <li>
               <div class="u-name">1.7.8</div>
               <div class="muted smaller">April 2026</div>
