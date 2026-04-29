@@ -19,10 +19,12 @@
     </form>
     {% endif %}
   {% endif %}
+  {% if current_user.can_create_meetings() %}
   <form method="post" action="{{ url_for('main.meeting_delete', mid=meeting.id) }}" onsubmit="return confirm('Delete this meeting permanently?');" style="display:inline">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-danger">Delete</button>
   </form>
+  {% endif %}
   {% endif %}
 {% endblock %}
 {% block content %}

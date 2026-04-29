@@ -114,6 +114,22 @@ def admin_required(f):
     return wrapper
 
 
+def meeting_admin_required(f):
+    """Gate for meeting create + delete: admins and Intergroup Members
+    only. Editors and Frontend Editors keep edit/schedule/attach
+    authority on existing meetings via ``editor_required`` elsewhere
+    but can't provision new entries or remove them."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for("auth.login"))
+        if not current_user.can_create_meetings():
+            flash("You don't have permission to do that", "danger")
+            return redirect(request.referrer or url_for("main.index"))
+        return f(*args, **kwargs)
+    return wrapper
+
+
 def frontend_editor_required(f):
     """Admins and frontend_editor role can reach Web Frontend editor routes."""
     @wraps(f)
@@ -577,7 +593,7 @@ def _apply_meeting_form(m, form, schedules, files=None):
 
 
 @bp.route("/meetings/new", methods=["POST"])
-@editor_required
+@meeting_admin_required
 def meeting_new():
     schedules, err = _parse_schedule_form(request.form)
     if err:
@@ -639,7 +655,7 @@ def meeting_json(mid):
 
 
 @bp.route("/meetings/<int:mid>/delete", methods=["POST"])
-@editor_required
+@meeting_admin_required
 def meeting_delete(mid):
     m = db.session.get(Meeting, mid) or abort(404)
     db.session.delete(m)

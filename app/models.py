@@ -133,6 +133,14 @@ class User(UserMixin, db.Model):
         role that has editor tools also passes the broad editor gate."""
         return self.can_edit()
 
+    def can_create_meetings(self):
+        """Authorized to provision new meetings or delete existing ones.
+        Admins and Intergroup Members only — Editors and Frontend
+        Editors keep their authority to edit, schedule, and attach
+        files to existing meetings, but creating new entries and
+        removing them is held back to the trusted-servant tier."""
+        return self.role in ("admin", "intergroup_member")
+
     def can_bulk_edit_categories(self, reading):
         """Per-reading gate for the multi-select bulk-edit-categories
         action on the library detail page. Mirrors

@@ -483,8 +483,10 @@
              {'admin':'yes','editor':'yes','frontend_editor':'yes','intergroup_member':'yes','viewer':'yes'}),
             ('Customize dashboard widgets and order',
              {'admin':'yes','editor':'yes','frontend_editor':'yes','intergroup_member':'yes','viewer':'yes'}),
-            ('Create / edit meetings, locations, schedules, Zoom accounts',
+            ('Edit existing meetings, locations, schedules, Zoom accounts',
              {'admin':'yes','editor':'yes','frontend_editor':'yes','intergroup_member':'yes','viewer':'no'}),
+            ('Create new meetings or delete meetings',
+             {'admin':'yes','editor':'no','frontend_editor':'no','intergroup_member':'yes','viewer':'no'}),
             ('Create regular libraries; upload files to libraries',
              {'admin':'yes','editor':'yes','frontend_editor':'yes','intergroup_member':'yes','viewer':'no'}),
             ('Upload, edit, delete files attached to meetings (any uploader)',
@@ -1075,6 +1077,7 @@
                 <li><b>Editable usernames on the Users tab</b> — the Username column on Settings → Users is now an inline input alongside the existing Email / Phone / Role / Reset password fields, so renaming a user is a single Save click on their row instead of a delete-and-recreate. The <code>users_update</code> route trims and length-checks the new value (64-char model limit), then runs a case-insensitive collision check against every other user's username (matches the login lookup, so two names that differ only in case can't collide at sign-in). Self-rename to the same value is a no-op; an empty value falls through unchanged.</li>
                 <li><b>Users-row action spacing</b> — Save / Unlock / Delete used to render flush against each other because the per-row form closes mid-cell so the auxiliary forms can be siblings. New <code>.tbl td.users-actions</code> rule sets <code>display: flex; gap: 10px; align-items: center; flex-wrap: wrap</code>; the inline-display forms inside drop their default block margin via <code>display: inline-flex; margin: 0</code> so they participate in the flex gap. Buttons now have breathing room and wrap cleanly on narrow rows.</li>
                 <li><b>Settings modal stretches to 1180px on desktop</b> — <code>#settings-modal .modal-panel</code> now declares <code>max-width: 1180px</code> directly alongside its existing height rule, so the same id-scoped block sets both axes. The <code>.modal-lg</code> class on the modal already provided this width via <code>.modal-lg .modal-panel</code>, but pinning it on the id selector too means future markup changes that drop the class won't shrink the modal back to the 680px default.</li>
+                <li><b>Meeting create + delete gated to admins and Intergroup Members</b> — Editors and Frontend Editors keep their authority to edit existing meetings, schedule them, attach files, and tweak Zoom / location bindings, but provisioning new meetings and removing existing ones is now held back to the trusted-servant tier. New <code>User.can_create_meetings()</code> returns True only for <code>admin</code> and <code>intergroup_member</code>; new <code>meeting_admin_required</code> decorator gates the <code>meeting_new</code> and <code>meeting_delete</code> routes server-side; the "+ New Meeting" button + its modal markup on <code>/meetings</code> and the per-meeting Delete button on the detail page hide for unauthorised roles. Your Access matrix grew a new dedicated row "Create new meetings or delete meetings" (admin / Intergroup Member only); dashboard role widgets, welcome email, and users-panel role descriptions all gained explicit <i>cannot create new meetings or delete existing ones</i> wording for both Editor and Frontend Editor.</li>
               </ul>
             </li>
             <li>

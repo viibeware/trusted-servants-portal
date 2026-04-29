@@ -35,7 +35,7 @@ _VIEWER_BASE = [
 ]
 
 _EDITOR_BASE = _VIEWER_BASE + [
-    "Create, edit, and reorder meetings, locations, schedules, and Zoom accounts.",
+    "Edit existing meetings, locations, schedules, and Zoom accounts (cannot create new meetings or delete existing ones — admin / Intergroup Member only).",
     "Create, edit, and reorder libraries and the readings/files inside them.",
     "Upload media and manage file attachments on meetings.",
 ]
