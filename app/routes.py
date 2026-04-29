@@ -4564,20 +4564,46 @@ def email_save():
 @bp.route("/settings/email-test", methods=["POST"])
 @admin_required
 def email_test():
+    """Send a test email using the persisted SMTP settings. Returns
+    JSON when called via XHR (X-Requested-With) so the settings modal
+    can surface the actual SMTP outcome — success, recipient address,
+    or the underlying SMTP error — instead of the modal's generic
+    'Saved' toast that hides whether the message actually went out.
+
+    Falls back to the legacy flash + redirect flow for non-XHR
+    callers (e.g. a no-JS submit) so the page always communicates
+    the outcome somehow."""
     from .mail import send_mail, _recipients
     s = _get_site_setting()
+    wants_json = (request.headers.get("X-Requested-With", "").lower()
+                  in ("fetch", "xmlhttprequest"))
     to_raw = (request.form.get("to") or "").strip() or s.access_request_to or s.smtp_from_email
     recipients = _recipients(to_raw)
     if not recipients:
+        if wants_json:
+            return jsonify(ok=False, message="Provide a test recipient"), 200
         flash("Provide a test recipient", "danger")
+        return redirect(request.referrer or url_for("main.index"))
+    if not (s.smtp_host and s.smtp_from_email):
+        msg = ("SMTP isn't configured yet. Enter SMTP host, port, security, "
+               "and From-email above, click Save, then run the test.")
+        if wants_json:
+            return jsonify(ok=False, message=msg), 200
+        flash(msg, "danger")
         return redirect(request.referrer or url_for("main.index"))
     ok, err = send_mail(s, recipients,
                         "Trusted Servants Pro test email",
                         "This is a test message from Trusted Servants Pro. SMTP is configured correctly.")
     if ok:
-        flash(f"Test email sent to {', '.join(recipients)}", "success")
+        msg = f"Test email sent to {', '.join(recipients)}"
+        if wants_json:
+            return jsonify(ok=True, message=msg), 200
+        flash(msg, "success")
     else:
-        flash(f"Failed to send test email: {err}", "danger")
+        msg = f"SMTP send failed: {err}"
+        if wants_json:
+            return jsonify(ok=False, message=msg), 200
+        flash(msg, "danger")
     return redirect(request.referrer or url_for("main.index"))
 
 

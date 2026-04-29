@@ -676,7 +676,8 @@
 
         <div class="u-name">Send test email</div>
         <p class="muted small">Verifies the SMTP credentials above by sending a test message.</p>
-        <form class="form" method="post" action="{{ url_for('main.email_test') }}">
+        <form class="form" method="post" action="{{ url_for('main.email_test') }}"
+              data-savebar-skip="1" data-email-test-form>
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <label>Recipient<input name="to" type="email" placeholder="{{ site.access_request_to or site.smtp_from_email or 'you@example.com' }}"></label>
           <div class="form-actions"><button class="btn">Send Test</button></div>
@@ -928,6 +929,15 @@
 
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
+            <li>
+              <div class="u-name">1.7.10</div>
+              <div class="muted smaller">April 2026</div>
+              <ul>
+                <li><b>SMTP "Send Test" actually reports the result</b> — the test endpoint now returns JSON (<code>{ok, message}</code>) when called via XHR with the real SMTP outcome (success and recipient address, or the underlying error like <code>SMTP timeout</code>, <code>auth failed</code>, etc.). The settings-modal AJAX flow surfaces that message verbatim via the existing toast system instead of always showing "Saved" regardless of whether the message went out. Falls back to the legacy flash + redirect for non-JS submits. The disabled-state button label now reads "Sending…" on the test form (was "Saving…", which was misleading).</li>
+                <li><b>Test runs against the typed-but-unsaved SMTP settings</b> — clicking <i>Send Test</i> when the SMTP form above has unsaved edits in the yellow save bar now auto-saves those edits first, then runs the test. Without this, the test would hit whatever SMTP config was last persisted to the database — easy to confuse with "the typed values" but not actually the same. The save-bar dirty set is updated coherently after the auto-save so the bar hides if nothing else is pending.</li>
+                <li><b>Pre-flight SMTP check</b> — the test endpoint short-circuits with a clear message when SMTP host or From-email is missing in the database, instead of letting <code>send_mail</code> return a vague "SMTP is not configured" string after the redirect-and-toast flow has eaten it.</li>
+              </ul>
+            </li>
             <li>
               <div class="u-name">1.7.9</div>
               <div class="muted smaller">April 2026</div>

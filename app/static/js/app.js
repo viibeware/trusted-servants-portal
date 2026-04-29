@@ -502,22 +502,59 @@
     settingsModal.querySelectorAll("form").forEach(f => {
       if (f.closest(".settings-frame")) return;
       if (f.dataset.noAjax === "1") return;
-      f.addEventListener("submit", e => {
+      f.addEventListener("submit", async e => {
         e.preventDefault();
         const btn = f.querySelector('button[type="submit"], button:not([type])');
         const orig = btn ? btn.textContent : null;
-        if (btn){ btn.disabled = true; btn.textContent = "Saving…"; }
-        submitSettingsForm(f).then(() => {
-          showSettingsToast("Saved");
+        // Test buttons (e.g. Send Test on Email) hijack the verb so the
+        // disabled-state text reads "Sending…" instead of "Saving…" — a
+        // misleading label was a major part of the original bug report.
+        const isTestForm = f.matches("[data-email-test-form]");
+        const busyLabel = isTestForm ? "Sending…" : "Saving…";
+        if (btn){ btn.disabled = true; btn.textContent = busyLabel; }
+        try {
+          // For the email-test form: if the SMTP settings form sitting
+          // above it is dirty (admin typed new SMTP host/port/etc. but
+          // hasn't clicked the yellow Save bar yet), persist that first
+          // so the test runs against the values the admin just typed
+          // rather than stale DB state. Without this the test can
+          // succeed-or-fail based on settings the admin hasn't saved.
+          if (isTestForm) {
+            const smtpForm = settingsModal.querySelector(
+              'form[action$="/settings/email-save"]'
+            );
+            if (smtpForm && sbDirty.has(smtpForm)) {
+              await submitSettingsForm(smtpForm);
+              sbDirty.delete(smtpForm);
+              if (sbDirty.size === 0) {
+                if (sbBar) sbBar.hidden = true;
+              } else {
+                sbShow();
+              }
+            }
+          }
+          const data = await submitSettingsForm(f);
+          // If the endpoint returned JSON with a `message`, surface it
+          // verbatim. ``ok: false`` is treated as a soft error and
+          // shown via the danger toast even though the HTTP status
+          // is 200 — matches the pattern used by email-test, where
+          // an SMTP failure isn't an HTTP failure.
+          if (data && typeof data.message === "string") {
+            showSettingsToast(data.message, data.ok === false ? "danger" : "success");
+          } else {
+            showSettingsToast(isTestForm ? "Test sent" : "Saved");
+          }
           if (f.dataset.reloadOnSave === "1") {
-            // Brief delay so the "Saved" toast is visible before the reload.
             setTimeout(() => window.location.reload(), 400);
           }
-        }).catch(err => {
-          showSettingsToast("Save failed: " + err.message, "danger");
-        }).finally(() => {
+        } catch (err) {
+          showSettingsToast(
+            (isTestForm ? "Test failed: " : "Save failed: ") + err.message,
+            "danger"
+          );
+        } finally {
           if (btn){ btn.disabled = false; btn.textContent = orig; }
-        });
+        }
       });
     });
 
@@ -579,11 +616,26 @@
     // the canonical commit affordance — auto-submit toggles (modules
     // pane, role pickers) keep their existing on-change behavior since
     // they never had a save button to replace.
+    //
+    // sbDirty / sbBar / sbShow are declared at the settings-modal scope
+    // so the per-form submit handler above (which runs for the email
+    // Send Test button) can peek into the dirty set and auto-save the
+    // SMTP form before issuing the test request.
     const sbBar = document.getElementById("settings-save-bar");
     const sbBtn = document.getElementById("settings-save-bar-btn");
+    const sbMsg = sbBar && sbBar.querySelector(".fe-save-bar-msg");
+    const sbDirty = new Set();
+    function sbShow() {
+      if (!sbBar || !sbMsg || !sbBtn) return;
+      sbBar.hidden = false;
+      sbBar.classList.remove("is-leaving");
+      sbMsg.textContent = sbDirty.size > 1
+        ? "Unsaved changes (" + sbDirty.size + " sections)"
+        : "Unsaved changes";
+      sbBtn.disabled = false;
+      sbBtn.textContent = "Save";
+    }
     if (sbBar && sbBtn) {
-      const sbMsg = sbBar.querySelector(".fe-save-bar-msg");
-      const sbDirty = new Set();
 
       function sbTrackable(form) {
         if (form.closest(".settings-frame")) return false;
@@ -596,15 +648,6 @@
         return !!form.querySelector("button.btn-primary");
       }
 
-      function sbShow() {
-        sbBar.hidden = false;
-        sbBar.classList.remove("is-leaving");
-        sbMsg.textContent = sbDirty.size > 1
-          ? "Unsaved changes (" + sbDirty.size + " sections)"
-          : "Unsaved changes";
-        sbBtn.disabled = false;
-        sbBtn.textContent = "Save";
-      }
       function sbHideAfterSave() {
         sbMsg.textContent = "Saved";
         sbBar.classList.add("is-leaving");
