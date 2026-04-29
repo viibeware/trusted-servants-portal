@@ -1069,6 +1069,15 @@
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
             <li>
+              <div class="u-name">1.7.16</div>
+              <div class="muted smaller">April 2026</div>
+              <ul>
+                <li><b>Editable usernames on the Users tab</b> — the Username column on Settings → Users is now an inline input alongside the existing Email / Phone / Role / Reset password fields, so renaming a user is a single Save click on their row instead of a delete-and-recreate. The <code>users_update</code> route trims and length-checks the new value (64-char model limit), then runs a case-insensitive collision check against every other user's username (matches the login lookup, so two names that differ only in case can't collide at sign-in). Self-rename to the same value is a no-op; an empty value falls through unchanged.</li>
+                <li><b>Users-row action spacing</b> — Save / Unlock / Delete used to render flush against each other because the per-row form closes mid-cell so the auxiliary forms can be siblings. New <code>.tbl td.users-actions</code> rule sets <code>display: flex; gap: 10px; align-items: center; flex-wrap: wrap</code>; the inline-display forms inside drop their default block margin via <code>display: inline-flex; margin: 0</code> so they participate in the flex gap. Buttons now have breathing room and wrap cleanly on narrow rows.</li>
+                <li><b>Settings modal stretches to 1180px on desktop</b> — <code>#settings-modal .modal-panel</code> now declares <code>max-width: 1180px</code> directly alongside its existing height rule, so the same id-scoped block sets both axes. The <code>.modal-lg</code> class on the modal already provided this width via <code>.modal-lg .modal-panel</code>, but pinning it on the id selector too means future markup changes that drop the class won't shrink the modal back to the 680px default.</li>
+              </ul>
+            </li>
+            <li>
               <div class="u-name">1.7.15</div>
               <div class="muted smaller">April 2026</div>
               <ul>

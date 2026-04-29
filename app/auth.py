@@ -406,6 +406,23 @@ def users_update(uid):
     new_role = request.form.get("role")
     if new_role in ROLES:
         u.role = new_role
+    new_username = request.form.get("username", "").strip()
+    if new_username and new_username != u.username:
+        if len(new_username) > 64:
+            flash("Username must be 64 characters or fewer", "danger")
+            return redirect(url_for("auth.users", embed=1) if request.form.get("embed") == "1" else url_for("auth.users"))
+        # Case-insensitive collision check — login lookup is also
+        # case-insensitive, so two usernames that differ only in case
+        # would collide at sign-in time even if SQLite considers them
+        # distinct strings.
+        clash = User.query.filter(
+            func.lower(User.username) == new_username.lower(),
+            User.id != u.id,
+        ).first()
+        if clash:
+            flash(f"Username {new_username} is already in use", "danger")
+            return redirect(url_for("auth.users", embed=1) if request.form.get("embed") == "1" else url_for("auth.users"))
+        u.username = new_username
     new_email = request.form.get("email", "").strip()
     if new_email and new_email.lower() != (u.email or "").lower():
         clash = User.query.filter(

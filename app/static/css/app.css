@@ -2012,6 +2012,17 @@ button.chip { font-family: inherit; }
 .tbl input, .tbl select { padding: 6px 8px; font-size: 0.7812rem; }
 .nowrap { white-space: nowrap; }
 
+/* Users table actions cell — Save / Unlock / Delete sit as siblings
+   in one <td> (the per-row form closes mid-cell so the auxiliary
+   forms can be siblings rather than nested). Without explicit
+   spacing the buttons render flush against each other. flex with a
+   small gap gives them breathing room and lets the row wrap on
+   narrow viewports without overlapping. */
+.tbl td.users-actions {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.tbl td.users-actions form { display: inline-flex; margin: 0; }
+
 .reading-body {
   white-space: pre-wrap; font-family: Georgia, "Times New Roman", serif;
   font-size: 1rem; line-height: 1.7; margin: 0; background: transparent; color: var(--text);
@@ -2290,7 +2301,7 @@ form.hide-zoom .zoom-only, form.hide-zoom .zoom-only-field { display: none; }
 
 /* Settings modal */
 .modal-lg .modal-panel { max-width: 1180px; }
-#settings-modal .modal-panel { height: calc(100vh - 10vh); }
+#settings-modal .modal-panel { height: calc(100vh - 10vh); max-width: 1180px; }
 #settings-modal .settings-body { flex: 1 1 auto; height: auto; min-height: 0; }
 .user-chip-name { flex: 1; min-width: 0; }
 .icon-btn-inline { width: 40px; height: 40px; flex: 0 0 auto; font-size: 1.35rem; }

@@ -95,7 +95,8 @@
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
       <td data-label="Username">
-        {{ u.username }}
+        <input name="username" value="{{ u.username }}" required maxlength="64"
+               aria-label="Username for {{ u.username }}">
         {% if _lock_seconds %}
         <span class="badge badge-warning user-locked-badge" title="Auto-unlocks in ~{{ (_lock_seconds // 60) + 1 }} min">Locked</span>
         {% endif %}
