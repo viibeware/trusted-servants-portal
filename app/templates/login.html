@@ -40,10 +40,13 @@
         <span>Password <span class="req">*</span></span>
         <input name="password" type="password" required>
       </label>
-      <label class="check login-remember">
-        <input type="checkbox" name="remember" value="1">
-        <span>Remember me</span>
-      </label>
+      <div class="login-remember-row">
+        <label class="check login-remember">
+          <input type="checkbox" name="remember" value="1">
+          <span>Remember me</span>
+        </label>
+        <a class="login-forgot" href="{{ url_for('auth.forgot_password') }}">Forgot password?</a>
+      </div>
       {% if site and site.turnstile_enabled and site.turnstile_site_key %}
       <div class="cf-turnstile login-turnstile"
            data-sitekey="{{ site.turnstile_site_key }}"

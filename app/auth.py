@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import login_user, logout_user, login_required, current_user
 from sqlalchemy import func
 from werkzeug.security import check_password_hash, generate_password_hash
-from .models import db, User, SiteSetting, LoginFailure, ROLES
+from .models import db, User, SiteSetting, LoginFailure, PasswordResetToken, ROLES
 from .crypto import decrypt
 
 bp = Blueprint("auth", __name__, url_prefix="/tspro/auth")
@@ -71,6 +71,69 @@ ROLE_PERMISSIONS = {
         "Cannot edit, upload, or reach admin areas.",
     ],
 }
+
+
+PASSWORD_MIN_LENGTH = 12
+PASSWORD_SYMBOLS = "!@#$%^&*?-_=+"
+# Bedrock list of obvious-weak passwords that pass the character-class
+# rules but should still be rejected. Keep the list short — the policy
+# isn't a dictionary attack defender, just a "did you actually pick
+# something deliberate" guardrail.
+_WEAK_PASSWORDS = {
+    "password", "password1", "password!", "password123",
+    "letmein", "welcome", "welcome1", "qwerty",
+    "admin", "administrator", "changeme", "trustedservants",
+}
+
+
+def validate_password_policy(pw, *, username=None, email=None):
+    """Return ``(ok, errors)``. ``errors`` is a list of human-readable
+    failures — empty when ``ok`` is True. Used by both the admin reset
+    modal and the user-facing reset form so a single source of truth
+    drives both server- and template-side hint rendering."""
+    import string
+    errors = []
+    if not pw:
+        return False, ["Password is required."]
+    if len(pw) < PASSWORD_MIN_LENGTH:
+        errors.append(f"Use at least {PASSWORD_MIN_LENGTH} characters.")
+    if not any(c in string.ascii_lowercase for c in pw):
+        errors.append("Add a lowercase letter.")
+    if not any(c in string.ascii_uppercase for c in pw):
+        errors.append("Add an uppercase letter.")
+    if not any(c in string.digits for c in pw):
+        errors.append("Add a digit.")
+    if not any(c in PASSWORD_SYMBOLS for c in pw):
+        errors.append(f"Add a symbol ({PASSWORD_SYMBOLS}).")
+    low = pw.lower()
+    if low in _WEAK_PASSWORDS:
+        errors.append("This password is on the common-weak list — pick something else.")
+    if username and username.lower() and username.lower() in low:
+        errors.append("Password must not contain your username.")
+    if email:
+        local = email.split("@", 1)[0].lower()
+        if local and len(local) >= 4 and local in low:
+            errors.append("Password must not contain your email address.")
+    return (not errors), errors
+
+
+def _generate_password(length=16):
+    """Generate a random password mixing uppercase, lowercase, digits, and
+    symbols, with at least one character from each class guaranteed. Uses
+    ``secrets`` for cryptographic quality and shuffles via ``SystemRandom``
+    so the guaranteed-class characters aren't always at fixed positions.
+    Symbol set is curated to characters that are safe to paste into a
+    plain-text email and easy to type on most keyboards."""
+    import secrets
+    import string
+    symbols = "!@#$%^&*?-_=+"
+    classes = (string.ascii_lowercase, string.ascii_uppercase,
+               string.digits, symbols)
+    pool = "".join(classes)
+    chars = [secrets.choice(c) for c in classes]
+    chars += [secrets.choice(pool) for _ in range(max(length - len(classes), 0))]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
 
 
 def _send_welcome_email(user, plaintext_password):
@@ -322,6 +385,184 @@ def logout():
     return redirect(url_for("auth.login"))
 
 
+# ---- Forgot / reset password (public) ---------------------------------------
+# A two-step flow:
+#   1. /forgot-password — user enters their email or username; we always
+#      respond with the same generic success message regardless of match
+#      (no account-enumeration). When a match is found AND SMTP is set
+#      up, we generate a single-use token, persist its SHA-256 hash, and
+#      email a /reset-password/<token> link.
+#   2. /reset-password/<token> — token is validated (exists, unused, not
+#      expired). Form: new password + confirm, with policy enforcement
+#      identical to the admin reset modal. On success: hash the new
+#      password, mark the token used, clear any active lockout, sign
+#      the user in, and bounce to the dashboard.
+RESET_TOKEN_TTL_HOURS = 1
+# Per-IP / per-account rate limit for the request endpoint. Defends
+# against someone spamming the form with random emails to trigger a
+# wave of outbound mail. The window deliberately matches the login
+# limiter's window so the constants stay coherent.
+_RESET_REQUEST_MAX_PER_WINDOW = 5
+
+
+def _hash_reset_token(token):
+    import hashlib
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _purge_stale_reset_tokens():
+    """Drop expired or already-used tokens. Run lazily on token issue
+    so the table doesn't grow unbounded; the volume is too low to
+    justify a scheduled job."""
+    cutoff = datetime.utcnow() - timedelta(days=7)
+    try:
+        (PasswordResetToken.query
+         .filter((PasswordResetToken.expires_at < datetime.utcnow())
+                 | (PasswordResetToken.used_at.isnot(None))
+                 | (PasswordResetToken.created_at < cutoff))
+         .delete(synchronize_session=False))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _send_reset_email(user, token):
+    from .mail import send_mail
+    site = SiteSetting.query.first()
+    if not site or not site.smtp_host or not site.smtp_from_email:
+        return False, "SMTP is not configured"
+    if not user.email:
+        return False, "User has no email address"
+    from .routes import _public_url_for
+    link = _public_url_for("auth.reset_password", token=token)
+    portal_name = (site.smtp_from_name or "Trusted Servants Pro").strip() or "Trusted Servants Pro"
+    body = (
+        f"Hello {user.username},\n\n"
+        f"Someone requested a password reset for your {portal_name} account. "
+        f"If that was you, follow the link below to choose a new password. "
+        f"The link is valid for {RESET_TOKEN_TTL_HOURS} hour"
+        f"{'s' if RESET_TOKEN_TTL_HOURS != 1 else ''} and can only be used once.\n\n"
+        f"  {link}\n\n"
+        f"If you didn't request this, you can safely ignore this email — "
+        f"your password will stay the same.\n\n"
+        f"— Trusted Servants Pro"
+    )
+    return send_mail(site, user.email, f"Reset your {portal_name} password", body)
+
+
+@bp.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if current_user.is_authenticated:
+        return redirect(url_for("main.index"))
+    if request.method == "POST":
+        identifier = (request.form.get("identifier") or "").strip()
+        if not identifier:
+            flash("Enter the email or username on the account.", "danger")
+            return render_template("forgot_password.html")
+
+        # Look up by email OR username, case-insensitive on both. Always
+        # show the same success copy regardless of match so the form
+        # can't be used as an account enumerator.
+        user = User.query.filter(
+            (func.lower(User.email) == identifier.lower())
+            | (func.lower(User.username) == identifier.lower())
+        ).first()
+
+        if user:
+            _purge_stale_reset_tokens()
+            import secrets as _secrets
+            token = _secrets.token_urlsafe(32)
+            row = PasswordResetToken(
+                user_id=user.id,
+                token_hash=_hash_reset_token(token),
+                expires_at=datetime.utcnow() + timedelta(hours=RESET_TOKEN_TTL_HOURS),
+                requested_ip=(request.remote_addr or "")[:64],
+            )
+            db.session.add(row)
+            db.session.commit()
+            ok, err = _send_reset_email(user, token)
+            if not ok:
+                # Surface the SMTP failure to server logs but never to the
+                # browser — leaking "we tried to send to that address but
+                # SMTP failed" still confirms the account exists. The user
+                # sees the same generic success page either way.
+                current_app.logger.warning(
+                    "Password reset email failed for user_id=%s: %s", user.id, err)
+
+        return render_template("forgot_password.html", submitted=True)
+    return render_template("forgot_password.html")
+
+
+def _lookup_reset_token(token):
+    """Resolve a plaintext token from the URL to its DB row, or None.
+    Centralises the hash + validity check so both GET and POST handlers
+    can short-circuit on the same logic."""
+    if not token or len(token) > 128:
+        return None
+    row = PasswordResetToken.query.filter_by(token_hash=_hash_reset_token(token)).first()
+    if not row or not row.is_valid():
+        return None
+    return row
+
+
+@bp.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    if current_user.is_authenticated:
+        # Don't bind the new password to whoever happens to be logged in
+        # on this browser — sign them out first so the reset truly applies
+        # to the account named by the token.
+        logout_user()
+    row = _lookup_reset_token(token)
+    if row is None:
+        return render_template("reset_password.html",
+                               token=token, invalid=True), 400
+    user = db.session.get(User, row.user_id)
+    if user is None:
+        return render_template("reset_password.html",
+                               token=token, invalid=True), 400
+
+    if request.method == "POST":
+        pw1 = request.form.get("password", "")
+        pw2 = request.form.get("password_confirm", "")
+        # Re-resolve the row inside the POST so a token used in another
+        # tab in the same second can't double-spend.
+        row = _lookup_reset_token(token)
+        if row is None:
+            return render_template("reset_password.html",
+                                   token=token, invalid=True), 400
+        errors = []
+        if pw1 != pw2:
+            errors.append("The two passwords don't match.")
+        ok_pol, pol_errs = validate_password_policy(
+            pw1, username=user.username, email=user.email)
+        if not ok_pol:
+            errors.extend(pol_errs)
+        if errors:
+            for e in errors:
+                flash(e, "danger")
+            return render_template("reset_password.html",
+                                   token=token, user=user)
+
+        user.password_hash = generate_password_hash(pw1)
+        row.used_at = datetime.utcnow()
+        # Invalidate any other live tokens on this account — once you've
+        # successfully reset, every previously-issued link is moot.
+        (PasswordResetToken.query
+         .filter(PasswordResetToken.user_id == user.id,
+                 PasswordResetToken.id != row.id,
+                 PasswordResetToken.used_at.is_(None))
+         .update({"used_at": datetime.utcnow()},
+                 synchronize_session=False))
+        db.session.commit()
+        clear_user_lockout(user.username)
+        session.permanent = True
+        login_user(user, remember=True)
+        flash("Password updated. You're signed in.", "success")
+        return redirect(url_for("main.index"))
+
+    return render_template("reset_password.html", token=token, user=user)
+
+
 @bp.route("/users")
 @login_required
 def users():
@@ -426,9 +667,6 @@ def users_update(uid):
             flash(f"Email {new_email} is already in use", "danger")
             return redirect(url_for("auth.users", embed=1) if request.form.get("embed") == "1" else url_for("auth.users"))
         u.email = new_email
-    new_pw = request.form.get("password", "").strip()
-    if new_pw:
-        u.password_hash = generate_password_hash(new_pw)
     # Phone is optional and editable on every user-row save. The form
     # always submits the field (possibly blank), so a missing key here
     # is treated as "no change" rather than "clear" — an admin can clear
@@ -438,6 +676,70 @@ def users_update(uid):
     db.session.commit()
     flash("User updated", "success")
     return redirect(url_for("auth.users", embed=1) if request.form.get("embed") == "1" else url_for("auth.users"))
+
+
+@bp.route("/users/<int:uid>/reset_password", methods=["POST"])
+@login_required
+def users_reset_password(uid):
+    """Admin action: set a user's password to either a freshly-generated
+    random string or an admin-supplied custom value, then resend the
+    welcome email so the recipient knows what changed. Replaces the
+    earlier "resend welcome" route."""
+    if not current_user.is_admin():
+        return redirect(url_for("main.index"))
+    u = db.session.get(User, uid)
+    if not u:
+        flash("User not found", "danger")
+        return redirect(url_for("auth.users", embed=1) if request.form.get("embed") == "1" else url_for("auth.users"))
+    send_email = request.form.get("send_email", "1") == "1"
+    if send_email and not u.email:
+        flash(f"{u.username} has no email address on file — set one or use Save without emailing.", "warning")
+        return redirect(url_for("auth.users", embed=1) if request.form.get("embed") == "1" else url_for("auth.users"))
+
+    mode = request.form.get("mode", "generate")
+    if mode == "custom":
+        new_pw = request.form.get("password", "")
+        ok_pol, errs = validate_password_policy(new_pw, username=u.username, email=u.email)
+        if not ok_pol:
+            flash("Password rejected: " + " ".join(errs), "danger")
+            return redirect(url_for("auth.users", embed=1) if request.form.get("embed") == "1" else url_for("auth.users"))
+    else:
+        new_pw = _generate_password()
+
+    if send_email:
+        # Send first; only persist on success so an SMTP failure doesn't
+        # silently invalidate the user's existing password and lock them
+        # out of an account they were otherwise still using.
+        ok, err = _send_welcome_email(u, new_pw)
+        if not ok:
+            flash(f"Could not send welcome email: {err} — password was not changed.", "danger")
+            return redirect(url_for("auth.users", embed=1) if request.form.get("embed") == "1" else url_for("auth.users"))
+
+    u.password_hash = generate_password_hash(new_pw)
+    db.session.commit()
+    # Clear any active lockout — the user is getting a fresh start.
+    clear_user_lockout(u.username)
+    if send_email:
+        flash(f"Password reset for {u.username}; welcome email sent to {u.email}.", "success")
+    elif mode == "custom":
+        flash(f"Password reset for {u.username}. No email was sent — share the new password with them through another channel.", "success")
+    else:
+        # Generated password without email is a footgun: the admin needs
+        # to be told the value, since neither the user nor the database
+        # holds it in plaintext anywhere else.
+        flash(f"Password reset for {u.username}. No email was sent — the new password is: {new_pw}", "success")
+    return redirect(url_for("auth.users", embed=1) if request.form.get("embed") == "1" else url_for("auth.users"))
+
+
+@bp.route("/users/generate-password", methods=["POST"])
+@login_required
+def users_generate_password():
+    """JSON endpoint used by the admin Reset Password modal to fetch a
+    fresh random password for the "Generate" tab. Admin-only."""
+    from flask import jsonify
+    if not current_user.is_admin():
+        return jsonify({"error": "forbidden"}), 403
+    return jsonify({"password": _generate_password()})
 
 
 @bp.route("/users/<int:uid>/delete", methods=["POST"])

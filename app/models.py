@@ -1005,3 +1005,29 @@ class LoginFailure(db.Model):
     __table_args__ = (
         db.Index("ix_login_failure_kind_key_time", "kind", "key", "failed_at"),
     )
+
+
+class PasswordResetToken(db.Model):
+    """Single-use, time-limited token for the public forgot-password flow.
+
+    Only the SHA-256 hash of the token is stored — the plaintext is
+    sent to the user's inbox once and never re-derivable from the row.
+    A row is consumed by setting ``used_at`` so the same link can't be
+    replayed even within its expiry window. Cleanup of expired/used
+    rows happens lazily when new tokens are issued."""
+    __tablename__ = "password_reset_token"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime)
+    requested_ip = db.Column(db.String(64))
+
+    user = db.relationship("User", foreign_keys=[user_id])
+
+    def is_valid(self):
+        if self.used_at is not None:
+            return False
+        return self.expires_at > datetime.utcnow()
