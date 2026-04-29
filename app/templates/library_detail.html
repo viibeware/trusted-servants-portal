@@ -1,5 +1,15 @@
 {% extends "base.html" %}
+{# Show a "?" help-tooltip next to the title on the protected Intergroup
+   libraries when the current user is outside the editing scope (i.e.
+   not admin, not intergroup_member). Reuses base.html's `heading_help`
+   block so the tooltip matches the rest of the app's heading-help
+   pattern (button + popover, not a native title attribute). #}
+{% set _is_protected_ig = library.name in INTERGROUP_LIBRARY_NAMES %}
+{% set _show_perm_help = _is_protected_ig and not current_user.can_edit_library(library) %}
 {% block heading %}{{ library.name }}{% endblock %}
+{% if _show_perm_help %}
+{% block heading_help %}This library is gated to admins and the Intergroup Member role. You can view its contents but cannot add, edit, reorder, or delete readings here — ask an admin to update your role or to apply the changes for you.{% endblock %}
+{% endif %}
 {% block top_actions %}
   {% if current_user.can_edit_library(library) %}
   <button type="button" class="btn btn-primary" data-open-modal="add-library-file-modal">+ Add File</button>

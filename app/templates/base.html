@@ -537,7 +537,7 @@
         </form>
         {% endmacro %}
         <ul class="special-pages-list">
-          {% set _ig_perm_tooltip = "Editing Intergroup Documents and Minutes is gated to admins and the Intergroup Member role. Editing Email Accounts (this entry) is admin-only — Intergroup Members and editors cannot reach it." %}
+          {% set _ig_perm_tooltip = "Visibility and editing for Email Accounts are hard-gated to admins and the Intergroup Member role — the per-module role setting can't loosen this. Editing the account list itself stays admin-only. Documents and Minutes libraries are editable by admins + Intergroup Members; regular Editors and Frontend Editors can't edit them." %}
           <li class="special-page-row special-page-row-with-children">
             <div class="special-page-info">
               <div class="u-name">Intergroup module</div>
@@ -561,9 +561,9 @@
                     {{ site.ig_page_title or 'Intergroup' }} Email Accounts
                     <span class="perm-info-badge" tabindex="0"
                           title="{{ _ig_perm_tooltip }}"
-                          aria-label="{{ _ig_perm_tooltip }}">Admin-only</span>
+                          aria-label="{{ _ig_perm_tooltip }}">Admin &amp; Intergroup Member only</span>
                   </div>
-                  <p class="muted small">Show or hide the Email Accounts entry inside the Intergroup subsection. Turn this off to keep Minutes &amp; Documents visible while hiding the Email page. <b>Editing the email accounts list itself is admin-only</b> — Intergroup Members and regular editors can't reach it.</p>
+                  <p class="muted small">Show or hide the Email Accounts entry inside the Intergroup subsection. Turn this off to keep Minutes &amp; Documents visible while hiding the Email page. <b>The Email Accounts page itself is hard-gated to admins and Intergroup Members</b> regardless of the role setting below; editing the account list stays admin-only.</p>
                 </div>
                 {{ module_role_picker('intergroup', site.intergroup_required_role if site else 'viewer') }}
                 <form method="post" action="{{ url_for('main.intergroup_toggle') }}" class="special-page-toggle-form" data-refresh-sidebar="1">
@@ -928,6 +928,14 @@
 
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
+            <li>
+              <div class="u-name">1.7.7</div>
+              <div class="muted smaller">April 2026</div>
+              <ul>
+                <li><b>Email Accounts page hard-gated to admins + Intergroup Members</b> — the <code>/intergroup</code> route now returns 404 for any other role regardless of the per-module role setting on the Modules tab; the sidebar entry mirrors the same gate via <code>can_edit_intergroup_libraries</code>. The Modules tab's Email Accounts sub-row chip flipped from "Admin-only" to "Admin &amp; Intergroup Member only" and the description spells out that the role picker below can't loosen the visibility floor — editing the account list itself stays admin-only.</li>
+                <li><b>Permission tooltip on protected library pages</b> — the Intergroup Documents and Intergroup Minutes detail pages render a "?" help button next to the title for users outside the editing scope (everyone except admins and Intergroup Members). The popover explains that they can view but not modify the library, and to ask an admin if they need a change. Reuses the existing <code>heading_help</code> block pattern so the affordance matches every other heading-help tooltip in the app.</li>
+              </ul>
+            </li>
             <li>
               <div class="u-name">1.7.6</div>
               <div class="muted smaller">April 2026</div>

@@ -95,8 +95,12 @@ def _is_visible(key, site, user):
         # Intergroup subsection covers the same destination.
         if site and site.intergroup_module_enabled:
             return False
-        return bool(site and site.intergroup_enabled
-                    and user_meets_role(user, site.intergroup_required_role))
+        # Email Accounts is hard-gated to admins + intergroup_members
+        # regardless of the per-module role setting; the standalone
+        # fallback link mirrors the umbrella subsection's visibility.
+        if not getattr(user, "can_edit_intergroup_libraries", lambda: False)():
+            return False
+        return bool(site and site.intergroup_enabled)
     if key == "zoom_tech":
         return bool(site and site.zoom_tech_enabled
                     and user_meets_role(user, site.zoom_tech_required_role))
@@ -193,9 +197,11 @@ def _build_intergroup_items(site, user, current_endpoint, url_for):
         # No active request context (test harness); leave as None.
         current_lid = None
     items = []
-    # Email Accounts — only when the Intergroup Email page itself is
-    # enabled and the user meets that page's role gate.
-    if site.intergroup_enabled and user_meets_role(user, site.intergroup_required_role):
+    # Email Accounts — hard-gated to admins + intergroup_members. The
+    # per-module role setting under Settings → Modules no longer controls
+    # this entry's visibility (the page itself returns 404 for any other
+    # role), so the sidebar mirrors that policy.
+    if site.intergroup_enabled and user.can_edit_intergroup_libraries():
         ep = "main.intergroup"
         items.append({
             "key": "ig_email",

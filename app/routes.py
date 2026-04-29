@@ -163,7 +163,8 @@ def inject_globals():
         otp = None
     return {"CATEGORY_LABELS": CATEGORY_LABELS, "FILE_CATEGORIES": FILE_CATEGORIES,
             "DAYS_OF_WEEK": DAYS_OF_WEEK, "site": site, "nav_links": nav_links,
-            "pending_access_count": pending_access_count, "otp": otp}
+            "pending_access_count": pending_access_count, "otp": otp,
+            "INTERGROUP_LIBRARY_NAMES": INTERGROUP_LIBRARY_NAMES}
 
 
 DASHBOARD_WIDGET_KEYS = ("server-metrics", "meetings", "libraries", "files", "access-requests")
@@ -995,7 +996,13 @@ def intergroup():
     s = _get_site_setting()
     if not s.intergroup_enabled:
         abort(404)
-    _require_module_role("intergroup_required_role")
+    # The Email Accounts page is hard-gated to admins + intergroup_members
+    # regardless of the per-module role setting on the Modules tab.
+    # Surfacing 404 (rather than redirecting) keeps the page's existence
+    # opaque to other roles, matching the abort-404 pattern used by
+    # `_require_module_role` for module-disabled state.
+    if not current_user.can_edit_intergroup_libraries():
+        abort(404)
     _seed_intergroup_defaults(s)
     accounts = IntergroupAccount.query.order_by(IntergroupAccount.position,
                                                 IntergroupAccount.id).all()
