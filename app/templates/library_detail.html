@@ -13,6 +13,8 @@
 {% block top_actions %}
   {% if current_user.can_edit_library(library) %}
   <button type="button" class="btn btn-primary" data-open-modal="add-library-file-modal">+ Add File</button>
+  {% endif %}
+  {% if current_user.can_manage_libraries() and current_user.can_edit_library(library) %}
   <button type="button" class="btn btn-primary" data-open-modal="library-edit-modal">Edit</button>
   {% endif %}
   {% if current_user.is_admin() %}
@@ -423,7 +425,7 @@
   </div>
 </div>
 
-{% if can_edit %}
+{% if can_edit and current_user.can_manage_libraries() %}
 {% set form_id = 'library-edit-form' %}
 <div class="modal" id="library-edit-modal" aria-hidden="true">
   <div class="modal-backdrop" data-close></div>

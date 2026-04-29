@@ -16,7 +16,6 @@ bp = Blueprint("auth", __name__, url_prefix="/tspro/auth")
 ROLE_LABELS = {
     "admin":             "Admin",
     "editor":            "Editor",
-    "frontend_editor":   "Frontend editor",
     "intergroup_member": "Intergroup member",
     "viewer":            "Viewer",
 }
@@ -36,7 +35,8 @@ _VIEWER_BASE = [
 
 _EDITOR_BASE = _VIEWER_BASE + [
     "Edit existing meetings, locations, schedules, and Zoom accounts (cannot create new meetings or delete existing ones — admin / Intergroup Member only).",
-    "Create, edit, and reorder libraries and the readings/files inside them.",
+    "Add, edit, reorder, and delete files inside existing libraries (subject to per-row restrictions on library files).",
+    "Cannot create new libraries or edit library settings (name, description, alert message) — admin / Intergroup Member only.",
     "Upload media and manage file attachments on meetings.",
 ]
 
@@ -56,19 +56,12 @@ ROLE_PERMISSIONS = {
         "Customize your own dashboard widgets and order.",
     ],
     "editor": _EDITOR_BASE + [
-        "Library files: may rename, edit, or delete only those whose uploader was an editor-tier user (Editor / Frontend Editor / Intergroup Member). Admin-uploaded and legacy library files are protected; this restriction does not apply to files attached to meetings.",
+        "Library files: may rename, edit, or delete only those whose uploader was another Editor. Admin-uploaded, Intergroup-Member-uploaded, and legacy library files are protected; this restriction does not apply to files attached to meetings.",
         "Cannot reach Settings, Users, the Web Frontend module, or the Intergroup Email Accounts page.",
-        "Cannot edit the Intergroup Documents or Intergroup Minutes libraries (admin / Intergroup-Member only).",
-    ],
-    "frontend_editor": _EDITOR_BASE + [
-        "Edit the Web Frontend module: header, footer, homepage builder, navigation, mega menus, alert bars, theme/design tokens.",
-        "Toggle public visibility of the Web Frontend.",
-        "Library files: may rename, edit, or delete only those whose uploader was an editor-tier user (Editor / Frontend Editor / Intergroup Member). Admin-uploaded and legacy library files are protected; this restriction does not apply to files attached to meetings.",
-        "Cannot reach Settings, Users, or the Intergroup Email Accounts page.",
-        "Cannot edit the Intergroup Documents or Intergroup Minutes libraries.",
+        "Cannot edit Intergroup-flagged libraries (admin / Intergroup-Member only).",
     ],
     "intergroup_member": _EDITOR_BASE + [
-        "Edit access to the Intergroup Documents and Intergroup Minutes libraries — regular Editors and Frontend Editors cannot edit those.",
+        "Edit access to Intergroup-flagged libraries — regular Editors cannot edit those.",
         "May delete any library file regardless of who uploaded it.",
         "Cannot edit the Web Frontend module.",
         "Cannot reach Settings, Users, or the Intergroup Email Accounts page (admin-only).",

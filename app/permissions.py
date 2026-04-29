@@ -3,9 +3,9 @@
 
 Each module on the Settings → Modules tab stores a single
 ``required_role`` string. The helper here decides whether a given user
-satisfies that requirement. Roles are NOT a strict hierarchy — frontend
-editors aren't a strict subset of editors — so the matrix is enumerated
-explicitly rather than computed.
+satisfies that requirement. Roles are NOT a strict hierarchy —
+intergroup members aren't a strict subset of editors — so the matrix
+is enumerated explicitly rather than computed.
 """
 
 # Display label + ordering for the dropdown. Insertion order is the
@@ -13,7 +13,6 @@ explicitly rather than computed.
 ROLE_TIERS = [
     ("viewer",            "All signed-in users"),
     ("editor",            "Editors and admins"),
-    ("frontend_editor",   "Frontend editors and admins"),
     ("intergroup_member", "Intergroup members and admins"),
     ("admin",             "Admins only"),
 ]
@@ -31,11 +30,10 @@ def user_meets_role(user, required):
         return True  # any signed-in user
     if required == "editor":
         return role in ("admin", "editor")
-    if required == "frontend_editor":
-        return role in ("admin", "frontend_editor")
     if required == "intergroup_member":
         return role in ("admin", "intergroup_member")
     if required == "admin":
         return role == "admin"
-    # Unknown requirement → fail closed.
+    # Unknown requirement (including the retired "frontend_editor"
+    # tier) → fail closed.
     return role == "admin"

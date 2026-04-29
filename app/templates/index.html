@@ -10,7 +10,7 @@
    editors and viewers see only the role panel. Centralised here so
    the widget gate, the role-only styling class, and the dashboard
    customize toggle's label all read from one source. #}
-{% set _has_server = current_user.role in ('admin', 'frontend_editor', 'intergroup_member') %}
+{% set _has_server = current_user.role in ('admin', 'intergroup_member') %}
 <div class="dash-grid"
      {% if can_reorder %}data-dashboard-reorder data-order-url="{{ url_for('main.dashboard_order_save') }}"{% endif %}>
 {% for widget_key in dashboard_order %}
@@ -28,9 +28,9 @@
           <div class="role-panel-label">Your role</div>
           <div class="role-panel-name">{{ current_user.role.replace('_', ' ')|capitalize }}</div>
           <ul class="role-caps">
-            {# Positive capabilities only — restrictions ("Cannot …")
-               live in Settings → Your Access so the dashboard widget
-               stays focused on what the user can do. #}
+            {# Positive capabilities only — restrictions live in
+               Settings → Your Access so the dashboard widget stays
+               focused on what the user can do. #}
             {% if current_user.is_admin() %}
             <li>Full access to every feature in the portal</li>
             <li>Manage users, access requests &amp; modules</li>
@@ -38,24 +38,15 @@
             <li>Configure site settings, security &amp; data import/export</li>
             {% elif current_user.role == 'intergroup_member' %}
             <li>Inherits Editor role permissions</li>
-            <li>Edit access to Intergroup-specific libraries</li>
+            <li>Edit access to Intergroup-flagged libraries</li>
             <li>Create &amp; edit meetings, libraries, readings, files</li>
             <li>May edit or delete any library file regardless of uploader</li>
             <li>Upload &amp; manage media; view Zoom accounts</li>
-            {% elif current_user.role == 'frontend_editor' %}
-            <li>Inherits Editor role permissions (including the library-file edit/delete restriction)</li>
-            <li>Edit the Web Frontend module: header, footer, homepage, navigation, mega menus, alert bars, theme &amp; design tokens</li>
-            <li>Toggle public visibility of the Web Frontend</li>
-            <li>Edit existing meetings, locations, schedules, Zoom accounts; create &amp; reorder libraries; upload files</li>
-            <li>May edit or delete <b>library</b> files only when the uploader was an editor-tier user</li>
-            <li>Upload, edit &amp; delete files attached to meetings (any uploader)</li>
-            <li><b>Cannot</b> create new meetings or delete existing meetings (admin / Intergroup Member only)</li>
             {% elif current_user.role == 'editor' %}
             <li>Edit existing meetings, locations, schedules, Zoom accounts</li>
-            <li>Create &amp; reorder libraries; upload files into them</li>
-            <li>May edit or delete <b>library</b> files only when the uploader was an editor-tier user</li>
+            <li>Add files to existing libraries; reorder readings inside them</li>
+            <li>May edit or delete library files whose uploader was another Editor</li>
             <li>Upload, edit &amp; delete files attached to meetings (any uploader)</li>
-            <li><b>Cannot</b> create new meetings or delete existing meetings (admin / Intergroup Member only)</li>
             {% else %}
             <li>Read-only access across the portal</li>
             <li>View meetings, libraries, readings &amp; uploaded files</li>

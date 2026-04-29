@@ -90,7 +90,7 @@
           {% else %}
           <button type="button" class="btn btn-sm btn-copy" data-copy-url="{{ url_for('public.public_file', filename=m.original_filename) }}">Copy Link</button>
           <a class="btn btn-sm" href="{{ url_for('main.media_download', mid=m.id) }}">Download</a>
-          {% if current_user.can_edit() %}
+          {% if current_user.can_rename_media(m) %}
           <button type="button" class="btn btn-sm media-rename">Rename</button>
           {% endif %}
           {% if current_user.is_admin() %}

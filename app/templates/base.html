@@ -451,14 +451,12 @@
         {% set _role_label = {
           'admin': 'Admin',
           'editor': 'Editor',
-          'frontend_editor': 'Frontend Editor',
           'intergroup_member': 'Intergroup Member',
           'viewer': 'Viewer',
         }.get(_role, _role|capitalize) %}
         {% set _badge_cls = {
           'admin': 'perm-badge-admin',
           'editor': 'perm-badge-editor',
-          'frontend_editor': 'perm-badge-fe',
           'intergroup_member': 'perm-badge-ig',
           'viewer': 'perm-badge-viewer',
         }.get(_role, 'perm-badge-viewer') %}
@@ -477,43 +475,46 @@
            reads at a glance, and rows where the Editor role is
            restricted to its own uploads are flagged with a footnote
            marker. Cell values: 'yes' / 'no' / 'partial'. #}
-        {% set _matrix_roles = (['admin'] if current_user.is_admin() else []) + ['editor', 'frontend_editor', 'intergroup_member', 'viewer'] %}
+        {% set _matrix_roles = (['admin'] if current_user.is_admin() else []) + ['editor', 'intergroup_member', 'viewer'] %}
         {% set _matrix = [
             ('View meetings, libraries, files, calendar',
-             {'admin':'yes','editor':'yes','frontend_editor':'yes','intergroup_member':'yes','viewer':'yes'}),
+             {'admin':'yes','editor':'yes','intergroup_member':'yes','viewer':'yes'}),
             ('Customize dashboard widgets and order',
-             {'admin':'yes','editor':'yes','frontend_editor':'yes','intergroup_member':'yes','viewer':'yes'}),
+             {'admin':'yes','editor':'yes','intergroup_member':'yes','viewer':'yes'}),
             ('Edit existing meetings, locations, schedules, Zoom accounts',
-             {'admin':'yes','editor':'yes','frontend_editor':'yes','intergroup_member':'yes','viewer':'no'}),
+             {'admin':'yes','editor':'yes','intergroup_member':'yes','viewer':'no'}),
             ('Create new meetings or delete meetings',
-             {'admin':'yes','editor':'no','frontend_editor':'no','intergroup_member':'yes','viewer':'no'}),
-            ('Create regular libraries; upload files to libraries',
-             {'admin':'yes','editor':'yes','frontend_editor':'yes','intergroup_member':'yes','viewer':'no'}),
+             {'admin':'yes','editor':'no','intergroup_member':'yes','viewer':'no'}),
+            ('Create new libraries / edit library settings (name, description, alert)',
+             {'admin':'yes','editor':'no','intergroup_member':'yes','viewer':'no'}),
+            ('Upload files to existing libraries',
+             {'admin':'yes','editor':'yes','intergroup_member':'yes','viewer':'no'}),
             ('Upload, edit, delete files attached to meetings (any uploader)',
-             {'admin':'yes','editor':'yes','frontend_editor':'yes','intergroup_member':'yes','viewer':'no'}),
+             {'admin':'yes','editor':'yes','intergroup_member':'yes','viewer':'no'}),
             ('Edit / rename library files (any uploader)',
-             {'admin':'yes','editor':'partial','frontend_editor':'partial','intergroup_member':'yes','viewer':'no'}),
+             {'admin':'yes','editor':'partial','intergroup_member':'yes','viewer':'no'}),
             ('Delete library files (any uploader)',
-             {'admin':'yes','editor':'partial','frontend_editor':'partial','intergroup_member':'yes','viewer':'no'}),
+             {'admin':'yes','editor':'partial','intergroup_member':'yes','viewer':'no'}),
             ('Bulk-edit categories / bulk-delete files',
-             {'admin':'yes','editor':'partial','frontend_editor':'partial','intergroup_member':'yes','viewer':'no'}),
+             {'admin':'yes','editor':'partial','intergroup_member':'yes','viewer':'no'}),
+            ('Rename files in the File Browser',
+             {'admin':'yes','editor':'partial','intergroup_member':'yes','viewer':'no'}),
             ('Edit Intergroup-flagged libraries',
-             {'admin':'yes','editor':'no','frontend_editor':'no','intergroup_member':'yes','viewer':'no'}),
+             {'admin':'yes','editor':'no','intergroup_member':'yes','viewer':'no'}),
             ('Create new Intergroup libraries',
-             {'admin':'yes','editor':'no','frontend_editor':'no','intergroup_member':'no','viewer':'no'}),
+             {'admin':'yes','editor':'no','intergroup_member':'no','viewer':'no'}),
             ('View the Intergroup Email Accounts page',
-             {'admin':'yes','editor':'no','frontend_editor':'no','intergroup_member':'yes','viewer':'no'}),
+             {'admin':'yes','editor':'no','intergroup_member':'yes','viewer':'no'}),
             ('Edit the Intergroup Email Accounts list',
-             {'admin':'yes','editor':'no','frontend_editor':'no','intergroup_member':'no','viewer':'no'}),
+             {'admin':'yes','editor':'no','intergroup_member':'no','viewer':'no'}),
             ('Edit the Web Frontend (theme, header, nav, footer)',
-             {'admin':'yes','editor':'no','frontend_editor':'yes','intergroup_member':'no','viewer':'no'}),
+             {'admin':'yes','editor':'no','intergroup_member':'no','viewer':'no'}),
             ('Manage users, modules, email, security, data',
-             {'admin':'yes','editor':'no','frontend_editor':'no','intergroup_member':'no','viewer':'no'}),
+             {'admin':'yes','editor':'no','intergroup_member':'no','viewer':'no'}),
         ] %}
         {% set _badge_for = {
           'admin': 'perm-badge-admin',
           'editor': 'perm-badge-editor',
-          'frontend_editor': 'perm-badge-fe',
           'intergroup_member': 'perm-badge-ig',
           'viewer': 'perm-badge-viewer',
         } %}
@@ -528,7 +529,7 @@
                 {% for r in _matrix_roles %}
                 <th class="access-matrix-role {% if r == _role %}is-current{% endif %}">
                   <span class="perm-badge {{ _badge_for[r] }}">{{ _role_label if r == _role else {
-                    'admin':'Admin','editor':'Editor','frontend_editor':'Frontend Editor',
+                    'admin':'Admin','editor':'Editor',
                     'intergroup_member':'Intergroup Member','viewer':'Viewer'}[r] }}</span>
                 </th>
                 {% endfor %}
@@ -553,12 +554,11 @@
           </table>
         </div>
         <p class="access-matrix-footnote muted smaller">
-          <sup>*</sup> Applies to <b>library</b> files only — Editors and Frontend Editors
-          can rename, edit, or delete a library file only when its uploader was an
-          editor-tier user (Editor / Frontend Editor / Intergroup Member). Admin-uploaded
-          and legacy library files are protected; an admin must change them. Files
-          attached to meetings are unaffected and editable by every editor-tier role
-          regardless of uploader.
+          <sup>*</sup> Editors can rename, edit, delete, or bulk-edit a <b>library</b>
+          file or a <b>File Browser</b> entry only when its uploader was another Editor.
+          Admin-, Intergroup-Member-, and legacy items are protected — an admin or
+          Intergroup Member must change them. Files attached to meetings are unaffected
+          and editable by every editor-tier role regardless of uploader.
         </p>
 
         <hr class="settings-sep">
@@ -678,7 +678,7 @@
         </form>
         {% endmacro %}
         <ul class="special-pages-list">
-          {% set _ig_perm_tooltip = "Visibility and editing for Email Accounts are hard-gated to admins and the Intergroup Member role — the per-module role setting can't loosen this. Editing the account list itself stays admin-only. Documents and Minutes libraries are editable by admins + Intergroup Members; regular Editors and Frontend Editors can't edit them." %}
+          {% set _ig_perm_tooltip = "Visibility and editing for Email Accounts are hard-gated to admins and the Intergroup Member role — the per-module role setting can't loosen this. Editing the account list itself stays admin-only. Intergroup-flagged libraries are editable by admins + Intergroup Members; regular Editors can't edit them." %}
           <li class="special-page-row special-page-row-with-children">
             <div class="special-page-info">
               <div class="u-name">Intergroup module</div>
@@ -757,9 +757,9 @@
           <li class="special-page-row">
             <div class="special-page-info">
               <div class="u-name">Web Frontend module</div>
-              <p class="muted small">Turn the entire Web Frontend module on or off. When off, the <b>Web Frontend</b> entry disappears from the sidebar, the editor routes are blocked, and the public homepage won't serve. The role gate here only hides/shows the sidebar entry — the underlying editor routes always require the <code>frontend_editor</code> permission.</p>
+              <p class="muted small">Turn the entire Web Frontend module on or off. When off, the <b>Web Frontend</b> entry disappears from the sidebar, the editor routes are blocked, and the public homepage won't serve. The role gate here only hides/shows the sidebar entry — the underlying editor routes always require <b>admin</b> authority.</p>
             </div>
-            {{ module_role_picker('frontend_module', site.frontend_module_required_role if site else 'frontend_editor') }}
+            {{ module_role_picker('frontend_module', site.frontend_module_required_role if site else 'admin') }}
             <form method="post" action="{{ url_for('main.frontend_module_toggle') }}" class="special-page-toggle-form" data-refresh-sidebar="1" data-reload-on-save="1">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <label class="mode-toggle" title="Toggle Web Frontend module">
@@ -1077,7 +1077,11 @@
                 <li><b>Editable usernames on the Users tab</b> — the Username column on Settings → Users is now an inline input alongside the existing Email / Phone / Role / Reset password fields, so renaming a user is a single Save click on their row instead of a delete-and-recreate. The <code>users_update</code> route trims and length-checks the new value (64-char model limit), then runs a case-insensitive collision check against every other user's username (matches the login lookup, so two names that differ only in case can't collide at sign-in). Self-rename to the same value is a no-op; an empty value falls through unchanged.</li>
                 <li><b>Users-row action spacing</b> — Save / Unlock / Delete used to render flush against each other because the per-row form closes mid-cell so the auxiliary forms can be siblings. New <code>.tbl td.users-actions</code> rule sets <code>display: flex; gap: 10px; align-items: center; flex-wrap: wrap</code>; the inline-display forms inside drop their default block margin via <code>display: inline-flex; margin: 0</code> so they participate in the flex gap. Buttons now have breathing room and wrap cleanly on narrow rows.</li>
                 <li><b>Settings modal stretches to 1180px on desktop</b> — <code>#settings-modal .modal-panel</code> now declares <code>max-width: 1180px</code> directly alongside its existing height rule, so the same id-scoped block sets both axes. The <code>.modal-lg</code> class on the modal already provided this width via <code>.modal-lg .modal-panel</code>, but pinning it on the id selector too means future markup changes that drop the class won't shrink the modal back to the 680px default.</li>
-                <li><b>Meeting create + delete gated to admins and Intergroup Members</b> — Editors and Frontend Editors keep their authority to edit existing meetings, schedule them, attach files, and tweak Zoom / location bindings, but provisioning new meetings and removing existing ones is now held back to the trusted-servant tier. New <code>User.can_create_meetings()</code> returns True only for <code>admin</code> and <code>intergroup_member</code>; new <code>meeting_admin_required</code> decorator gates the <code>meeting_new</code> and <code>meeting_delete</code> routes server-side; the "+ New Meeting" button + its modal markup on <code>/meetings</code> and the per-meeting Delete button on the detail page hide for unauthorised roles. Your Access matrix grew a new dedicated row "Create new meetings or delete meetings" (admin / Intergroup Member only); dashboard role widgets, welcome email, and users-panel role descriptions all gained explicit <i>cannot create new meetings or delete existing ones</i> wording for both Editor and Frontend Editor.</li>
+                <li><b>Meeting create + delete gated to admins and Intergroup Members</b> — Editors keep their authority to edit existing meetings, schedule them, attach files, and tweak Zoom / location bindings, but provisioning new meetings and removing existing ones is now held back to the trusted-servant tier. New <code>User.can_create_meetings()</code> returns True only for <code>admin</code> and <code>intergroup_member</code>; new <code>meeting_admin_required</code> decorator gates the <code>meeting_new</code> and <code>meeting_delete</code> routes server-side; the "+ New Meeting" button + its modal markup on <code>/meetings</code> and the per-meeting Delete button on the detail page hide for unauthorised roles. Your Access matrix grew a new dedicated row "Create new meetings or delete meetings" (admin / Intergroup Member only).</li>
+                <li><b>Library create + metadata edit gated to admins and Intergroup Members</b> — Editors can still add files, edit, and delete readings inside existing libraries (subject to per-row gates), but creating new libraries and editing library settings (name, description, alert message, Intergroup flag, category list) is now restricted to admins and Intergroup Members. New <code>User.can_manage_libraries()</code> + new <code>library_admin_required</code> decorator gate <code>library_new</code> and <code>library_edit</code> routes server-side; the "+ New Library" button on <code>/libraries</code> and the Edit button on the library detail page hide for unauthorised roles. Matrix grew a dedicated row "Create new libraries / edit library settings".</li>
+                <li><b>Editor library / file-browser per-row gate tightened</b> — Editors can now rename, edit, delete, or bulk-edit a library file (or a File Browser entry) only when its uploader was another Editor. Admin-uploaded, Intergroup-Member-uploaded, and legacy items are protected; an admin or Intergroup Member must change them. New <code>User.can_rename_media(media)</code> mirrors <code>can_delete_reading</code>; the rename button on the File Browser hides per-row, and the rename endpoint returns 403 with a JSON error on tampered POSTs. Matrix grew a "Rename files in the File Browser" row alongside the existing partial library-file rows.</li>
+                <li><b>Frontend Editor role retired</b> — the dedicated <code>frontend_editor</code> role was removed entirely; the Web Frontend module is now admin-only. Migration runs on every boot to demote any pre-existing <code>frontend_editor</code> user to <code>editor</code> (they keep editor-tier authority — only the Web Frontend access goes away) and to flip <code>SiteSetting.frontend_module_required_role</code> from <code>frontend_editor</code> to <code>admin</code>. The <code>frontend_editor_required</code> decorator was replaced with <code>admin_required</code> across all 8 prior call sites; <code>can_edit_frontend()</code> now resolves to admin-only; <code>permissions.ROLE_TIERS</code> lost the FE entry; the role explainer card on the Users tab and the FE column on the Your Access matrix were removed.</li>
+                <li><b>Dashboard role widget shows positive capabilities only</b> — the Editor row's two <i>Cannot…</i> bullets were stripped (they remain reachable via the matrix on the Your Access tab). The widget now stays focused on what each role can do; full can/can't details live in one place — Settings → Your Access — accessed via the existing "See full access details →" link.</li>
               </ul>
             </li>
             <li>

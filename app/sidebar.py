@@ -104,9 +104,10 @@ def _is_visible(key, site, user):
                     and user_meets_role(user, site.posts_required_role))
     if key == "access_requests": return bool(user.is_admin())
     if key == "web_frontend":
-        # The Web Frontend's actual route gates remain @frontend_editor_required
-        # for safety — the dropdown for this module additionally hides the
-        # sidebar entry when the chosen tier is stricter.
+        # The Web Frontend's route gates resolve to admin-only via
+        # ``can_edit_frontend`` (the dedicated frontend_editor role
+        # was retired). The required-role dropdown can additionally
+        # tighten visibility but can't loosen it past the hard gate.
         return bool(site and site.frontend_module_enabled
                     and getattr(user, "can_edit_frontend", lambda: False)()
                     and user_meets_role(user, site.frontend_module_required_role))

@@ -6,7 +6,7 @@ from sqlalchemy.ext.associationproxy import association_proxy
 
 db = SQLAlchemy()
 
-ROLES = ("admin", "editor", "frontend_editor", "intergroup_member", "viewer")
+ROLES = ("admin", "editor", "intergroup_member", "viewer")
 
 # Seed names for the two default Intergroup libraries that are auto-
 # created when the umbrella module is first enabled. Membership in this
@@ -82,20 +82,19 @@ class User(UserMixin, db.Model):
         """Broad editor gate: meetings, files, libraries, etc. Intergroup
         members inherit every Editor permission AND additionally pass
         the per-library Intergroup gate below."""
-        return self.role in ("admin", "editor", "frontend_editor", "intergroup_member")
+        return self.role in ("admin", "editor", "intergroup_member")
 
     def can_edit_frontend(self):
-        """Authorized to edit the Web Frontend module and preview it while
-        the public toggle is off. Includes admins and the dedicated
-        frontend_editor role; regular editors are excluded."""
-        return self.role in ("admin", "frontend_editor")
+        """Authorized to edit the Web Frontend module and preview it
+        while the public toggle is off. Admins only — the dedicated
+        ``frontend_editor`` role was retired."""
+        return self.role == "admin"
 
     def can_edit_intergroup_libraries(self):
         """True for admins and the dedicated `intergroup_member` role.
-        Used by per-library edit gates on the Intergroup Documents and
-        Intergroup Minutes libraries — regular editors and frontend
-        editors are deliberately excluded so those libraries can be
-        delegated to a narrow set of trusted servants."""
+        Used by per-library edit gates on Intergroup-flagged libraries
+        — regular editors are deliberately excluded so those libraries
+        can be delegated to a narrow set of trusted servants."""
         return self.role in ("admin", "intergroup_member")
 
     def can_edit_library(self, library):
@@ -110,21 +109,21 @@ class User(UserMixin, db.Model):
     def can_edit_reading(self, reading):
         """Per-reading gate for renaming / editing an existing reading
         (title change, file replacement, body / URL / thumbnail swap,
-        inline category re-tag). Editors AND Frontend Editors are
-        restricted to readings whose creator was an editor-tier user
-        — mirrors ``can_delete_reading`` so a single rule covers both
-        rename and delete authority. Admin / intergroup_member follow
-        the broader ``can_edit_library`` gate; viewers fail at that
-        gate."""
+        inline category re-tag). Editors are restricted to readings
+        whose creator was another Editor — mirrors
+        ``can_delete_reading`` so a single rule covers both rename and
+        delete authority. Admin- and Intergroup-Member-uploaded
+        readings are protected. Admin / intergroup_member follow the
+        broader ``can_edit_library`` gate; viewers fail at that gate."""
         if reading is None:
             return False
         if not self.can_edit_library(reading.library):
             return False
-        if self.role in ("editor", "frontend_editor"):
+        if self.role == "editor":
             creator = reading.creator
             if creator is None:
                 return False
-            return creator.role in ("editor", "frontend_editor", "intergroup_member")
+            return creator.role == "editor"
         return True
 
     def can_use_editor_tools(self):
@@ -135,22 +134,49 @@ class User(UserMixin, db.Model):
 
     def can_create_meetings(self):
         """Authorized to provision new meetings or delete existing ones.
-        Admins and Intergroup Members only — Editors and Frontend
-        Editors keep their authority to edit, schedule, and attach
-        files to existing meetings, but creating new entries and
-        removing them is held back to the trusted-servant tier."""
+        Admins and Intergroup Members only — Editors keep their
+        authority to edit, schedule, and attach files to existing
+        meetings, but creating new entries and removing them is held
+        back to the trusted-servant tier."""
+        return self.role in ("admin", "intergroup_member")
+
+    def can_rename_media(self, media):
+        """Per-file gate for renaming a ``MediaItem`` in the file
+        browser. Mirrors ``can_delete_reading``: Editors can rename a
+        media item only when its uploader was another Editor. Admin-,
+        Intergroup-Member-, and legacy (uploader-unknown) files are
+        protected. Admins and Intergroup Members can rename any file.
+        Viewers fail the broader ``can_edit`` gate on the route."""
+        if media is None:
+            return False
+        if self.role == "admin":
+            return True
+        if self.role == "intergroup_member":
+            return True
+        if self.role == "editor":
+            uploader = media.uploader
+            if uploader is None:
+                return False
+            return uploader.role == "editor"
+        return False
+
+    def can_manage_libraries(self):
+        """Authorized to create new libraries and edit existing
+        library metadata (name, description, alert message, the
+        Intergroup flag, the category list). Admins and Intergroup
+        Members only. Editors can still add / edit / delete files
+        inside existing libraries (subject to the per-row gates on
+        individual readings), but library provisioning and settings
+        changes are held back to the trusted-servant tier so the
+        catalog of libraries stays coherent across the portal."""
         return self.role in ("admin", "intergroup_member")
 
     def can_bulk_edit_categories(self, reading):
         """Per-reading gate for the multi-select bulk-edit-categories
         action on the library detail page. Mirrors
         ``can_delete_reading`` exactly: if the user is allowed to
-        destroy a reading, they're allowed to mass-tag it. This
-        intentionally pulls frontend_editors out of the bulk surface
-        too — they can edit individual readings but per the
-        role-permission spec they have no authority over library-file
-        deletion, and we want a single 'destructive enough' authority
-        to gate both bulk operations."""
+        destroy a reading, they're allowed to mass-tag it. A single
+        'destructive enough' authority gates both bulk operations."""
         return self.can_delete_reading(reading)
 
     def can_delete_reading(self, reading):
@@ -158,14 +184,14 @@ class User(UserMixin, db.Model):
 
         - Admins: any reading.
         - Intergroup members: any reading inside a library they can edit
-          (they have exclusive edit on Intergroup Documents/Minutes; for
+          (they have exclusive edit on Intergroup-flagged libraries; for
           everything else they inherit the broad editor gate).
-        - Editors and Frontend Editors: only readings whose creator was
-          an editor-tier user (editor / frontend_editor /
-          intergroup_member). Admin-created and legacy (creator=None)
-          readings are protected — an admin must remove those. This
-          stops a regular editor or frontend editor from purging
-          authoritative content the admin maintains.
+        - Editors: only readings whose creator was another Editor.
+          Admin-, Intergroup-Member-, and legacy (creator=None)
+          readings are protected — Editors can't touch content
+          uploaded by users who outrank them. This keeps authoritative
+          content (admin uploads, Intergroup-Member uploads of
+          trusted-servant material) safe from editor purges.
         - Viewers: never.
 
         ``reading`` is the ``Reading`` row about to be deleted; ``None``
@@ -176,11 +202,11 @@ class User(UserMixin, db.Model):
             return True
         if self.role == "intergroup_member":
             return self.can_edit_library(reading.library)
-        if self.role in ("editor", "frontend_editor"):
+        if self.role == "editor":
             creator = reading.creator
             if creator is None:
                 return False
-            return creator.role in ("editor", "frontend_editor", "intergroup_member")
+            return creator.role == "editor"
         # viewer falls through to deny.
         return False
 
@@ -359,14 +385,14 @@ class SiteSetting(db.Model):
     # installs don't lose data the moment the column is added.
     posts_enabled = db.Column(db.Boolean, nullable=False, default=True)
     # Per-module role gates. Each value is one of: viewer (any signed-in
-    # user), editor (admin + editor), frontend_editor (admin + frontend
-    # editor), admin (admin only). Defaults preserve the historical
-    # behavior — Posts admin-only, Intergroup/Zoom-Tech open to all,
-    # Web Frontend reserved for admins + frontend editors.
+    # user), editor (admin + editor), intergroup_member (admin +
+    # intergroup_member), admin (admin only). Defaults preserve the
+    # historical behavior — Posts admin-only, Intergroup/Zoom-Tech open
+    # to all, Web Frontend reserved for admins.
     intergroup_required_role = db.Column(db.String(32), nullable=False, default="viewer")
     zoom_tech_required_role = db.Column(db.String(32), nullable=False, default="viewer")
     posts_required_role = db.Column(db.String(32), nullable=False, default="admin")
-    frontend_module_required_role = db.Column(db.String(32), nullable=False, default="frontend_editor")
+    frontend_module_required_role = db.Column(db.String(32), nullable=False, default="admin")
     # Sidebar ordering. Mode: auto-asc | auto-desc | manual. Auto modes
     # ignore the JSON and sort items alphabetically inside each section
     # (Main → External → Admin order is fixed). Manual mode reads

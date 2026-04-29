@@ -19,7 +19,7 @@
       {{ '↓' if direction == 'desc' else '↑' }}
     </a>
   </div>
-  {% if current_user.can_edit() %}
+  {% if current_user.can_manage_libraries() %}
   <button type="button" class="btn btn-primary" data-open-modal="library-new-modal">+ New Library</button>
   {% endif %}
 {% endblock %}
@@ -57,7 +57,7 @@
 <div class="empty"><h3>No libraries yet</h3><p class="muted">Create one to start collecting files.</p></div>
 {% endif %}
 
-{% if current_user.can_edit() %}
+{% if current_user.can_manage_libraries() %}
 <div class="modal" id="library-new-modal" aria-hidden="true">
   <div class="modal-backdrop" data-close></div>
   <div class="modal-panel" role="dialog" aria-modal="true">

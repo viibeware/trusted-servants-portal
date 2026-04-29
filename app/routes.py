@@ -116,7 +116,7 @@ def admin_required(f):
 
 def meeting_admin_required(f):
     """Gate for meeting create + delete: admins and Intergroup Members
-    only. Editors and Frontend Editors keep edit/schedule/attach
+    only. Editors keep edit/schedule/attach
     authority on existing meetings via ``editor_required`` elsewhere
     but can't provision new entries or remove them."""
     @wraps(f)
@@ -130,17 +130,24 @@ def meeting_admin_required(f):
     return wrapper
 
 
-def frontend_editor_required(f):
-    """Admins and frontend_editor role can reach Web Frontend editor routes."""
+def library_admin_required(f):
+    """Gate for library create + metadata edit: admins and Intergroup
+    Members only. Editors keep their authority
+    to add / edit / delete readings inside existing libraries via
+    ``_require_can_edit_library`` elsewhere, but provisioning new
+    library entries or renaming / re-describing existing ones is
+    held back to the trusted-servant tier."""
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not current_user.is_authenticated:
             return redirect(url_for("auth.login"))
-        if not current_user.can_edit_frontend():
-            flash("You don't have permission to edit the web frontend", "danger")
+        if not current_user.can_manage_libraries():
+            flash("You don't have permission to do that", "danger")
             return redirect(request.referrer or url_for("main.index"))
         return f(*args, **kwargs)
     return wrapper
+
+
 
 
 def _require_can_edit_library(library):
@@ -1983,7 +1990,7 @@ def _clamp_int(raw, lo, hi, default):
 
 
 @bp.route("/frontend/save", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_save():
     """Save homepage text content (branding, about, contact, block content).
     Hero options are saved by frontend_hero_save. Public toggle state and
@@ -2145,7 +2152,7 @@ def frontend_save():
 
 
 @bp.route("/frontend/hero/save", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_hero_save():
     """Save all hero options (text, typography, background, image)."""
     s = _get_site_setting()
@@ -2251,7 +2258,7 @@ def _apply_hero_button_form(btn, form):
 
 
 @bp.route("/frontend/hero-button/new", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_hero_button_new():
     max_pos = db.session.query(db.func.coalesce(db.func.max(FrontendHeroButton.position), -1)).scalar() + 1
     btn = FrontendHeroButton(label="New button", position=max_pos)
@@ -2262,7 +2269,7 @@ def frontend_hero_button_new():
 
 
 @bp.route("/frontend/hero-button/<int:bid>/edit", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_hero_button_edit(bid):
     btn = db.session.get(FrontendHeroButton, bid) or abort(404)
     _apply_hero_button_form(btn, request.form)
@@ -2271,7 +2278,7 @@ def frontend_hero_button_edit(bid):
 
 
 @bp.route("/frontend/hero-button/<int:bid>/delete", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_hero_button_delete(bid):
     btn = db.session.get(FrontendHeroButton, bid) or abort(404)
     db.session.delete(btn)
@@ -2280,7 +2287,7 @@ def frontend_hero_button_delete(bid):
 
 
 @bp.route("/frontend/hero-buttons/reorder", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_hero_buttons_reorder():
     payload = request.get_json(silent=True) or {}
     valid = {b.id for b in FrontendHeroButton.query.all()}
@@ -2317,7 +2324,7 @@ def site_hero_bg_video():
 
 
 @bp.route("/frontend/toggle", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_toggle():
     """Flip the public-frontend on/off switch without touching content fields."""
     s = _get_site_setting()
@@ -2377,7 +2384,7 @@ def _apply_alert_form(s, form, prefix):
 
 
 @bp.route("/frontend/top-alert-save", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_top_alert_save():
     s = _get_site_setting()
     _apply_alert_form(s, request.form, "top")
@@ -2387,7 +2394,7 @@ def frontend_top_alert_save():
 
 
 @bp.route("/frontend/header-alert-save", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_header_alert_save():
     s = _get_site_setting()
     _apply_alert_form(s, request.form, "header")
@@ -2397,7 +2404,7 @@ def frontend_header_alert_save():
 
 
 @bp.route("/frontend/logo-save", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_logo_save():
     """Upload / clear / resize the public-frontend logo."""
     s = _get_site_setting()
@@ -2423,7 +2430,7 @@ def frontend_logo_save():
 
 
 @bp.route("/frontend/header-save", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_header_save():
     """Persist header layout settings (width mode + sizing)."""
     s = _get_site_setting()
@@ -2457,7 +2464,7 @@ _HEX = _re.compile(r"#[0-9a-fA-F]{6}")
 
 
 @bp.route("/frontend/nav-appearance", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_nav_appearance_save():
     s = _get_site_setting()
     bg = (request.form.get("frontend_mega_bg_color") or "").strip()
@@ -2498,7 +2505,7 @@ def _apply_nav_item_form(item, form):
 
 
 @bp.route("/frontend/nav-item/new", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_nav_item_new():
     max_pos = db.session.query(db.func.max(FrontendNavItem.position)).scalar() or 0
     item = FrontendNavItem(position=max_pos + 1)
@@ -2510,7 +2517,7 @@ def frontend_nav_item_new():
 
 
 @bp.route("/frontend/nav-item/<int:nid>/edit", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_nav_item_edit(nid):
     item = db.session.get(FrontendNavItem, nid) or abort(404)
     _apply_nav_item_form(item, request.form)
@@ -2520,7 +2527,7 @@ def frontend_nav_item_edit(nid):
 
 
 @bp.route("/frontend/nav-item/<int:nid>/delete", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_nav_item_delete(nid):
     item = db.session.get(FrontendNavItem, nid) or abort(404)
     db.session.delete(item)
@@ -2530,7 +2537,7 @@ def frontend_nav_item_delete(nid):
 
 
 @bp.route("/frontend/nav-items/reorder", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_nav_item_reorder():
     payload = request.get_json(silent=True) or {}
     for pos, iid in enumerate(payload.get("order") or []):
@@ -2542,7 +2549,7 @@ def frontend_nav_item_reorder():
 
 
 @bp.route("/frontend/nav-item/<int:nid>/megamenu")
-@frontend_editor_required
+@admin_required
 def frontend_nav_megamenu(nid):
     item = db.session.get(FrontendNavItem, nid) or abort(404)
     return render_template("frontend_nav_megamenu.html", item=item, site=_get_site_setting())
@@ -2550,7 +2557,7 @@ def frontend_nav_megamenu(nid):
 
 # ---- Columns ----
 @bp.route("/frontend/nav-item/<int:nid>/column/new", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_nav_column_new(nid):
     item = db.session.get(FrontendNavItem, nid) or abort(404)
     max_pos = max([c.position for c in item.columns] + [-1]) + 1
@@ -2565,7 +2572,7 @@ def frontend_nav_column_new(nid):
 
 
 @bp.route("/frontend/nav-column/<int:cid>/edit", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_nav_column_edit(cid):
     col = db.session.get(FrontendNavColumn, cid) or abort(404)
     col.heading = (request.form.get("heading") or "").strip() or None
@@ -2574,7 +2581,7 @@ def frontend_nav_column_edit(cid):
 
 
 @bp.route("/frontend/nav-column/<int:cid>/delete", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_nav_column_delete(cid):
     col = db.session.get(FrontendNavColumn, cid) or abort(404)
     nid = col.nav_item_id
@@ -2586,7 +2593,7 @@ def frontend_nav_column_delete(cid):
 
 
 @bp.route("/frontend/nav-item/<int:nid>/columns/reorder", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_nav_columns_reorder(nid):
     item = db.session.get(FrontendNavItem, nid) or abort(404)
     payload = request.get_json(silent=True) or {}
@@ -2701,7 +2708,7 @@ def _apply_nav_link_form(link, form):
 
 
 @bp.route("/frontend/nav-column/<int:cid>/link/new", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_nav_link_new(cid):
     col = db.session.get(FrontendNavColumn, cid) or abort(404)
     max_pos = max([l.position for l in col.links] + [-1]) + 1
@@ -2722,7 +2729,7 @@ def frontend_nav_link_new(cid):
 
 
 @bp.route("/frontend/nav-link/<int:lid>/edit", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_nav_link_edit(lid):
     link = db.session.get(FrontendNavLink, lid) or abort(404)
     _apply_nav_link_form(link, request.form)
@@ -2731,7 +2738,7 @@ def frontend_nav_link_edit(lid):
 
 
 @bp.route("/frontend/nav-link/<int:lid>/delete", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_nav_link_delete(lid):
     link = db.session.get(FrontendNavLink, lid) or abort(404)
     nid = link.column.nav_item_id
@@ -2743,7 +2750,7 @@ def frontend_nav_link_delete(lid):
 
 
 @bp.route("/frontend/nav/<int:nid>/megamenu/save-all", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_nav_megamenu_save_all(nid):
     item = db.session.get(FrontendNavItem, nid) or abort(404)
     payload = request.get_json(silent=True) or {}
@@ -2768,7 +2775,7 @@ def frontend_nav_megamenu_save_all(nid):
 
 
 @bp.route("/frontend/nav-column/<int:cid>/links/reorder", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_nav_links_reorder(cid):
     col = db.session.get(FrontendNavColumn, cid) or abort(404)
     payload = request.get_json(silent=True) or {}
@@ -2820,14 +2827,14 @@ def _custom_icon_json(ci):
 
 
 @bp.route("/frontend/custom-icons.json")
-@frontend_editor_required
+@admin_required
 def frontend_custom_icons_list():
     rows = CustomIcon.query.order_by(CustomIcon.created_at.desc()).all()
     return jsonify(icons=[_custom_icon_json(ci) for ci in rows])
 
 
 @bp.route("/frontend/custom-icon/upload", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_custom_icon_upload():
     uploaded = request.files.get("icon")
     if not uploaded or not uploaded.filename:
@@ -2858,7 +2865,7 @@ def frontend_custom_icon_upload():
 
 
 @bp.route("/frontend/custom-icon/<int:cid>/delete", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_custom_icon_delete(cid):
     ci = db.session.get(CustomIcon, cid) or abort(404)
     ref = f"custom:{cid}"
@@ -2919,7 +2926,7 @@ def _clear_font_overrides_for(fid):
 
 
 @bp.route("/frontend/custom-font/upload", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_custom_font_upload():
     uploaded = request.files.get("font")
     if not uploaded or not uploaded.filename:
@@ -2955,7 +2962,7 @@ def frontend_custom_font_upload():
 
 
 @bp.route("/frontend/custom-font/google", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_custom_font_google():
     """Add a font from a Google Fonts CSS URL. We do NOT serve anything
     from Google at runtime — we fetch the CSS, download every referenced
@@ -3048,7 +3055,7 @@ def frontend_custom_font_google():
 
 
 @bp.route("/frontend/custom-font/<int:fid>/delete", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_custom_font_delete(fid):
     import json as _json
     cf = db.session.get(CustomFont, fid) or abort(404)
@@ -3125,21 +3132,21 @@ def site_custom_font_asset(asset):
 
 
 @bp.route("/frontend/")
-@frontend_editor_required
+@admin_required
 def frontend_dashboard():
     s = _get_site_setting()
     return render_template("frontend_dashboard.html", site=s)
 
 
 @bp.route("/frontend/branding")
-@frontend_editor_required
+@admin_required
 def frontend_branding():
     s = _get_site_setting()
     return render_template("frontend_branding.html", site=s)
 
 
 @bp.route("/frontend/fonts-icons")
-@frontend_editor_required
+@admin_required
 def frontend_fonts_icons():
     s = _get_site_setting()
     custom_icons = CustomIcon.query.order_by(CustomIcon.created_at.desc()).all()
@@ -3149,7 +3156,7 @@ def frontend_fonts_icons():
 
 
 @bp.route("/frontend/404")
-@frontend_editor_required
+@admin_required
 def frontend_404():
     """Customize the public 404 page (heading, subheading, CTA, illustration).
     Sensible defaults render when fields are blank — see frontend/404.html."""
@@ -3158,7 +3165,7 @@ def frontend_404():
 
 
 @bp.route("/frontend/404/save", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_404_save():
     s = _get_site_setting()
     s.frontend_404_heading = (request.form.get("frontend_404_heading") or "").strip()[:200] or None
@@ -3200,7 +3207,7 @@ def frontend_404_preview():
 
 
 @bp.route("/frontend/design")
-@frontend_editor_required
+@admin_required
 def frontend_design():
     """Site-wide design tokens (colors, spacing, buttons, links, text).
     Theme provides defaults; this page lets the admin override any
@@ -3210,7 +3217,7 @@ def frontend_design():
 
 
 @bp.route("/frontend/design/save", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_design_save():
     """Persist design overrides as JSON. Each form field is named
     ``design_<token_key>``; invalid or empty inputs are dropped so the
@@ -3226,7 +3233,7 @@ def frontend_design_save():
 
 
 @bp.route("/frontend/design/reset", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_design_reset():
     """Clear every override so the active theme's defaults take over."""
     s = _get_site_setting()
@@ -3237,7 +3244,7 @@ def frontend_design_reset():
 
 
 @bp.route("/frontend/fonts-icons/save", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_fonts_icons_save():
     """Persist per-role font overrides. Admin can pick any vendored font
     key, ``custom:<id>`` for an admin-uploaded font, or the empty string
@@ -3257,7 +3264,7 @@ def frontend_fonts_icons_save():
 
 
 @bp.route("/frontend/branding/save", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_branding_save():
     """Save site name + Open Graph metadata (title/description/image) in
     one round trip. The fields written here are the *frontend* OG fields
@@ -3300,7 +3307,7 @@ def frontend_branding_save():
 
 
 @bp.route("/frontend/header")
-@frontend_editor_required
+@admin_required
 def frontend_header():
     from .frontend import HEADER_TEMPLATES
     s = _get_site_setting()
@@ -3309,7 +3316,7 @@ def frontend_header():
 
 
 @bp.route("/frontend/navigation")
-@frontend_editor_required
+@admin_required
 def frontend_navigation():
     from .frontend import MEGAMENU_TEMPLATES
     s = _get_site_setting()
@@ -3320,7 +3327,7 @@ def frontend_navigation():
 
 
 @bp.route("/frontend/megamenu-template", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_megamenu_template_save():
     from .frontend import MEGAMENU_TEMPLATES
     s = _get_site_setting()
@@ -3333,7 +3340,7 @@ def frontend_megamenu_template_save():
 
 
 @bp.route("/frontend/header-template", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_header_template_save():
     from .frontend import HEADER_TEMPLATES
     s = _get_site_setting()
@@ -3347,7 +3354,7 @@ def frontend_header_template_save():
 
 
 @bp.route("/frontend/footer")
-@frontend_editor_required
+@admin_required
 def frontend_footer():
     from .frontend import FOOTER_TEMPLATES
     s = _get_site_setting()
@@ -3356,7 +3363,7 @@ def frontend_footer():
 
 
 @bp.route("/frontend/footer-template", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_footer_template_save():
     from .frontend import FOOTER_TEMPLATES
     s = _get_site_setting()
@@ -3385,7 +3392,7 @@ _HOMEPAGE_BLOCK_CATALOG = [
 
 
 @bp.route("/frontend/homepage")
-@frontend_editor_required
+@admin_required
 def frontend_homepage():
     from .frontend import HOMEPAGE_TEMPLATES
     from .blocks import (site_blocks,
@@ -3473,7 +3480,7 @@ def frontend_homepage():
 
 
 @bp.route("/frontend/homepage-template", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_homepage_template_save():
     from .frontend import HOMEPAGE_TEMPLATES
     s = _get_site_setting()
@@ -3495,7 +3502,7 @@ def frontend_homepage_template_save():
 # page rendered for a content type.
 # ---------------------------------------------------------------------------
 @bp.route("/frontend/templates")
-@frontend_editor_required
+@admin_required
 def frontend_templates():
     from .frontend import MEETING_TEMPLATES, EVENT_TEMPLATES, template_settings
     from .fonts import all_fonts
@@ -3514,7 +3521,7 @@ _TEMPLATE_KINDS = ("meeting", "event")
 
 
 @bp.route("/frontend/template-settings/<kind>/<key>", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_template_settings_save(kind, key):
     """Persist per-template appearance overrides (background, font choices,
     size scales) into SiteSetting.frontend_template_settings_json. Empty or
@@ -3570,7 +3577,7 @@ def frontend_template_settings_save(kind, key):
 
 
 @bp.route("/frontend/meeting-template", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_meeting_template_save():
     from .frontend import MEETING_TEMPLATES
     s = _get_site_setting()
@@ -3583,7 +3590,7 @@ def frontend_meeting_template_save():
 
 
 @bp.route("/frontend/event-template", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_event_template_save():
     from .frontend import EVENT_TEMPLATES
     s = _get_site_setting()
@@ -3666,7 +3673,7 @@ def _normalize_blocks(raw_list):
 
 
 @bp.route("/frontend/custom-layout/save", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_custom_layout_save():
     """Persist a user-created layout from the drag-and-drop builder.
     Returns JSON {ok, key, layout} so the picker can re-render and
@@ -3696,7 +3703,7 @@ def frontend_custom_layout_save():
 
 
 @bp.route("/frontend/custom-layout/<key>/update", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_custom_layout_update(key):
     """Replace a custom layout's name + blocks. Pre-built layouts seeded
     via _seed_custom_layouts are read-only — admins can clone them by
@@ -3718,7 +3725,7 @@ def frontend_custom_layout_update(key):
 
 
 @bp.route("/frontend/custom-layout/<key>/delete", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_custom_layout_delete(key):
     """Delete a custom layout. If the deleted layout was active on a
     page that uses it, fall back to the default 'classic' layout for
@@ -3735,7 +3742,7 @@ def frontend_custom_layout_delete(key):
 
 
 @bp.route("/frontend/theme-save", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_theme_save():
     """Set the global visual theme. Propagates the chosen key to every
     per-section template field so all four regions (header, footer,
@@ -3755,14 +3762,14 @@ def frontend_theme_save():
 
 
 @bp.route("/frontend/pages")
-@frontend_editor_required
+@admin_required
 def frontend_pages():
     s = _get_site_setting()
     return render_template("frontend_pages.html", site=s)
 
 
 @bp.route("/frontend/footer-save", methods=["POST"])
-@frontend_editor_required
+@admin_required
 def frontend_footer_save():
     s = _get_site_setting()
     s.frontend_footer_text = (request.form.get("frontend_footer_text") or "").strip() or None
@@ -4010,7 +4017,7 @@ def libraries():
 
 
 @bp.route("/libraries/new", methods=["GET", "POST"])
-@editor_required
+@library_admin_required
 def library_new():
     """Regular library creation — never produces an Intergroup library.
     Promotion into the Intergroup subsection happens through the
@@ -4090,6 +4097,14 @@ def library_edit(lid):
     deny = _require_can_edit_library(lib)
     if deny is not None:
         return deny
+    # Library metadata changes (name, description, alert message,
+    # Intergroup flag, category list) are gated to admins + Intergroup
+    # Members. Editors retain their authority to
+    # add / edit / delete files inside the library (via the per-row
+    # gates) but can't rewrite the library's identity.
+    if not current_user.can_manage_libraries():
+        flash("Only admins and Intergroup Members can edit library settings", "danger")
+        return redirect(_library_browse_url(lib))
     if request.method == "POST":
         # Renaming an Intergroup library is admin-only — non-admins
         # could otherwise rename the row to escape the gate it sits
@@ -4495,12 +4510,12 @@ def library_readings_bulk_categories(lid):
 def library_readings_bulk_delete(lid):
     """Delete a multi-select set of readings. Per-row authorization
     mirrors ``User.can_delete_reading`` (Editors can only delete rows
-    whose creator was an editor-tier user; admin/intergroup_member
-    free-and-clear within a library they can edit; frontend_editor
-    and viewer can't delete at all). Stored files + thumbnails are
-    cleaned up via ``_delete_upload`` before the DB row is removed.
-    Skipped rows are silently filtered with a flash summary so the
-    user sees when authorization scoped their action down."""
+    whose creator was another Editor; admin / intergroup_member
+    free-and-clear within a library they can edit; viewers can't
+    delete at all). Stored files + thumbnails are cleaned up via
+    ``_delete_upload`` before the DB row is removed. Skipped rows are
+    silently filtered with a flash summary so the user sees when
+    authorization scoped their action down."""
     lib = db.session.get(Library, lid) or abort(404)
     deny = _require_can_edit_library(lib)
     if deny is not None:
@@ -4786,6 +4801,13 @@ def media_upload():
 @editor_required
 def media_rename(mid):
     m = db.session.get(MediaItem, mid) or abort(404)
+    if not current_user.can_rename_media(m):
+        # Editor-tier per-row gate: editors and frontend editors can
+        # only rename files they (or another editor-tier user)
+        # uploaded. Admin-uploaded and legacy (uploader-unknown) files
+        # are protected.
+        return jsonify({"ok": False,
+                        "error": "You can only rename files uploaded by you or another editor-tier user."}), 403
     new_name = (request.form.get("name") or "").strip()
     if new_name:
         m.original_filename = new_name[:500]

@@ -467,6 +467,22 @@ def _migrate_sqlite(app):
             conn.execute(text(
                 f"UPDATE library SET is_intergroup = 1 WHERE name IN ({placeholders})"
             ), params)
+        # The frontend_editor role was retired in favor of admin-only
+        # Web Frontend access. Demote any pre-existing frontend_editor
+        # user to editor (they keep their broad editor authority — the
+        # only thing they lose is the Web Frontend module, which is now
+        # admin-only). Run on every boot rather than guarded on a column
+        # add: there's no schema flag indicating "FE users have been
+        # migrated", so we let the UPDATE be a cheap no-op when the
+        # role doesn't appear in the table.
+        conn.execute(text(
+            "UPDATE user SET role = 'editor' WHERE role = 'frontend_editor'"))
+        # Same idea on SiteSetting.frontend_module_required_role — flip
+        # any lingering 'frontend_editor' value to 'admin' so the module
+        # gate resolves cleanly under the new role set.
+        conn.execute(text(
+            "UPDATE site_setting SET frontend_module_required_role = 'admin' "
+            "WHERE frontend_module_required_role = 'frontend_editor'"))
         for col, ddl in (("mode", "VARCHAR(16) NOT NULL DEFAULT 'all'"),):
             add("meeting_libraries", col, ddl)
         for col, ddl in (("position", "INTEGER NOT NULL DEFAULT 0"),
@@ -514,7 +530,7 @@ def _migrate_sqlite(app):
                          ("intergroup_required_role", "VARCHAR(32) NOT NULL DEFAULT 'viewer'"),
                          ("zoom_tech_required_role", "VARCHAR(32) NOT NULL DEFAULT 'viewer'"),
                          ("posts_required_role", "VARCHAR(32) NOT NULL DEFAULT 'admin'"),
-                         ("frontend_module_required_role", "VARCHAR(32) NOT NULL DEFAULT 'frontend_editor'"),
+                         ("frontend_module_required_role", "VARCHAR(32) NOT NULL DEFAULT 'admin'"),
                          ("sidebar_sort_mode", "VARCHAR(16) NOT NULL DEFAULT 'auto-asc'"),
                          ("sidebar_order_json", "TEXT"),
                          ("smtp_host", "VARCHAR(255)"),
