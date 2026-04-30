@@ -1098,6 +1098,14 @@
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
             <li>
+              <div class="u-name">1.8.2</div>
+              <div class="muted smaller">April 2026</div>
+              <ul>
+                <li><b>Zoom Accounts "Show password" button — fix the "(error)" cell</b> — clicking <i>Show</i> on the Zoom Accounts page rendered <i>(error)</i> instead of revealing the password. The reveal handler at <code>app/static/js/app.js</code> hard-coded its fetch URL to <code>/zoom-accounts/&lt;id&gt;/reveal</code>, but the <code>main</code> blueprint is mounted under <code>url_prefix="/tspro"</code>, so the request actually needed to go to <code>/tspro/zoom-accounts/&lt;id&gt;/reveal</code>. The bare path landed on the global 404 page (HTML), <code>r.json()</code> threw on the HTML body, and the catch wrote <i>(error)</i> into the cell. The Show button now renders a server-side <code>data-reveal-url</code> attribute via <code>url_for('main.zoom_account_reveal', aid=a.id)</code>, and the JS fetches that attribute instead of constructing the path itself — same pattern the OTP-email reveal button on the same page already used.</li>
+                <li><b>Currently-online widget — row layout reflows on widget width, not viewport</b> — the live-online list lives in two places: full-width on the User Log page, and inside a narrower column on the Dashboard. The previous viewport <code>@media (max-width: 720px)</code> rule fired only on phones, so on a wide laptop screen the dashboard column was still being asked to render the full four-column row (avatar / name / location / "Xs ago"), and the location cell + "Xs ago" stamp would push past the card's right edge. The list is now a <code>container-type: inline-size</code> query context with <code>container-name: online-list</code>; two <code>@container</code> breakpoints reflow the row based on the widget's own width — at ≤ 540 px the location wraps onto its own row underneath the username, and at ≤ 340 px everything stacks into a single column. Grid tracks switched from <code>minmax(140px, ...)</code> to <code>minmax(0, ...)</code> so children with <code>text-overflow: ellipsis</code> actually clip instead of forcing the row wider than its parent; <code>.online-name</code> picked up the same ellipsis treatment; and <code>.online-row</code> got a defensive <code>overflow: hidden</code> as a final clip in case any future child sneaks past.</li>
+              </ul>
+            </li>
+            <li>
               <div class="u-name">1.8.1</div>
               <div class="muted smaller">April 2026</div>
               <ul>

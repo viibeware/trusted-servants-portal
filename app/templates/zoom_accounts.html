@@ -26,7 +26,7 @@
             <td data-label="Name">{{ a.name }}</td>
             <td data-label="Username">{{ a.username }}</td>
             <td data-label="Password">
-              <button type="button" class="btn btn-sm" data-reveal="{{ a.id }}">Show</button>
+              <button type="button" class="btn btn-sm" data-reveal="{{ a.id }}" data-reveal-url="{{ url_for('main.zoom_account_reveal', aid=a.id) }}">Show</button>
               <span class="mono pw-reveal" id="pw-{{ a.id }}"></span>
             </td>
             <td data-label="Notes">

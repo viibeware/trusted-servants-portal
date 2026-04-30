@@ -1291,7 +1291,8 @@
       const target = document.getElementById("pw-" + id);
       if (target.textContent) { target.textContent = ""; btn.textContent = "Show password"; return; }
       try {
-        const r = await fetch(`/zoom-accounts/${id}/reveal`);
+        const url = btn.dataset.revealUrl || `/zoom-accounts/${id}/reveal`;
+        const r = await fetch(url);
         const j = await r.json();
         target.textContent = j.password;
         btn.textContent = "Hide";

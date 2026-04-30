@@ -2237,13 +2237,29 @@ button.chip { font-family: inherit; }
   70%  { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
   100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
-.online-list { display: flex; flex-direction: column; gap: 6px; }
+.online-list { display: flex; flex-direction: column; gap: 6px;
+  /* Container query context — the row layout reflows based on the
+     widget's own width, not the viewport. The "Currently online"
+     widget appears both full-width on the User Log page and inside
+     a narrower column on the dashboard, so a viewport media query
+     would either be too coarse (wide viewport, narrow column) or
+     never fire (everything below 720 looks the same regardless of
+     widget context). */
+  container-type: inline-size; container-name: online-list; }
 .online-empty { margin: 0; padding: 8px 0; }
 .online-row { display: grid; gap: 12px; align-items: center;
-  grid-template-columns: 36px minmax(140px, 1fr) minmax(180px, 2fr) auto;
+  /* `minmax(0, ...)` instead of `minmax(140px, ...)` lets every
+     track shrink past its content width, so children with
+     `text-overflow: ellipsis` actually clip instead of forcing the
+     row wider than its card. */
+  grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1.5fr) auto;
   padding: 10px 12px; border-radius: 10px;
   background: var(--panel-2); border: 1px solid var(--border);
+  /* Defensive clip: even if a child somehow overflows, it can't push
+     past the card's right edge. */
+  overflow: hidden;
   transition: background 220ms ease, border-color 220ms ease; }
+.online-row > * { min-width: 0; }
 .online-row.is-self { border-color: var(--brand); }
 .online-row.just-moved { animation: online-flash 1400ms ease-out; }
 @keyframes online-flash {
@@ -2253,22 +2269,36 @@ button.chip { font-family: inherit; }
 .online-avatar { width: 36px; height: 36px; border-radius: 999px;
   background: var(--brand); color: #fff; font-weight: 700; font-size: 0.9375rem;
   display: grid; place-items: center; flex: 0 0 auto; }
-.online-name { font-weight: 700; font-size: 0.9375rem; }
+.online-name { font-weight: 700; font-size: 0.9375rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .online-where { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .online-where-link { color: var(--brand); text-decoration: none; font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .online-where-link:hover { text-decoration: underline; }
 .online-path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.online-seen { white-space: nowrap; }
+.online-seen { white-space: nowrap; text-align: right; flex-shrink: 0; }
 
-@media (max-width: 720px) {
-  .online-row { grid-template-columns: 36px 1fr; grid-template-rows: auto auto auto;
-    grid-template-areas: "avatar meta" "where where" "seen seen";
-    row-gap: 6px; }
-  .online-avatar { grid-area: avatar; }
+/* Mid-width: drop the dedicated location column; tuck the seen stamp
+   next to the username and let location wrap to its own row. Keeps
+   the time visible at-a-glance without forcing a third column. */
+@container online-list (max-width: 540px) {
+  .online-row {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    grid-template-areas: "avatar meta seen" "avatar where where";
+    row-gap: 2px; column-gap: 10px; }
+  .online-avatar { grid-area: avatar; align-self: start; margin-top: 2px; }
   .online-meta   { grid-area: meta; }
   .online-where  { grid-area: where; }
   .online-seen   { grid-area: seen; }
+}
+
+/* Narrow: stack everything into a single column. */
+@container online-list (max-width: 340px) {
+  .online-row {
+    grid-template-columns: 36px minmax(0, 1fr);
+    grid-template-areas: "avatar meta" "avatar seen" "where where";
+    row-gap: 4px; }
+  .online-seen { text-align: left; }
 }
 
 /* Per-user "Self-reset allowed?" toggle in the Users table.
