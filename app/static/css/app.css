@@ -2012,13 +2012,13 @@ button.chip { font-family: inherit; }
 .tbl input, .tbl select { padding: 6px 8px; font-size: 0.7812rem; }
 .nowrap { white-space: nowrap; }
 
-/* Users table actions cell — Save / Unlock / Delete sit as siblings
-   in one <td> (the per-row form closes mid-cell so the auxiliary
-   forms can be siblings rather than nested). Without explicit
-   spacing the buttons render flush against each other. flex with a
-   small gap gives them breathing room and lets the row wrap on
-   narrow viewports without overlapping. */
-.tbl td.users-actions {
+/* Users table actions cell — Edit / Unlock / Delete buttons.
+   Flex layout lives on an inner wrapper so the <td> itself stays a
+   normal table-cell; making the td a flex container breaks the
+   table's row-height contract and causes its bottom border to land
+   above the sibling cells'. */
+.tbl td.users-actions { vertical-align: middle; }
+.tbl td.users-actions .users-actions-row {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
 }
 .tbl td.users-actions form { display: inline-flex; margin: 0; }
@@ -2629,6 +2629,40 @@ html.login-fade-in body { animation: login-page-fade-in 650ms ease-out both; }
 [data-theme="dark"] .user-locked-row,
 [data-theme="neobrutal-dark"] .user-locked-row,
 [data-theme="cyberpunk"] .user-locked-row { background: color-mix(in srgb, #78350f 25%, transparent); }
+
+/* Disabled accounts get a desaturated tint + slightly muted text so
+   they're visually distinct from active rows without screaming. The
+   inline role / self-reset controls stay fully readable so an admin
+   can still flip them on a disabled row. */
+.user-disabled-row { background: color-mix(in srgb, var(--muted) 8%, transparent); }
+.user-disabled-row .users-cell-text { color: var(--muted); text-decoration: line-through; }
+.user-disabled-badge { margin-left: 6px; }
+
+/* Static text inside the All Users table — same vertical rhythm as
+   the inputs they replaced so adjacent cells line up. */
+.users-cell-text { display: inline-block; padding: 6px 0; }
+
+/* Edit-user modal — two-column field grid that collapses to one on
+   narrow viewports; toggles stack underneath as full-width rows. */
+.user-edit-modal .modal-panel { max-width: 560px; }
+.user-edit-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.user-edit-form-grid label { display: flex; flex-direction: column; gap: 4px;
+  font-size: 0.8125rem; font-weight: 600; }
+.user-edit-form-grid input,
+.user-edit-form-grid select { padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--panel-2);
+  color: var(--text); font-size: 0.875rem; }
+.user-edit-toggles { display: flex; flex-direction: column; gap: 10px;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.user-edit-toggle { display: flex; align-items: center; gap: 12px;
+  cursor: pointer; padding: 6px 0; }
+.user-edit-toggle-label { display: flex; flex-direction: column; gap: 2px;
+  line-height: 1.35; }
+.user-edit-toggle input:disabled ~ .mode-track { opacity: 0.5; cursor: not-allowed; }
+.user-edit-self-warn { margin: 8px 0 0; }
+@media (max-width: 560px){
+  .user-edit-form-grid { grid-template-columns: 1fr; }
+}
 
 /* Row dirty highlight for the per-row save bar — applies to the
    user-table <tr> and to the PIC <form> (it sets ``data-user-row``
@@ -3793,10 +3827,11 @@ h5.block-heading { font-size: 0.875rem; font-weight: 600; margin: 12px 0 4px; }
     letter-spacing: 0.04em; margin-bottom: 2px; }
   .users-tbl td select,
   .users-tbl td input { width: 100%; box-sizing: border-box; }
-  .users-tbl td.users-actions { display: flex; gap: 8px; padding-top: 10px; }
-  .users-tbl td.users-actions .btn,
-  .users-tbl td.users-actions form { flex: 1 1 0; }
-  .users-tbl td.users-actions form .btn { width: 100%; }
+  .users-tbl td.users-actions { padding-top: 10px; }
+  .users-tbl td.users-actions .users-actions-row { display: flex; gap: 8px; }
+  .users-tbl td.users-actions .users-actions-row > .btn,
+  .users-tbl td.users-actions .users-actions-row > form { flex: 1 1 0; }
+  .users-tbl td.users-actions .users-actions-row > form .btn { width: 100%; }
 
   .media-tbl { overflow-x: visible; }
   .media-tbl thead { display: none; }

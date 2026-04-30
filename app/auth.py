@@ -366,6 +366,17 @@ def login():
                 flash(err, "danger")
                 return render_template("login.html")
         if user and check_password_hash(user.password_hash, password):
+            if user.disabled:
+                # Don't enumerate: same generic invalid-credentials
+                # response an unknown username produces. The activity
+                # log captures the attempt for admin visibility.
+                _record_login_failure(ip, lockout_username)
+                from . import activity
+                activity.log("login.failed", user=user,
+                             summary=(f"Disabled account sign-in blocked for "
+                                      f"'{user.username}' from {ip}"))
+                flash("Invalid credentials", "danger")
+                return render_template("login.html")
             _clear_login_failures(ip=ip, username=user.username)
             session.permanent = True
             login_user(user, remember=True)
@@ -713,6 +724,44 @@ def users_update(uid):
     # by submitting the field empty since "" → None below.
     if "phone" in request.form:
         u.phone = (request.form.get("phone") or "").strip() or None
+    # Disabled / self-reset toggles only ride along with the Edit modal
+    # (the inline role form omits them). The marker key keeps the inline
+    # path's behaviour unchanged — a checkbox that the admin un-ticked
+    # would otherwise be missing from the post body and indistinguishable
+    # from "didn't touch it."
+    if "disabled_present" in request.form:
+        new_disabled = request.form.get("disabled") == "1"
+        if new_disabled and u.id == current_user.id:
+            flash("You can't disable your own account", "danger")
+            return redirect(url_for("auth.users", embed=1) if request.form.get("embed") == "1" else url_for("auth.users"))
+        if new_disabled != u.disabled:
+            u.disabled = new_disabled
+            from . import activity
+            activity.log("user.disable" if new_disabled else "user.enable",
+                         entity_type="user", entity_id=u.id,
+                         summary=f"{'Disabled' if new_disabled else 'Re-enabled'} {u.username}")
+            if new_disabled:
+                # Killing all live sessions reinforces the disable —
+                # without this the user_loader still evicts on the next
+                # request, but session-touching activity until then could
+                # write last_seen / last_path one more time.
+                from .models import LoginSession
+                (LoginSession.query
+                 .filter(LoginSession.user_id == u.id,
+                         LoginSession.ended_at.is_(None))
+                 .update({"ended_at": datetime.utcnow(),
+                          "end_reason": "admin_reset"},
+                         synchronize_session=False))
+    if "reset_allowed_present" in request.form:
+        new_allowed = request.form.get("password_reset_allowed") == "1"
+        if new_allowed != u.password_reset_allowed:
+            u.password_reset_allowed = new_allowed
+            if not new_allowed:
+                (PasswordResetToken.query
+                 .filter(PasswordResetToken.user_id == u.id,
+                         PasswordResetToken.used_at.is_(None))
+                 .update({"used_at": datetime.utcnow()},
+                         synchronize_session=False))
     db.session.commit()
     from . import activity
     activity.log("user.update", entity_type="user", entity_id=u.id,

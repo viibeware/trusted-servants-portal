@@ -5609,30 +5609,33 @@ def access_requests():
 @bp.route("/user-log")
 @admin_required
 def user_log():
-    """Admin-only timeline of write actions, scoped to a single user
-    selected by the ``?user_id=`` query string. Defaults to the current
-    admin so the page always renders something useful when first
-    opened. Two sections: 30-day login session table on top, then the
+    """Admin-only timeline of write actions. Scope is selected via the
+    ``?user_id=`` query string: an integer drills down to one account,
+    the sentinel ``all`` shows activity across every user. Defaults to
+    the current admin so the page always renders something useful when
+    first opened. Two sections: login sessions table on top, then the
     activity feed (newest first) below it."""
     from . import activity
     users = User.query.order_by(User.username).all()
     if not users:
         return render_template("user_log.html", users=[], selected=None,
-                               sessions=[], events=[])
+                               show_all=False, sessions=[], events=[])
 
     raw_uid = request.args.get("user_id")
+    show_all = (raw_uid or "").lower() == "all"
     selected = None
-    if raw_uid:
+    if not show_all and raw_uid:
         try:
             selected = db.session.get(User, int(raw_uid))
         except (TypeError, ValueError):
             selected = None
-    if selected is None:
+    if not show_all and selected is None:
         # Default to the current admin so the page is never blank on
         # first load.
         selected = next((u for u in users if u.id == current_user.id), users[0])
 
-    sessions = activity.recent_sessions(selected.id, since_days=30)
+    scope_uid = None if show_all else selected.id
+    sessions = activity.recent_sessions(scope_uid, since_days=30)
     # Activity feed defaults to the same 30-day window — wide enough to
     # see recent context, tight enough that the page stays fast on
     # noisy accounts. The window is configurable via ``?days=``.
@@ -5640,7 +5643,7 @@ def user_log():
         days = max(1, min(365, int(request.args.get("days", 30))))
     except (TypeError, ValueError):
         days = 30
-    raw_events = activity.recent_activity(selected.id, since_days=days, limit=500)
+    raw_events = activity.recent_activity(scope_uid, since_days=days, limit=500)
     events = []
     for ev in raw_events:
         label, icon_name = activity.label_for(ev.action)
@@ -5654,9 +5657,12 @@ def user_log():
             "entity_type": ev.entity_type or "",
             "entity_id": ev.entity_id,
             "created_at": ev.created_at,
+            "user_id": ev.user_id,
+            "username": (ev.user.username if ev.user else None),
         })
     return render_template("user_log.html",
                            users=users, selected=selected,
+                           show_all=show_all,
                            sessions=sessions, events=events,
                            days=days)
 

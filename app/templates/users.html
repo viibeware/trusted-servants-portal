@@ -82,23 +82,37 @@
     <tbody>
     {% for u in users %}
     {% set _lock_seconds = lockouts.get(u.id, 0) %}
-    <tr{% if _lock_seconds %} class="user-locked-row"{% endif %} data-user-row="{{ u.id }}">
-      <form method="post" action="{{ url_for('auth.users_update', uid=u.id) }}" data-savebar-row>
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+    <tr{% if _lock_seconds or u.disabled %} class="{% if _lock_seconds %}user-locked-row{% endif %}{% if u.disabled %}{% if _lock_seconds %} {% endif %}user-disabled-row{% endif %}"{% endif %}
+        data-user-row="{{ u.id }}"
+        data-username="{{ u.username }}"
+        data-email="{{ u.email or '' }}"
+        data-phone="{{ u.phone or '' }}"
+        data-role="{{ u.role }}"
+        data-disabled="{{ '1' if u.disabled else '0' }}"
+        data-reset-allowed="{{ '1' if u.password_reset_allowed else '0' }}">
       <td data-label="Username">
-        <input name="username" value="{{ u.username }}" required maxlength="64"
-               aria-label="Username for {{ u.username }}">
+        <span class="users-cell-text">{{ u.username }}</span>
         {% if _lock_seconds %}
         <span class="badge badge-warning user-locked-badge" title="Auto-unlocks in ~{{ (_lock_seconds // 60) + 1 }} min">Locked</span>
         {% endif %}
+        {% if u.disabled %}
+        <span class="badge badge-muted user-disabled-badge" title="Sign-ins for this account are blocked">Disabled</span>
+        {% endif %}
       </td>
-      <td data-label="Email"><input name="email" type="email" value="{{ u.email or '' }}" required></td>
-      <td data-label="Phone"><input name="phone" type="tel" value="{{ u.phone or '' }}" placeholder="(optional)"></td>
+      <td data-label="Email"><span class="users-cell-text">{{ u.email or '—' }}</span></td>
+      <td data-label="Phone"><span class="users-cell-text">{{ u.phone or '—' }}</span></td>
       <td data-label="Role">
-        <select name="role">
-          {% for r in roles %}<option value="{{ r }}" {% if u.role==r %}selected{% endif %}>{{ role_labels[r] if role_labels and r in role_labels else r }}</option>{% endfor %}
-        </select>
+        {# Inline role form — kept editable on the list per spec; the
+           Edit modal also exposes role so admins can change everything
+           in one place. #}
+        <form method="post" action="{{ url_for('auth.users_update', uid=u.id) }}"
+              data-savebar-row data-row-role-form>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+          <select name="role" aria-label="Role for {{ u.username }}">
+            {% for r in roles %}<option value="{{ r }}" {% if u.role==r %}selected{% endif %}>{{ role_labels[r] if role_labels and r in role_labels else r }}</option>{% endfor %}
+          </select>
+        </form>
       </td>
       <td data-label="Password" class="users-pw-cell">
         {% if u.email %}
@@ -121,27 +135,100 @@
         </label>
       </td>
       <td class="users-actions">
-      </form>
-        {% if _lock_seconds %}
-        <form method="post" action="{{ url_for('auth.users_unlock', uid=u.id) }}" style="display:inline">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
-          <button class="btn btn-sm" title="Clear login lockout for {{ u.username }}">Unlock</button>
-        </form>
-        {% endif %}
-        {% if u.id != current_user.id %}
-        <form method="post" action="{{ url_for('auth.users_delete', uid=u.id) }}" onsubmit="return confirm('Delete user {{ u.username }}?');" style="display:inline">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
-          <button class="btn btn-sm btn-danger">Delete</button>
-        </form>
-        {% endif %}
+        <div class="users-actions-row">
+          <button type="button" class="btn btn-sm js-user-edit-open"
+                  data-uid="{{ u.id }}"
+                  title="Edit {{ u.username }}'s account">Edit</button>
+          {% if _lock_seconds %}
+          <form method="post" action="{{ url_for('auth.users_unlock', uid=u.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+            <button class="btn btn-sm" title="Clear login lockout for {{ u.username }}">Unlock</button>
+          </form>
+          {% endif %}
+          {% if u.id != current_user.id %}
+          <form method="post" action="{{ url_for('auth.users_delete', uid=u.id) }}" onsubmit="return confirm('Delete user {{ u.username }}?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+            <button class="btn btn-sm btn-danger">Delete</button>
+          </form>
+          {% endif %}
+        </div>
       </td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
 </section>
+
+{# ---- Edit user modal ----------------------------------------------
+   One dialog drives every row — populated with the row's data
+   attributes when its Edit button is clicked, posts to users_update
+   with all fields plus the *_present discriminators so the route
+   knows the disabled / self-reset toggles came from the modal (the
+   inline role form on the list omits them). #}
+<div class="modal user-edit-modal" id="user-edit-modal" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="user-edit-title">
+    <div class="modal-head">
+      <h2 id="user-edit-title">Edit user</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close">{{ icon('x') }}</button>
+    </div>
+    <form method="post" id="user-edit-form" action="">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+      <input type="hidden" name="disabled_present" value="1">
+      <input type="hidden" name="reset_allowed_present" value="1">
+      <div class="modal-body">
+        <div class="form user-edit-form-grid">
+          <label>Username
+            <input name="username" id="user-edit-username" required maxlength="64">
+          </label>
+          <label>Email
+            <input name="email" id="user-edit-email" type="email" required>
+          </label>
+          <label>Phone
+            <input name="phone" id="user-edit-phone" type="tel" placeholder="(optional)">
+          </label>
+          <label>Role
+            <select name="role" id="user-edit-role">
+              {% for r in roles %}<option value="{{ r }}">{{ role_labels[r] if role_labels and r in role_labels else r }}</option>{% endfor %}
+            </select>
+          </label>
+        </div>
+        <div class="user-edit-toggles">
+          <label class="mode-toggle user-edit-toggle"
+                 title="Allow this user to use the public Forgot Password flow. Admins can always reset the password regardless of this switch.">
+            <input type="checkbox" id="user-edit-reset-allowed">
+            <input type="hidden" name="password_reset_allowed" id="user-edit-reset-allowed-val" value="0">
+            <span class="mode-track"><span class="mode-thumb"></span></span>
+            <span class="user-edit-toggle-label">
+              <b>Self-reset password</b>
+              <span class="muted smaller">Account may use the public Forgot Password flow.</span>
+            </span>
+          </label>
+          <label class="mode-toggle user-edit-toggle user-edit-disabled-toggle"
+                 title="Disabled accounts cannot sign in. Existing sessions are revoked on the next request.">
+            <input type="checkbox" id="user-edit-disabled">
+            <input type="hidden" name="disabled" id="user-edit-disabled-val" value="0">
+            <span class="mode-track"><span class="mode-thumb"></span></span>
+            <span class="user-edit-toggle-label">
+              <b>Disable account</b>
+              <span class="muted smaller">Block sign-ins and end the user's live session.</span>
+            </span>
+          </label>
+        </div>
+        <p class="muted smaller user-edit-self-warn" id="user-edit-self-warn" hidden>
+          You can't disable your own account.
+        </p>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Save changes</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <section class="card">
   <div class="card-head"><h2>Public Information Chair</h2></div>
@@ -172,6 +259,76 @@
    Access Requests page can re-use it. Open buttons on this page rely
    on the standard `.js-pwreset-open` data attributes. #}
 {% include "_pwreset_modal.html" %}
+
+<script>
+(function initUserEditModal(){
+  // Single modal shared across every row — populated from the row's
+  // data-* attributes on open, submits a normal POST to users_update
+  // (no fetch override). The iframe reloads on the resulting redirect
+  // so the row's text spans + role select pick up the saved values.
+  const modal = document.getElementById('user-edit-modal');
+  if (!modal) return;
+  const form = document.getElementById('user-edit-form');
+  const usernameIn = document.getElementById('user-edit-username');
+  const emailIn = document.getElementById('user-edit-email');
+  const phoneIn = document.getElementById('user-edit-phone');
+  const roleIn = document.getElementById('user-edit-role');
+  const resetIn = document.getElementById('user-edit-reset-allowed');
+  const resetVal = document.getElementById('user-edit-reset-allowed-val');
+  const disabledIn = document.getElementById('user-edit-disabled');
+  const disabledVal = document.getElementById('user-edit-disabled-val');
+  const selfWarn = document.getElementById('user-edit-self-warn');
+  const titleEl = document.getElementById('user-edit-title');
+  const ACTION_TEMPLATE = "{{ url_for('auth.users_update', uid=0) }}";
+  const CURRENT_UID = "{{ current_user.id }}";
+
+  // Checkboxes can't post a "0" when unticked, so mirror their state
+  // into companion hidden inputs that always submit. The has_*_present
+  // discriminators on the form proper tell the route to consult these.
+  function syncHidden(){
+    resetVal.value = resetIn.checked ? '1' : '0';
+    disabledVal.value = disabledIn.checked ? '1' : '0';
+  }
+  resetIn.addEventListener('change', syncHidden);
+  disabledIn.addEventListener('change', syncHidden);
+
+  function open(uid){
+    const row = document.querySelector('[data-user-row="' + uid + '"]');
+    if (!row) return;
+    form.action = ACTION_TEMPLATE.replace(/\/0\/update$/, '/' + uid + '/update');
+    usernameIn.value = row.dataset.username || '';
+    emailIn.value = row.dataset.email || '';
+    phoneIn.value = row.dataset.phone || '';
+    roleIn.value = row.dataset.role || 'viewer';
+    resetIn.checked = row.dataset.resetAllowed === '1';
+    const isSelf = String(uid) === String(CURRENT_UID);
+    disabledIn.checked = row.dataset.disabled === '1';
+    disabledIn.disabled = isSelf;
+    selfWarn.hidden = !isSelf;
+    titleEl.textContent = 'Edit ' + (row.dataset.username || 'user');
+    syncHidden();
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => usernameIn.focus(), 50);
+  }
+
+  function close(){
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+  }
+
+  document.querySelectorAll('.js-user-edit-open').forEach(btn => {
+    btn.addEventListener('click', () => open(btn.dataset.uid));
+  });
+  modal.querySelectorAll('[data-close]').forEach(el =>
+    el.addEventListener('click', close));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('open')) close();
+  });
+})();
+</script>
 
 <script>
 (function initUsersSaveBar(){

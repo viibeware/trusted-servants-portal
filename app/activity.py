@@ -124,14 +124,20 @@ def touch_session(user):
 # ---- LibraryItem helpers --------------------------------------------------------
 
 def recent_activity(user_id, since_days=None, limit=500):
-    q = ActivityLog.query.filter_by(user_id=user_id)
+    # ``user_id=None`` returns activity across every user — drives the
+    # "All users" view on the User Log page.
+    q = ActivityLog.query
+    if user_id is not None:
+        q = q.filter(ActivityLog.user_id == user_id)
     if since_days:
         q = q.filter(ActivityLog.created_at >= datetime.utcnow() - timedelta(days=since_days))
     return q.order_by(ActivityLog.created_at.desc()).limit(limit).all()
 
 
 def recent_sessions(user_id, since_days=30, limit=100):
-    q = LoginSession.query.filter_by(user_id=user_id)
+    q = LoginSession.query
+    if user_id is not None:
+        q = q.filter(LoginSession.user_id == user_id)
     if since_days:
         q = q.filter(LoginSession.started_at >= datetime.utcnow() - timedelta(days=since_days))
     return q.order_by(LoginSession.started_at.desc()).limit(limit).all()

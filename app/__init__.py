@@ -163,7 +163,14 @@ def create_app():
 
     @login_manager.user_loader
     def load_user(user_id):
-        return db.session.get(User, int(user_id))
+        u = db.session.get(User, int(user_id))
+        # Disabled accounts get evicted on the next request — returning
+        # None here makes ``current_user`` anonymous so any
+        # ``@login_required`` route bounces them to /login. Without this
+        # the toggle would only take effect at next sign-in.
+        if u is not None and getattr(u, "disabled", False):
+            return None
+        return u
 
     from .auth import bp as auth_bp
     from .routes import bp as main_bp, public_bp
@@ -668,7 +675,8 @@ def _migrate_sqlite(app):
                          ("phone", "VARCHAR(64)"),
                          ("last_endpoint", "VARCHAR(128)"),
                          ("last_path", "VARCHAR(500)"),
-                         ("password_reset_allowed", "BOOLEAN NOT NULL DEFAULT 1")):
+                         ("password_reset_allowed", "BOOLEAN NOT NULL DEFAULT 1"),
+                         ("disabled", "BOOLEAN NOT NULL DEFAULT 0")):
             add("user", col, ddl)
         for col, ddl in (("open_in_new_tab", "BOOLEAN NOT NULL DEFAULT 0"),):
             add("frontend_nav_item", col, ddl)

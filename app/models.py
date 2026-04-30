@@ -94,6 +94,20 @@ class User(UserMixin, db.Model):
     # via the Settings → Users modal regardless of this flag. Default
     # True preserves the historical behaviour for upgraded installs.
     password_reset_allowed = db.Column(db.Boolean, nullable=False, default=True)
+    # Soft account disable. ``True`` blocks new sign-ins (login() refuses
+    # the credentials) and invalidates any live session via the
+    # user_loader returning None for disabled rows. The row itself is
+    # preserved so re-enabling restores access without re-creating the
+    # account or losing its history.
+    disabled = db.Column(db.Boolean, nullable=False, default=False)
+
+    @property
+    def is_active(self):
+        """Flask-Login hook: ``False`` causes ``login_user`` to refuse
+        the sign-in. Combined with the user_loader's disabled-check,
+        this means a disabled account can neither start a new session
+        nor continue an existing one."""
+        return not self.disabled
 
     def can_edit(self):
         """Broad editor gate: meetings, files, libraries, etc. Intergroup
