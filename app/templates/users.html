@@ -82,8 +82,8 @@
     <tbody>
     {% for u in users %}
     {% set _lock_seconds = lockouts.get(u.id, 0) %}
-    <tr{% if _lock_seconds %} class="user-locked-row"{% endif %}>
-      <form method="post" action="{{ url_for('auth.users_update', uid=u.id) }}">
+    <tr{% if _lock_seconds %} class="user-locked-row"{% endif %} data-user-row="{{ u.id }}">
+      <form method="post" action="{{ url_for('auth.users_update', uid=u.id) }}" data-savebar-row>
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
       <td data-label="Username">
@@ -110,7 +110,7 @@
         {% else %}
         <span class="muted smaller">No email on file</span>
         {% endif %}
-        <label class="users-reset-allow-toggle"
+        <label class="mode-toggle users-reset-allow-toggle"
                title="Allow {{ u.username }} to use the public Forgot Password flow. Admins can always reset this account regardless of this switch.">
           <input type="checkbox"
                  class="js-reset-allow-toggle"
@@ -121,7 +121,6 @@
         </label>
       </td>
       <td class="users-actions">
-        <button class="btn btn-sm btn-primary">Save</button>
       </form>
         {% if _lock_seconds %}
         <form method="post" action="{{ url_for('auth.users_unlock', uid=u.id) }}" style="display:inline">
@@ -147,7 +146,7 @@
 <section class="card">
   <div class="card-head"><h2>Public Information Chair</h2></div>
   <p class="muted small">Contact information shown on the dashboard for members who need help.</p>
-  <form class="form" method="post" action="{{ url_for('main.pic_save') }}">
+  <form class="form" method="post" action="{{ url_for('main.pic_save') }}" data-savebar-row data-row-label="Public Information Chair">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
     <div class="pic-form-row">
@@ -155,9 +154,19 @@
       <label>Email<input type="email" name="pic_email" value="{{ (site.pic_email if site else '') or '' }}"></label>
       <label>Phone<input type="tel" name="pic_phone" value="{{ (site.pic_phone if site else '') or '' }}"></label>
     </div>
-    <div class="form-actions"><button class="btn btn-primary">Save</button></div>
   </form>
 </section>
+
+{# Iframe-local save bar — every user-row form and the Public
+   Information Chair form route through here. Per-row Save buttons
+   were removed; the bar pops in the moment any tracked input
+   changes and commits all dirty forms in one click via fetch. The
+   parent settings-save-bar deliberately skips iframes so this lives
+   inside users.html. #}
+<div class="fe-save-bar settings-save-bar users-save-bar" id="users-save-bar" hidden>
+  <span class="fe-save-bar-msg" id="users-save-bar-msg">Unsaved changes</span>
+  <button type="button" class="btn fe-save-bar-btn" id="users-save-bar-btn">Save</button>
+</div>
 
 {# Reset-password modal markup + JS lives in _pwreset_modal.html so the
    Access Requests page can re-use it. Open buttons on this page rely
@@ -165,31 +174,174 @@
 {% include "_pwreset_modal.html" %}
 
 <script>
-(function(){
-  // Per-user "Self-reset allowed?" toggle. POSTs the new state to
-  // /users/<uid>/reset-allowed and surfaces a brief inline confirmation
-  // so the admin doesn't have to refresh to see the change applied.
+(function initUsersSaveBar(){
+  // Per-row + PIC save bar. Drops the per-row Save button and
+  // surfaces the same yellow bar pattern the rest of Settings uses
+  // when any tracked input changes — including the per-user
+  // Self-reset toggle (which used to auto-post on click; it now
+  // queues a deferred POST that fires when Save is clicked alongside
+  // the dirty form data).
+  const bar = document.getElementById('users-save-bar');
+  const btn = document.getElementById('users-save-bar-btn');
+  const msg = document.getElementById('users-save-bar-msg');
+  if (!bar || !btn || !msg) return;
+
+  // Two parallel dirty sets. ``dirtyForms`` holds the row + PIC
+  // forms; ``dirtyToggles`` maps uid → desired allowed state for the
+  // standalone Self-reset toggles. The save click drains both in one
+  // batch.
+  const dirtyForms = new Set();
+  const dirtyToggles = new Map();
   const csrf = "{{ csrf_token() }}";
-  const baseUrl = "{{ url_for('auth.users_set_reset_allowed', uid=0) }}";
+  const toggleBaseUrl = "{{ url_for('auth.users_set_reset_allowed', uid=0) }}";
+
+  function rowEl(form){
+    return form.closest('[data-user-row]') || form;
+  }
+
+  function rowByUid(uid){
+    return document.querySelector('[data-user-row="' + uid + '"]');
+  }
+
+  function dirtyCount(){
+    return dirtyForms.size + dirtyToggles.size;
+  }
+
+  function updateMsg(){
+    const n = dirtyCount();
+    if (n === 0) { msg.textContent = 'Unsaved changes'; return; }
+    msg.textContent = n === 1
+      ? 'Unsaved changes'
+      : 'Unsaved changes (' + n + ' pending)';
+  }
+
+  function show(){
+    bar.hidden = false;
+    bar.classList.remove('is-leaving');
+    btn.disabled = false;
+    btn.textContent = 'Save';
+    updateMsg();
+  }
+
+  function hideAfterSave(){
+    msg.textContent = 'Saved';
+    bar.classList.add('is-leaving');
+    setTimeout(() => {
+      bar.hidden = true;
+      bar.classList.remove('is-leaving');
+      bar.style.width = '';
+      dirtyForms.clear();
+      dirtyToggles.clear();
+      document.querySelectorAll('[data-user-row].is-dirty').forEach(el =>
+        el.classList.remove('is-dirty'));
+      document.querySelectorAll('form[data-savebar-row].is-dirty').forEach(el =>
+        el.classList.remove('is-dirty'));
+    }, 320);
+  }
+
+  function markFormDirty(form){
+    dirtyForms.add(form);
+    const r = rowEl(form);
+    r.classList.add('is-dirty');
+    if (form !== r) form.classList.add('is-dirty');
+    show();
+  }
+
+  // Field changes inside row + PIC forms.
+  document.querySelectorAll('form[data-savebar-row]').forEach(f => {
+    const onChange = () => markFormDirty(f);
+    f.addEventListener('input', onChange);
+    f.addEventListener('change', onChange);
+  });
+
+  // Self-reset toggle changes — queued, NOT auto-posted.
   document.querySelectorAll('.js-reset-allow-toggle').forEach(input => {
-    input.addEventListener('change', async () => {
+    const initial = input.checked;
+    input.addEventListener('change', () => {
       const uid = input.dataset.uid;
-      const allowed = input.checked ? '1' : '0';
-      const url = baseUrl.replace(/\/0\/reset-allowed$/, '/' + uid + '/reset-allowed');
-      const fd = new FormData();
-      fd.append('csrf_token', csrf);
-      fd.append('allowed', allowed);
-      try {
-        const r = await fetch(url, {
-          method: 'POST', body: fd, credentials: 'same-origin',
-          headers: { 'X-Requested-With': 'fetch' }
-        });
-        if (!r.ok) throw new Error('Bad status: ' + r.status);
-      } catch (_) {
-        // Revert on failure so the UI doesn't lie about the saved state.
-        input.checked = !input.checked;
+      if (input.checked === initial) {
+        // Toggled back to the persisted state — drop from dirty set.
+        dirtyToggles.delete(uid);
+      } else {
+        dirtyToggles.set(uid, input.checked);
       }
+      const r = rowByUid(uid);
+      if (r) {
+        if (dirtyToggles.has(uid)) r.classList.add('is-dirty');
+        // Don't strip is-dirty just because the toggle reset — the
+        // form might still be dirty. Re-evaluate.
+        else if (![...dirtyForms].some(fm => rowEl(fm) === r)) {
+          r.classList.remove('is-dirty');
+        }
+      }
+      if (dirtyCount()) show();
+      else { bar.hidden = true; bar.classList.remove('is-leaving'); }
     });
+  });
+
+  // Hide the lone leftover per-form Save button on the PIC form so
+  // the bar is the only commit path. (Per-row Save buttons were
+  // already removed in the template.)
+  document.querySelectorAll('form[data-savebar-row] .form-actions').forEach(el => {
+    el.style.display = 'none';
+  });
+
+  async function submitForm(form){
+    const fd = new FormData(form);
+    if (!fd.has('embed')) fd.append('embed', '1');
+    const r = await fetch(form.action, {
+      method: form.method || 'POST',
+      body: fd,
+      credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'fetch' },
+    });
+    if (!r.ok && r.status >= 400 && r.status !== 302 && r.status !== 303) {
+      throw new Error('save failed: ' + r.status);
+    }
+  }
+
+  async function submitToggle(uid, allowed){
+    const url = toggleBaseUrl.replace(/\/0\/reset-allowed$/, '/' + uid + '/reset-allowed');
+    const fd = new FormData();
+    fd.append('csrf_token', csrf);
+    fd.append('allowed', allowed ? '1' : '0');
+    const r = await fetch(url, {
+      method: 'POST', body: fd, credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'fetch' },
+    });
+    if (!r.ok) throw new Error('toggle failed: ' + r.status);
+  }
+
+  btn.addEventListener('click', async () => {
+    if (!dirtyCount()) { bar.hidden = true; return; }
+    bar.style.width = bar.offsetWidth + 'px';
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    msg.textContent = 'Saving…';
+    const forms = [...dirtyForms];
+    const toggles = [...dirtyToggles.entries()];
+    let failed = 0;
+    for (const f of forms) {
+      try { await submitForm(f); } catch (_) { failed += 1; }
+    }
+    for (const [uid, allowed] of toggles) {
+      try { await submitToggle(uid, allowed); } catch (_) { failed += 1; }
+    }
+    if (!failed) {
+      hideAfterSave();
+      // Reload the iframe so server-side flashes + normalised values
+      // (role label, phone trim, etc.) re-render. The reload also
+      // refreshes the toggles' "initial" state to the new persisted
+      // values.
+      setTimeout(() => window.location.reload(), 250);
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Save';
+      msg.textContent = failed === (forms.length + toggles.length)
+        ? 'Save failed — try again'
+        : 'Some changes failed — try again';
+      bar.style.width = '';
+    }
   });
 })();
 </script>

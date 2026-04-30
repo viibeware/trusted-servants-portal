@@ -2275,10 +2275,15 @@ button.chip { font-family: inherit; }
    Sits below the Reset password button; the mode-track/mode-thumb
    classes piggyback on the existing settings-modal switch styling
    so we don't reinvent the look. */
-.users-reset-allow-toggle { display: inline-flex; align-items: center; gap: 8px;
-  margin-top: 8px; cursor: pointer; user-select: none; font-size: 0.75rem;
-  color: var(--muted); }
-.users-reset-allow-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+/* Per-user "Self-reset allowed?" toggle — piggybacks on the standard
+   .mode-toggle / .mode-track / .mode-thumb CSS (so the visual flip
+   on :checked is inherited) and adds a tiny bit of layout polish:
+   sits below the Reset password button with a muted label and the
+   12 px font size used elsewhere on the row. The .mode-toggle base
+   handles input hiding via width:0/height:0 (NOT pointer-events:none,
+   which would break the click that toggles the checkbox via the
+   surrounding label). */
+.users-reset-allow-toggle { margin-top: 8px; font-size: 0.75rem; color: var(--muted); }
 .users-reset-allow-label { white-space: nowrap; }
 
 /* Recent Deletions dashboard widget — a touch tighter than Recent
@@ -2624,6 +2629,47 @@ html.login-fade-in body { animation: login-page-fade-in 650ms ease-out both; }
 [data-theme="dark"] .user-locked-row,
 [data-theme="neobrutal-dark"] .user-locked-row,
 [data-theme="cyberpunk"] .user-locked-row { background: color-mix(in srgb, #78350f 25%, transparent); }
+
+/* Row dirty highlight for the per-row save bar — applies to the
+   user-table <tr> and to the PIC <form> (it sets ``data-user-row``
+   on its own tag too). Soft yellow band that maps to the same
+   palette as the save bar. */
+[data-user-row].is-dirty,
+form[data-savebar-row].is-dirty {
+  background: color-mix(in srgb, #facc15 18%, transparent);
+  transition: background 200ms ease;
+}
+form[data-savebar-row].is-dirty {
+  border-radius: 8px;
+  outline: 1px solid color-mix(in srgb, #facc15 45%, transparent);
+}
+[data-theme="dark"] [data-user-row].is-dirty,
+[data-theme="dark"] form[data-savebar-row].is-dirty,
+[data-theme="neobrutal-dark"] [data-user-row].is-dirty,
+[data-theme="neobrutal-dark"] form[data-savebar-row].is-dirty,
+[data-theme="cyberpunk"] [data-user-row].is-dirty,
+[data-theme="cyberpunk"] form[data-savebar-row].is-dirty {
+  background: color-mix(in srgb, #422006 35%, transparent);
+}
+
+/* Iframe-local save bar lives inside users.html which renders inside
+   the settings-frame iframe. Pin to bottom-left of the iframe
+   viewport so it stays anchored even as the user scrolls the long
+   users list. Use a compound selector that beats ``.settings-save-bar``
+   (which sets position: absolute later in this file) on specificity
+   without resorting to !important. */
+.fe-save-bar.users-save-bar {
+  position: fixed;
+  left: 16px;
+  right: auto;
+  bottom: 16px;
+  width: auto;
+  max-width: calc(100vw - 32px);
+  z-index: 60;
+}
+@media (max-width: 700px) {
+  .fe-save-bar.users-save-bar { left: 12px; right: 12px; bottom: 12px; max-width: none; }
+}
 
 .nav-badge { display: inline-block; background: var(--brand, #0b5cff); color: #fff; border-radius: 999px;
   font-size: 0.6875rem; font-weight: 700; padding: 1px 7px; margin-left: 6px; vertical-align: middle; }
