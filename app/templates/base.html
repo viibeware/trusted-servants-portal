@@ -1148,6 +1148,14 @@
           <h3 class="about-sub">Changelog</h3>
           <ul class="changelog">
             <li>
+              <div class="u-name">1.8.5</div>
+              <div class="muted smaller">May 2026</div>
+              <ul>
+                <li><b>CSRF-after-logout / cross-instance cookie collision — per-secret cookie names so two instances on the same hostname stop overwriting each other</b> — running both <code>tspro</code> (port 8090) and <code>tspro-test</code> (port 8091) on the same machine produced an intermittent 400 "CSRF token is missing/invalid" the moment you switched tabs and submitted a form: browsers scope cookies by hostname only — <em>not</em> by port — so both instances were sharing Flask's default <code>session</code> cookie, whichever side last set the cookie won, and the other side couldn't validate the CSRF token in any form rendered before the swap (the token was signed against one <code>TSP_SECRET_KEY</code>; the cookie now claimed the session belonged to the other). <code>app/__init__.py</code> now derives a 4-byte <code>blake2b</code> hash from <code>TSP_SECRET_KEY</code> at boot and suffixes both the session and remember cookies with it: prod → <code>tspro_session_75bc80ba</code>, test → <code>tspro_session_32eb20e0</code>, etc. Different secret → different name → no overlap, no manual config. Explicit <code>TSP_SESSION_COOKIE_NAME</code> / <code>TSP_REMEMBER_COOKIE_NAME</code> env vars still win when set. One-time cost on upgrade: every currently signed-in user gets logged out once because their cookie no longer matches the new name; the login page is right there, they sign in once, and the new cookie takes over.</li>
+                <li><b>Migration ordering bug — guard <code>frontend_module_required_role</code> UPDATE with column-existence check so older DBs don't restart-loop</b> — the cleanup UPDATE in <code>_migrate_sqlite</code> that flipped any lingering <code>'frontend_editor'</code> values on <code>site_setting.frontend_module_required_role</code> to <code>'admin'</code> ran unconditionally — but the column-add for that same column lived later in the same migration block. On any DB old enough that the column hadn't been added yet (e.g. an upgrade-path test environment that's been sitting on an older release), the UPDATE crashed with <code>no such column: frontend_module_required_role</code> before any of the later <code>ALTER TABLE</code> statements got a chance to run, producing a worker restart loop. <code>_migrate_sqlite</code> now reads <code>PRAGMA table_info(site_setting)</code> right before the UPDATE and skips it when the column doesn't exist yet — on the next boot the column-add will have run, the value will be present at its default <code>'admin'</code>, and the UPDATE becomes a no-op anyway.</li>
+              </ul>
+            </li>
+            <li>
               <div class="u-name">1.8.4</div>
               <div class="muted smaller">May 2026</div>
               <ul>
