@@ -665,10 +665,16 @@ def _migrate_sqlite(app):
             "UPDATE user SET role = 'editor' WHERE role = 'frontend_editor'"))
         # Same idea on SiteSetting.frontend_module_required_role — flip
         # any lingering 'frontend_editor' value to 'admin' so the module
-        # gate resolves cleanly under the new role set.
-        conn.execute(text(
-            "UPDATE site_setting SET frontend_module_required_role = 'admin' "
-            "WHERE frontend_module_required_role = 'frontend_editor'"))
+        # gate resolves cleanly under the new role set. Guarded by a
+        # column-existence check because the column itself is only added
+        # later in this migration block — on a DB that predates the
+        # column, this UPDATE would otherwise crash _migrate_sqlite before
+        # any of the later ALTER TABLE statements got a chance to run.
+        _ss_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(site_setting)"))}
+        if "frontend_module_required_role" in _ss_cols:
+            conn.execute(text(
+                "UPDATE site_setting SET frontend_module_required_role = 'admin' "
+                "WHERE frontend_module_required_role = 'frontend_editor'"))
         for col, ddl in (("mode", "VARCHAR(16) NOT NULL DEFAULT 'all'"),
                          ("public_visible", "BOOLEAN NOT NULL DEFAULT 0")):
             add("meeting_libraries", col, ddl)
