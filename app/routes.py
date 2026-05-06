@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 import hashlib
+import json
 import os
+import re
 import time
 import uuid
 from functools import wraps
@@ -1951,61 +1953,101 @@ def data_import():
 # Settings on SiteSetting that make up the public frontend. Used by the
 # scoped frontend export/import so a single site can ship its look-and-feel
 # (content + navigation + assets) without carrying the whole database.
-_FRONTEND_SETTING_KEYS = (
-    # Core content
-    "frontend_enabled", "frontend_title", "frontend_tagline",
-    "frontend_hero_heading", "frontend_hero_subheading",
-    "frontend_about_heading", "frontend_about_body",
-    "frontend_contact_heading", "frontend_contact_body",
-    "frontend_footer_text",
-    # Layout / templates
-    "frontend_header_width_mode", "frontend_header_max_width",
-    "frontend_header_padding_pct", "frontend_header_height",
-    "frontend_header_template", "frontend_footer_template",
-    "frontend_homepage_template", "frontend_megamenu_template",
-    "frontend_meeting_template", "frontend_meetings_list_template",
-    "frontend_meetings_list_width_mode", "frontend_meetings_list_max_width",
-    "frontend_meetings_list_padding_pct",
-    "frontend_meetings_list_heading", "frontend_meetings_list_subheading",
-    "frontend_meetings_list_protips_json",
-    "frontend_events_list_template", "frontend_events_list_width_mode",
-    "frontend_events_list_max_width", "frontend_events_list_padding_pct",
-    "frontend_events_list_heading", "frontend_events_list_subheading",
-    "frontend_announcements_list_template", "frontend_announcements_list_width_mode",
-    "frontend_announcements_list_max_width", "frontend_announcements_list_padding_pct",
-    "frontend_announcements_list_heading", "frontend_announcements_list_subheading",
-    "frontend_event_template",
-    # Mega menu styling
-    "frontend_mega_bg_color", "frontend_mega_text_color",
-    "frontend_mega_radius_bl", "frontend_mega_radius_br",
-    # Logos
-    "frontend_logo_filename", "frontend_logo_width",
-    "footer_logo_filename", "footer_logo_url", "footer_logo_width",
-    # Utility bar (top of every page)
-    "utility_bar_enabled", "utility_bar_bg_color", "utility_bar_text_color",
-    "utility_bar_left_json", "utility_bar_right_json",
-    "utility_bar_live_meetings", "utility_bar_mobile_default",
-    # Under-header alert bar (kept; the legacy Top Alert Bar was retired
-    # in favour of the more flexible utility bar above)
-    "header_alert_enabled", "header_alert_message",
-    "header_alert_bg_color", "header_alert_text_color",
-    "header_alert_icon", "header_alert_icon_position",
-    # Social sharing — public-facing (frontend OG, distinct from backend og_*)
-    "frontend_og_enabled", "frontend_og_title",
-    "frontend_og_description", "frontend_og_image_filename",
-)
+def _frontend_setting_keys():
+    """Comprehensive list of every SiteSetting column that belongs to
+    the public-facing frontend.
 
-# Setting keys that point at an uploaded filename. These drive asset bundling.
-_FRONTEND_ASSET_KEYS = (
-    "frontend_logo_filename", "footer_logo_filename", "frontend_og_image_filename",
-    "frontend_favicon_filename",
-)
+    Derived from the model's column list at call time so a new column
+    added to ``SiteSetting`` is automatically included in the next
+    export — no manual list maintenance, no quiet drift between what
+    the model declares and what the export captures. Selection is by
+    prefix: any column starting with ``frontend_``, ``footer_``,
+    ``utility_bar_``, ``header_alert_``, ``hero_``, or ``mega_`` is
+    in scope. Admin-only / sensitive columns live under unrelated
+    prefixes (``smtp_``, ``zoom_``, ``intergroup_``, ``dash_``,
+    ``turnstile_``, ``ig_``, ``pic_``, ``og_``) so this prefix-based
+    selector never accidentally exfiltrates them.
+    """
+    from .models import SiteSetting
+    prefixes = ("frontend_", "footer_", "utility_bar_",
+                "header_alert_", "hero_", "mega_")
+    return tuple(sorted(c.name for c in SiteSetting.__table__.columns
+                        if any(c.name.startswith(p) for p in prefixes)))
+
+
+def _frontend_asset_keys():
+    """SiteSetting columns whose value is an uploaded filename — drives
+    asset bundling. Same prefix filter as ``_frontend_setting_keys``,
+    narrowed to columns ending in ``_filename``."""
+    return tuple(c for c in _frontend_setting_keys() if c.endswith("_filename"))
+
+
+# UUID-prefixed stored-filename pattern. All uploads land in the
+# uploads dir as ``<32 hex chars>.<ext>`` (see the ``upload_dir``
+# usage above and ``_backfill_media``). Walking content blobs with
+# this regex finds every embedded reference — image src in pasted
+# Markdown, icon refs in custom layouts, file refs in utility bar
+# items, etc. — without per-blob schema knowledge.
+_ASSET_REF_RE = re.compile(r"[0-9a-f]{32}(?:\.[A-Za-z0-9]{1,8})?", re.IGNORECASE)
+
+
+def _collect_asset_refs(value):
+    """Return a set of stored-filename strings referenced anywhere
+    inside ``value``. ``value`` may be a JSON-encoded string, a Python
+    structure, or None. Returns an empty set for falsy / unmatched
+    input."""
+    if not value:
+        return set()
+    text = value if isinstance(value, str) else json.dumps(value)
+    return set(_ASSET_REF_RE.findall(text))
 
 
 def _frontend_export_payload():
-    from .models import SiteSetting
+    """Build a content-complete frontend bundle.
+
+    The payload covers everything that shapes the public site:
+
+      * **settings** — every ``frontend_*`` / ``footer_*`` /
+        ``utility_bar_*`` / ``header_alert_*`` / ``hero_*`` / ``mega_*``
+        column on ``SiteSetting`` (derived dynamically so new columns
+        join the export automatically).
+      * **nav_items** — every top-level nav row + its columns + links.
+      * **hero_buttons** — admin-defined CTAs under the hero subheading.
+      * **custom_layouts** — drag-drop creations for homepage / footer /
+        page (skipping prebuilts which are seeded fresh on every install).
+      * **custom_fonts** — uploaded fonts AND Google-fetched CSS bundles
+        (the binary asset list rides along so the import side can place
+        every woff2 in the right spot).
+      * **custom_icons** — uploaded SVG / PNG icons used by the nav and
+        feature blocks.
+      * **media_items** — catalog of every uploaded file referenced from
+        frontend content. The import side re-creates the rows so the
+        backfill scan doesn't have to re-derive sha256 / size for each
+        file from scratch.
+      * **assets** — union of every stored filename referenced by any of
+        the above. The export route writes one file per name into the
+        bundle's ``assets/`` folder.
+
+    Asset collection has two sources:
+      1. ``_filename`` columns on SiteSetting (logos, favicon, OG image,
+         404 image, hero bg image, hero bg video, etc.).
+      2. ``_collect_asset_refs`` regex-scan of every JSON content blob —
+         catches images embedded in homepage feature blocks, icons in
+         utility bar items, references inside custom layouts'
+         ``blocks_json``, etc.
+
+    Anything matched in (2) is cross-checked against the MediaItem
+    catalog before being included so a false-positive 32-hex match in
+    a non-asset string can't try to ship a phantom file.
+    """
+    from .models import (SiteSetting, CustomLayout, CustomFont, CustomIcon,
+                         FrontendHeroButton, MediaItem)
     s = _get_site_setting()
-    settings = {k: getattr(s, k, None) for k in _FRONTEND_SETTING_KEYS}
+    setting_keys = _frontend_setting_keys()
+    asset_keys = _frontend_asset_keys()
+    settings = {k: getattr(s, k, None) for k in setting_keys}
+
+    # ---- nav_items (existing shape) -----------------------------------
     nav_items = []
     items = FrontendNavItem.query.order_by(FrontendNavItem.position).all()
     for it in items:
@@ -2038,11 +2080,131 @@ def _frontend_export_payload():
             "open_in_new_tab": bool(it.open_in_new_tab),
             "columns": cols,
         })
-    assets = sorted({fn for fn in (settings.get(k) for k in _FRONTEND_ASSET_KEYS) if fn})
+
+    # ---- hero_buttons -------------------------------------------------
+    hero_buttons = [
+        {"position": b.position, "label": b.label, "url": b.url,
+         "style": b.style,
+         "custom_bg_color": b.custom_bg_color,
+         "custom_text_color": b.custom_text_color,
+         "icon_before": b.icon_before, "icon_after": b.icon_after,
+         "icon_before_color": b.icon_before_color,
+         "icon_after_color": b.icon_after_color,
+         "icon_before_size": b.icon_before_size,
+         "icon_after_size": b.icon_after_size,
+         "open_in_new_tab": bool(b.open_in_new_tab)}
+        for b in FrontendHeroButton.query.order_by(FrontendHeroButton.position).all()
+    ]
+
+    # ---- custom_layouts (homepage / footer / page) --------------------
+    # Prebuilts are skipped — they're seeded fresh on every install and
+    # round-tripping them would just create duplicate rows on import.
+    custom_layouts = [
+        {"key": cl.key, "name": cl.name, "description": cl.description,
+         "kind": cl.kind, "blocks_json": cl.blocks_json}
+        for cl in CustomLayout.query.filter_by(is_prebuilt=False).all()
+    ]
+
+    # ---- custom_fonts -------------------------------------------------
+    custom_fonts = [
+        {"name": cf.name, "family": cf.family, "source": cf.source,
+         "stored_filename": cf.stored_filename,
+         "google_url": cf.google_url,
+         "asset_files_json": cf.asset_files_json,
+         "mime_type": cf.mime_type, "size_bytes": cf.size_bytes}
+        for cf in CustomFont.query.all()
+    ]
+
+    # ---- custom_icons -------------------------------------------------
+    custom_icons = [
+        {"name": ci.name, "stored_filename": ci.stored_filename,
+         "mime_type": ci.mime_type, "size_bytes": ci.size_bytes}
+        for ci in CustomIcon.query.all()
+    ]
+
+    # ---- asset collection --------------------------------------------
+    # Layer 1: explicit filename columns.
+    asset_refs = set()
+    for k in asset_keys:
+        v = settings.get(k)
+        if v:
+            asset_refs.add(v)
+
+    # Layer 2: scan every JSON content blob for stored-filename
+    # references.
+    blob_columns = (
+        "frontend_blocks_json", "frontend_footer_blocks_json",
+        "frontend_design_json", "frontend_fonts_json",
+        "frontend_template_settings_json",
+        "frontend_meetings_list_protips_json",
+        "frontend_hero_sinewave_colors",
+        "utility_bar_left_json", "utility_bar_right_json",
+    )
+    for k in blob_columns:
+        asset_refs |= _collect_asset_refs(getattr(s, k, None))
+    for cl in custom_layouts:
+        asset_refs |= _collect_asset_refs(cl.get("blocks_json"))
+    for cf in custom_fonts:
+        if cf.get("stored_filename"):
+            asset_refs.add(cf["stored_filename"])
+        # asset_files_json is a JSON list of stored filenames for the
+        # Google-fetched woff2 binaries.
+        try:
+            extras = json.loads(cf.get("asset_files_json") or "[]")
+            if isinstance(extras, list):
+                for fn in extras:
+                    if isinstance(fn, str) and fn:
+                        asset_refs.add(fn)
+        except (ValueError, TypeError):
+            pass
+    for ci in custom_icons:
+        if ci.get("stored_filename"):
+            asset_refs.add(ci["stored_filename"])
+
+    # Cross-check matched filenames against the MediaItem catalog (for
+    # the regex-discovered ones — explicit columns and table-stored
+    # filenames are trusted as-is). Anything that doesn't match a real
+    # MediaItem row is dropped: it's almost certainly a false-positive
+    # 32-hex coincidence in a non-asset string.
+    known_media = {m.stored_filename: m for m in MediaItem.query.all()}
+    final_assets = set()
+    for ref in asset_refs:
+        if ref in known_media:
+            final_assets.add(ref)
+            continue
+        # Files referenced via _filename columns or font/icon rows but
+        # absent from MediaItem still ship — pre-MediaItem uploads
+        # (older installs) aren't always indexed. The backfill scan on
+        # import will re-index them.
+        final_assets.add(ref)
+
+    # ---- media_items catalog ------------------------------------------
+    # Ride along with the bundle so the import side can re-populate
+    # MediaItem rows for the assets we shipped, instead of relying on
+    # the boot-time backfill scan to recompute hashes for every file.
+    media_items = []
+    for fn in sorted(final_assets):
+        m = known_media.get(fn)
+        if m is None:
+            continue
+        media_items.append({
+            "stored_filename": m.stored_filename,
+            "original_filename": m.original_filename,
+            "content_hash": m.content_hash,
+            "size_bytes": m.size_bytes,
+            "mime_type": m.mime_type,
+        })
+
     return {
-        "kind": "frontend", "format_version": 1,
-        "settings": settings, "nav_items": nav_items,
-        "assets": list(assets),
+        "kind": "frontend", "format_version": 2,
+        "settings": settings,
+        "nav_items": nav_items,
+        "hero_buttons": hero_buttons,
+        "custom_layouts": custom_layouts,
+        "custom_fonts": custom_fonts,
+        "custom_icons": custom_icons,
+        "media_items": media_items,
+        "assets": sorted(final_assets),
     }
 
 
@@ -2232,11 +2394,17 @@ def data_frontend_export():
     manifest = {
         "app": "trusted-servants-pro",
         "kind": "frontend",
-        "format_version": 1,
+        "format_version": 2,
         "exported_at": datetime.utcnow().isoformat() + "Z",
         "content_filename": "frontend.json",
         "assets_dir": "assets/",
-        "note": "Scoped frontend bundle. Import via the Data tab on another install to overlay frontend content, navigation, and assets without touching users, meetings, or libraries.",
+        "note": ("Scoped frontend bundle (v2). Includes every frontend "
+                 "SiteSetting column, nav, hero buttons, custom layouts "
+                 "(homepage / footer / page), custom fonts, custom icons, "
+                 "MediaItem catalog, plus every uploaded file referenced "
+                 "from any of the above. Import via the Data tab on "
+                 "another install to overlay the public site without "
+                 "touching users, meetings, or libraries."),
     }
 
     tmp_zip = tempfile.NamedTemporaryFile(prefix="tsp-fe-export-", suffix=".zip", delete=False)
@@ -2322,9 +2490,13 @@ def data_frontend_import():
                     shutil.copy2(src, os.path.join(upload_dir, entry))
 
         # 2. Apply settings onto the singleton SiteSetting row.
+        # Use the dynamic key list so a column added after the bundle
+        # was exported doesn't trip an AttributeError; only assign keys
+        # that the bundle actually carries AND the model still defines.
         s = _get_site_setting()
         incoming = payload.get("settings") or {}
-        for key in _FRONTEND_SETTING_KEYS:
+        valid_keys = set(_frontend_setting_keys())
+        for key in valid_keys:
             if key in incoming:
                 setattr(s, key, incoming[key])
 
@@ -2389,12 +2561,129 @@ def data_frontend_import():
                     )
                     db.session.add(link)
 
+        # 4. Hero buttons — replace wholesale.
+        for b in FrontendHeroButton.query.all():
+            db.session.delete(b)
+        db.session.flush()
+        for b in (payload.get("hero_buttons") or []):
+            db.session.add(FrontendHeroButton(
+                position=int(b.get("position") or 0),
+                label=(b.get("label") or "")[:200],
+                url=b.get("url"),
+                style=(b.get("style") or "primary"),
+                custom_bg_color=_sanitize_icon_color(b.get("custom_bg_color")),
+                custom_text_color=_sanitize_icon_color(b.get("custom_text_color")),
+                icon_before=b.get("icon_before"),
+                icon_after=b.get("icon_after"),
+                icon_before_color=_sanitize_icon_color(b.get("icon_before_color")),
+                icon_after_color=_sanitize_icon_color(b.get("icon_after_color")),
+                icon_before_size=_sanitize_icon_size(b.get("icon_before_size")),
+                icon_after_size=_sanitize_icon_size(b.get("icon_after_size")),
+                open_in_new_tab=bool(b.get("open_in_new_tab")),
+            ))
+
+        # 5. CustomLayout — drag-drop creations only. Prebuilts are
+        # left alone (they're seeded fresh on every install). Replace
+        # any existing non-prebuilt with the matching key, and create
+        # rows for keys not present locally.
+        from .models import CustomLayout, CustomFont, CustomIcon
+        for cl in CustomLayout.query.filter_by(is_prebuilt=False).all():
+            db.session.delete(cl)
+        db.session.flush()
+        for cl in (payload.get("custom_layouts") or []):
+            key = (cl.get("key") or "").strip()
+            if not key:
+                continue
+            # Don't collide with seeded prebuilts.
+            existing_prebuilt = CustomLayout.query.filter_by(
+                key=key, is_prebuilt=True).first()
+            if existing_prebuilt:
+                continue
+            db.session.add(CustomLayout(
+                key=key[:64],
+                name=(cl.get("name") or key)[:120],
+                description=cl.get("description"),
+                kind=(cl.get("kind") or "homepage")[:16],
+                blocks_json=(cl.get("blocks_json") or "[]"),
+                is_prebuilt=False,
+            ))
+
+        # 6. CustomFont — replace by family name. Skip rows whose
+        # asset files are missing on disk (the bundle either never
+        # carried them or the paths got mangled in transit) so we
+        # don't leave dangling references.
+        for cf in CustomFont.query.all():
+            db.session.delete(cf)
+        db.session.flush()
+        for cf in (payload.get("custom_fonts") or []):
+            stored = cf.get("stored_filename") or ""
+            if stored and not os.path.isfile(os.path.join(upload_dir, stored)):
+                continue
+            db.session.add(CustomFont(
+                name=(cf.get("name") or "")[:120],
+                family=(cf.get("family") or "")[:120],
+                source=(cf.get("source") or "upload")[:16],
+                stored_filename=stored or None,
+                google_url=cf.get("google_url"),
+                asset_files_json=cf.get("asset_files_json"),
+                mime_type=cf.get("mime_type"),
+                size_bytes=int(cf.get("size_bytes") or 0),
+            ))
+
+        # 7. CustomIcon — replace wholesale.
+        for ci in CustomIcon.query.all():
+            db.session.delete(ci)
+        db.session.flush()
+        for ci in (payload.get("custom_icons") or []):
+            stored = ci.get("stored_filename") or ""
+            if not stored or not os.path.isfile(os.path.join(upload_dir, stored)):
+                continue
+            db.session.add(CustomIcon(
+                name=(ci.get("name") or "")[:120],
+                stored_filename=stored,
+                mime_type=(ci.get("mime_type") or "application/octet-stream"),
+                size_bytes=int(ci.get("size_bytes") or 0),
+            ))
+
+        # 8. MediaItem catalog — upsert by stored_filename so we don't
+        # duplicate rows when the same file already exists locally.
+        # This skips the boot-time backfill having to re-hash every
+        # incoming asset; it just slots the rows in directly.
+        for m in (payload.get("media_items") or []):
+            stored = m.get("stored_filename")
+            if not stored or not os.path.isfile(os.path.join(upload_dir, stored)):
+                continue
+            existing = MediaItem.query.filter_by(stored_filename=stored).first()
+            if existing:
+                # Patch missing metadata; don't overwrite a fuller
+                # local row with a leaner imported one.
+                if not existing.original_filename and m.get("original_filename"):
+                    existing.original_filename = m["original_filename"]
+                if not existing.content_hash and m.get("content_hash"):
+                    existing.content_hash = m["content_hash"]
+                if not existing.size_bytes and m.get("size_bytes"):
+                    existing.size_bytes = int(m.get("size_bytes") or 0)
+                if not existing.mime_type and m.get("mime_type"):
+                    existing.mime_type = m["mime_type"]
+            else:
+                db.session.add(MediaItem(
+                    stored_filename=stored,
+                    original_filename=(m.get("original_filename") or stored),
+                    content_hash=m.get("content_hash"),
+                    size_bytes=int(m.get("size_bytes") or 0),
+                    mime_type=m.get("mime_type"),
+                ))
+
         db.session.commit()
 
+        # Final pass: index any assets that weren't already in the
+        # MediaItem catalog (e.g. files referenced but never paired
+        # with a media row on the source install). Hashes get
+        # recomputed here so the local catalog is consistent.
         from . import _backfill_media
         _backfill_media(current_app)
 
-        flash("Frontend bundle imported — content, navigation, and assets are in place.", "success")
+        flash("Frontend bundle imported — content, navigation, layouts, fonts, icons, and assets are in place.", "success")
         return redirect(request.referrer or url_for("main.frontend_dashboard"))
     finally:
         shutil.rmtree(staging, ignore_errors=True)
