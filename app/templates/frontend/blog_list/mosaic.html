@@ -1,0 +1,210 @@
+{# Mosaic layout — masonry-ish CSS columns grid with mixed card heights.
+   Each card is dense, image-forward, and tags / categories are surfaced
+   as colourful chips. Modern, dynamic, lots of personality. #}
+<section class="fe-blog fe-blog-mosaic fe-blog-list--w-{{ list_width_mode }}">
+  <div class="{% if list_width_mode == 'boxed' %}fe-container{% else %}fe-blog-fullwrap{% endif %}"
+       {% if list_width_mode == 'boxed' %}style="max-width: {{ list_max_width }}px;"
+       {%- elif list_padding_pct %}style="padding-left: {{ list_padding_pct }}vw; padding-right: {{ list_padding_pct }}vw;"{% endif %}>
+
+    <header class="fe-blog-mos-head">
+      <div class="fe-blog-mos-head-text">
+        <h1 class="fe-blog-mos-title">{{ list_heading or 'Blog' }}</h1>
+        {% if list_subheading %}<p class="fe-blog-mos-sub">{{ list_subheading }}</p>{% endif %}
+      </div>
+      {% if all_categories %}
+      <nav class="fe-blog-mos-cats" aria-label="Filter by category">
+        <a class="fe-blog-mos-cat{% if not active_category %} is-active{% endif %}"
+           href="{{ url_for('frontend.blog_list') }}">
+          <span>All</span>
+        </a>
+        {% for c in all_categories %}
+        <a class="fe-blog-mos-cat{% if active_category and active_category.id == c.id %} is-active{% endif %}"
+           {% if c.color %}style="--blog-cat-color: {{ c.color }};"{% endif %}
+           href="{{ url_for('frontend.blog_list', category=c.slug) }}">
+          {% if c.color %}<span class="fe-blog-mos-cat-dot" style="background: {{ c.color }};"></span>{% endif %}
+          <span>{{ c.name }}</span>
+        </a>
+        {% endfor %}
+      </nav>
+      {% endif %}
+    </header>
+
+    {% if not all_posts %}
+    <p class="fe-blog-mos-empty">No posts published yet.</p>
+    {% else %}
+    <div class="fe-blog-mos-grid">
+      {% for p in all_posts %}
+      <article class="fe-blog-mos-card{% if p.featured_image_filename %} has-image{% endif %}{% if p.is_featured %} is-featured{% endif %}{% if loop.index0 % 5 == 0 %} is-large{% endif %}">
+        <a class="fe-blog-mos-link" href="{{ url_for('frontend.blog_post_detail', slug=p.public_slug) }}">
+          {% if p.featured_image_filename %}
+          <div class="fe-blog-mos-art">
+            <img src="{{ url_for('public.blog_post_featured_image', bid=p.id, thumb=600) }}"
+                 alt="" loading="lazy">
+            {% if p.is_pinned %}<span class="fe-blog-mos-pin" aria-label="Pinned">📌</span>{% endif %}
+          </div>
+          {% endif %}
+          <div class="fe-blog-mos-body">
+            {% if p.categories %}
+            <div class="fe-blog-mos-cats-row">
+              {% for c in p.categories[:2] %}
+              <span class="fe-blog-mos-cat-chip" {% if c.color %}style="--blog-cat-color: {{ c.color }};"{% endif %}>{{ c.name }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+            <h3 class="fe-blog-mos-card-title">{{ p.title }}</h3>
+            {% if p.summary %}
+            <p class="fe-blog-mos-summary">{{ p.summary[:130] }}{% if p.summary|length > 130 %}…{% endif %}</p>
+            {% endif %}
+            {% if p.tags %}
+            <div class="fe-blog-mos-tags">
+              {% for t in p.tags[:4] %}
+              <span class="fe-blog-mos-tag">#{{ t.name }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+            <div class="fe-blog-mos-meta">
+              {% if p.author_name %}<span>{{ p.author_name }}</span>{% endif %}
+              {% if p.display_date %}<span>{{ p.display_date.strftime('%b %-d') }}</span>{% endif %}
+              {% if p.reading_minutes %}<span>{{ p.reading_minutes }}m</span>{% endif %}
+            </div>
+          </div>
+        </a>
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<style>
+  .fe-blog-mosaic {
+    --blog-bg: var(--fe-color-surface, #fafbfc);
+    --blog-card: var(--fe-color-bg, #ffffff);
+    --blog-ink: var(--fe-color-text, #0f172a);
+    --blog-ink-soft: var(--fe-color-muted, #64748b);
+    --blog-rule: var(--fe-color-border, #e5e7eb);
+    --blog-accent: var(--fe-color-accent, #6d28d9);
+    background:
+      radial-gradient(1000px 500px at 100% 0%, color-mix(in srgb, var(--blog-accent) 8%, transparent), transparent 60%),
+      var(--blog-bg);
+    color: var(--blog-ink);
+    padding: clamp(2.5rem, 5vw, 4.5rem) 0;
+  }
+  [data-theme="dark"] .fe-blog-mosaic {
+    --blog-bg: #0a0a1a;
+    --blog-card: #15152a;
+    --blog-ink: #e5e7eb;
+    --blog-ink-soft: #9ca3af;
+    --blog-rule: #1f1f3a;
+  }
+  .fe-blog-mos-head {
+    display: flex; align-items: end; justify-content: space-between; gap: 2rem;
+    flex-wrap: wrap; margin-bottom: 2.5rem;
+  }
+  .fe-blog-mos-title {
+    font-family: var(--tpl-heading-font, var(--fe-font-heading, 'Inter', sans-serif));
+    font-weight: 800; font-size: clamp(2.2rem, 4.5vw, 3.4rem);
+    line-height: 1.05; margin: 0;
+    background: linear-gradient(135deg, var(--blog-accent) 0%, color-mix(in srgb, var(--blog-accent) 60%, var(--blog-ink)) 100%);
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent;
+    letter-spacing: -.02em;
+  }
+  .fe-blog-mos-sub {
+    margin: .8rem 0 0; max-width: 30rem;
+    color: var(--blog-ink-soft); font-size: 1rem;
+  }
+  .fe-blog-mos-cats {
+    display: flex; flex-wrap: wrap; gap: .4rem;
+  }
+  .fe-blog-mos-cat {
+    --blog-cat-color: var(--blog-accent);
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px;
+    border: 1px solid var(--blog-rule); background: var(--blog-card);
+    color: var(--blog-ink-soft); text-decoration: none;
+    font-size: .82rem; font-weight: 500;
+    transition: all .2s ease;
+  }
+  .fe-blog-mos-cat:hover { transform: translateY(-1px); color: var(--blog-cat-color); border-color: color-mix(in srgb, var(--blog-cat-color) 40%, var(--blog-rule)); }
+  .fe-blog-mos-cat.is-active {
+    background: color-mix(in srgb, var(--blog-cat-color) 14%, var(--blog-card));
+    color: var(--blog-cat-color);
+    border-color: color-mix(in srgb, var(--blog-cat-color) 50%, transparent);
+    font-weight: 600;
+  }
+  .fe-blog-mos-cat-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .fe-blog-mos-empty {
+    text-align: center; color: var(--blog-ink-soft); font-style: italic;
+    padding: 4rem 0;
+  }
+  .fe-blog-mos-grid {
+    column-count: 3; column-gap: 1.5rem;
+  }
+  @media (max-width: 980px) { .fe-blog-mos-grid { column-count: 2; } }
+  @media (max-width: 600px) { .fe-blog-mos-grid { column-count: 1; } }
+  .fe-blog-mos-card {
+    break-inside: avoid; margin-bottom: 1.5rem;
+    background: var(--blog-card);
+    border: 1px solid var(--blog-rule);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+  }
+  .fe-blog-mos-card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--blog-accent) 35%, var(--blog-rule));
+    box-shadow: 0 18px 40px -16px color-mix(in srgb, var(--blog-accent) 25%, rgba(0,0,0,.18));
+  }
+  .fe-blog-mos-card.is-featured {
+    border-color: color-mix(in srgb, var(--blog-accent) 50%, var(--blog-rule));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--blog-accent) 5%, var(--blog-card)) 0%, var(--blog-card) 60%);
+  }
+  .fe-blog-mos-link { color: inherit; text-decoration: none; display: block; }
+  .fe-blog-mos-art { position: relative; overflow: hidden; aspect-ratio: 16 / 11; }
+  .fe-blog-mos-card.is-large .fe-blog-mos-art { aspect-ratio: 4 / 3; }
+  .fe-blog-mos-art img { width: 100%; height: 100%; object-fit: cover; transition: transform .5s ease; }
+  .fe-blog-mos-card:hover .fe-blog-mos-art img { transform: scale(1.05); }
+  .fe-blog-mos-pin {
+    position: absolute; top: 12px; right: 12px;
+    background: var(--blog-card);
+    width: 30px; height: 30px; display: grid; place-items: center;
+    border-radius: 50%;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }
+  .fe-blog-mos-body { padding: 1.1rem 1.3rem 1.4rem; }
+  .fe-blog-mos-cats-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: .55rem; }
+  .fe-blog-mos-cat-chip {
+    --blog-cat-color: var(--blog-accent);
+    color: var(--blog-cat-color);
+    background: color-mix(in srgb, var(--blog-cat-color) 14%, transparent);
+    padding: 2px 9px; border-radius: 6px;
+    font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .fe-blog-mos-card-title {
+    font-family: var(--tpl-heading-font, var(--fe-font-heading, 'Inter', sans-serif));
+    font-weight: 700; font-size: 1.18rem; line-height: 1.25;
+    margin: 0 0 .6rem; letter-spacing: -.005em;
+  }
+  .fe-blog-mos-summary {
+    margin: 0 0 .8rem; color: var(--blog-ink-soft);
+    font-size: .92rem; line-height: 1.55;
+  }
+  .fe-blog-mos-tags {
+    display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: .8rem;
+  }
+  .fe-blog-mos-tag {
+    color: var(--blog-ink-soft);
+    background: var(--blog-bg);
+    border: 1px solid var(--blog-rule);
+    padding: 1px 7px; border-radius: 4px;
+    font-size: .68rem; font-weight: 500;
+  }
+  .fe-blog-mos-meta {
+    display: flex; gap: .5rem;
+    color: var(--blog-ink-soft); font-size: .76rem;
+  }
+  .fe-blog-mos-meta > span + span::before { content: "·"; margin-right: .5rem; opacity: .55; }
+</style>

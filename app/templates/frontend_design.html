@@ -42,14 +42,30 @@
     {{ field_label(f) }}
 
     {% if f.kind == 'color' %}
-      <div class="fe-design-field-control">
-        <input type="checkbox" name="design_{{ f.key }}_enabled" value="1"
-               {% if has_override %}checked{% endif %}
-               class="fe-design-color-toggle"
-               title="Off = use theme default">
+      {# This page is where the palette lives, so the shared
+         design-token picker (🎨 button + hex chip + "matches Token"
+         chip from _design_token_picker.html) would be tautological —
+         and crowds six elements into a single flex row. Opt out via
+         `data-no-token-picker`; a native hex caption sits on its own
+         row below so admins still see the current value.
+
+         The label "On = override / Off = use default" lives next to
+         the gating checkbox so it reads as a deliberate toggle
+         instead of a stray checkbox. #}
+      <div class="fe-design-field-control fe-design-color-row">
+        <label class="fe-design-color-on">
+          <input type="checkbox" name="design_{{ f.key }}_enabled" value="1"
+                 {% if has_override %}checked{% endif %}
+                 class="fe-design-color-toggle"
+                 title="Off = use theme default">
+          <span class="muted small">Override</span>
+        </label>
         <input type="color" name="design_{{ f.key }}"
                value="{{ current }}"
-               class="fe-design-color-input">
+               class="fe-design-color-input"
+               data-no-token-picker
+               aria-label="{{ f.label }} colour">
+        <code class="fe-design-color-hex" aria-live="polite">{{ current }}</code>
         {{ reset_btn(f) }}
       </div>
 
@@ -213,14 +229,25 @@
     });
   });
   // Color picker flips the gating checkbox on automatically (same pattern
-  // as the split bg pickers).
+  // as the split bg pickers). Also keeps the native hex caption beside
+  // each picker in sync so admins always see the current value as a
+  // readable hex string — without needing to open the colour-picker
+  // dialog to read it.
   document.querySelectorAll('.fe-design-color-input').forEach(function (picker) {
+    var row = picker.closest('.fe-design-color-row');
+    var hex = row ? row.querySelector('.fe-design-color-hex') : null;
+    function syncHex() {
+      if (hex) hex.textContent = (picker.value || '').toLowerCase();
+    }
     picker.addEventListener('input', function () {
       var cb = picker.parentElement.querySelector('.fe-design-color-toggle');
       if (cb) cb.checked = true;
       var field = picker.closest('.fe-design-field');
       if (field) field.classList.add('fe-design-field--overridden');
+      syncHex();
     });
+    picker.addEventListener('change', syncHex);
+    syncHex();
   });
 })();
 </script>

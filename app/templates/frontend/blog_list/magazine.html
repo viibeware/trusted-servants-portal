@@ -1,0 +1,306 @@
+{# Magazine layout — featured post as a hero with cover image; remaining
+   posts as a 3-up grid of editorial cards. Modern, polished, the
+   default for the Blog module. #}
+{%- set _hero = all_posts[0] if all_posts else None -%}
+{%- set _rest = all_posts[1:] if all_posts and all_posts|length > 1 else [] -%}
+<section class="fe-blog fe-blog-magazine fe-blog-list--w-{{ list_width_mode }}">
+  <div class="{% if list_width_mode == 'boxed' %}fe-container{% else %}fe-blog-fullwrap{% endif %}"
+       {% if list_width_mode == 'boxed' %}style="max-width: {{ list_max_width }}px;"
+       {%- elif list_padding_pct %}style="padding-left: {{ list_padding_pct }}vw; padding-right: {{ list_padding_pct }}vw;"{% endif %}>
+
+    <header class="fe-blog-mag-head">
+      <span class="fe-blog-mag-eyebrow">— The journal —</span>
+      <h1 class="fe-blog-mag-title">{{ list_heading or 'The Blog' }}</h1>
+      <p class="fe-blog-mag-sub">{{ list_subheading or 'Long-form notes from the fellowship — committee updates, recovery reflections, and news.' }}</p>
+    </header>
+
+    {% if all_categories %}
+    <nav class="fe-blog-mag-cats" aria-label="Filter by category">
+      <a class="fe-blog-mag-cat{% if not active_category %} is-active{% endif %}"
+         href="{{ url_for('frontend.blog_list') }}">All</a>
+      {% for c in all_categories %}
+      <a class="fe-blog-mag-cat{% if active_category and active_category.id == c.id %} is-active{% endif %}"
+         {% if c.color %}style="--blog-cat-color: {{ c.color }};"{% endif %}
+         href="{{ url_for('frontend.blog_list', category=c.slug) }}">{{ c.name }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+
+    {% if not all_posts %}
+    <p class="fe-blog-mag-empty">No posts published yet — check back soon.</p>
+    {% else %}
+
+    {% if _hero %}
+    <article class="fe-blog-mag-hero">
+      <a href="{{ url_for('frontend.blog_post_detail', slug=_hero.public_slug) }}" class="fe-blog-mag-hero-link">
+        <div class="fe-blog-mag-hero-art">
+          {% if _hero.featured_image_filename %}
+          <img src="{{ url_for('public.blog_post_featured_image', bid=_hero.id, thumb=1024) }}"
+               alt="" loading="lazy">
+          {% else %}
+          <div class="fe-blog-mag-hero-art-placeholder" aria-hidden="true">
+            <span>{{ _hero.title[:1] }}</span>
+          </div>
+          {% endif %}
+          {% if _hero.is_featured %}<span class="fe-blog-mag-hero-badge">Featured</span>{% endif %}
+        </div>
+        <div class="fe-blog-mag-hero-body">
+          {% if _hero.categories %}
+          <div class="fe-blog-mag-hero-cats">
+            {% for c in _hero.categories %}
+            <span class="fe-blog-mag-hero-cat" {% if c.color %}style="--blog-cat-color: {{ c.color }};"{% endif %}>{{ c.name }}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
+          <h2 class="fe-blog-mag-hero-title">{{ _hero.title }}</h2>
+          {% if _hero.summary %}
+          <p class="fe-blog-mag-hero-summary">{{ _hero.summary }}</p>
+          {% endif %}
+          <div class="fe-blog-mag-hero-meta">
+            {% if _hero.author_name %}<span class="fe-blog-mag-hero-author">By {{ _hero.author_name }}</span>{% endif %}
+            {% if _hero.display_date %}<span class="fe-blog-mag-hero-date">{{ _hero.display_date.strftime('%B %-d, %Y') }}</span>{% endif %}
+            {% if _hero.reading_minutes %}<span class="fe-blog-mag-hero-rt">{{ _hero.reading_minutes }} min read</span>{% endif %}
+          </div>
+        </div>
+      </a>
+    </article>
+    {% endif %}
+
+    {% if _rest %}
+    <ul class="fe-blog-mag-grid" role="list">
+      {% for p in _rest %}
+      <li class="fe-blog-mag-card{% if p.is_featured %} is-featured{% endif %}{% if p.is_pinned %} is-pinned{% endif %}">
+        <a class="fe-blog-mag-card-link" href="{{ url_for('frontend.blog_post_detail', slug=p.public_slug) }}">
+          <div class="fe-blog-mag-card-art">
+            {% if p.featured_image_filename %}
+            <img src="{{ url_for('public.blog_post_featured_image', bid=p.id, thumb=600) }}"
+                 alt="" loading="lazy">
+            {% else %}
+            <div class="fe-blog-mag-card-art-placeholder" aria-hidden="true">
+              <span>{{ p.title[:1] }}</span>
+            </div>
+            {% endif %}
+            {% if p.is_pinned %}<span class="fe-blog-mag-card-pin" aria-label="Pinned">📌</span>{% endif %}
+          </div>
+          <div class="fe-blog-mag-card-body">
+            {% if p.categories %}
+            <div class="fe-blog-mag-card-cats">
+              {% for c in p.categories[:2] %}
+              <span class="fe-blog-mag-card-cat" {% if c.color %}style="--blog-cat-color: {{ c.color }};"{% endif %}>{{ c.name }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+            <h3 class="fe-blog-mag-card-title">{{ p.title }}</h3>
+            {% if p.summary %}
+            <p class="fe-blog-mag-card-summary">{{ p.summary[:160] }}{% if p.summary|length > 160 %}…{% endif %}</p>
+            {% endif %}
+            <div class="fe-blog-mag-card-meta">
+              {% if p.author_name %}<span class="fe-blog-mag-card-author">{{ p.author_name }}</span>{% endif %}
+              {% if p.display_date %}<span class="fe-blog-mag-card-date">{{ p.display_date.strftime('%b %-d, %Y') }}</span>{% endif %}
+            </div>
+          </div>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% endif %}
+  </div>
+</section>
+
+<style>
+  .fe-blog-magazine {
+    --blog-bg: var(--fe-color-surface, #fafafa);
+    --blog-bg-2: var(--fe-color-surface-alt, #f1f3f6);
+    --blog-card: var(--fe-color-bg, #ffffff);
+    --blog-ink: var(--fe-color-text, #111827);
+    --blog-ink-soft: var(--fe-color-muted, #6b7280);
+    --blog-rule: var(--fe-color-border, #e5e7eb);
+    --blog-accent: var(--fe-color-accent, #1f4e79);
+    background:
+      radial-gradient(1200px 600px at 100% 0%, color-mix(in srgb, var(--blog-accent) 6%, transparent), transparent 60%),
+      linear-gradient(180deg, var(--blog-bg) 0%, var(--blog-bg-2) 100%);
+    color: var(--blog-ink);
+    padding: clamp(3rem, 6vw, 5.5rem) 0 clamp(4rem, 8vw, 7rem);
+  }
+  [data-theme="dark"] .fe-blog-magazine {
+    --blog-bg: #0f172a;
+    --blog-bg-2: #0a0f1d;
+    --blog-card: #111827;
+    --blog-ink: #e5e7eb;
+    --blog-ink-soft: #94a3b8;
+    --blog-rule: #1f2937;
+  }
+  .fe-blog-mag-head { text-align: center; margin-bottom: clamp(2.5rem, 5vw, 4rem); }
+  .fe-blog-mag-eyebrow {
+    display: inline-block; letter-spacing: .26em; text-transform: uppercase;
+    font-size: .72rem; color: var(--blog-ink-soft); margin-bottom: 1rem;
+    font-family: var(--tpl-body-font, var(--fe-font-body, 'Inter', system-ui, sans-serif));
+  }
+  .fe-blog-mag-title {
+    font-family: var(--tpl-heading-font, var(--fe-font-heading, 'Fraunces', Georgia, serif));
+    font-weight: 600; font-size: clamp(2.4rem, 5.6vw, 4rem);
+    line-height: 1.04; margin: 0; letter-spacing: -.02em;
+  }
+  .fe-blog-mag-sub {
+    margin: 1.1rem auto 0; max-width: 38rem;
+    color: var(--blog-ink-soft); font-size: 1.06rem; line-height: 1.6;
+  }
+  .fe-blog-mag-cats {
+    display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center;
+    margin-bottom: clamp(2rem, 4vw, 3rem);
+  }
+  .fe-blog-mag-cat {
+    --blog-cat-color: var(--blog-accent);
+    padding: 7px 16px; border-radius: 999px;
+    border: 1px solid var(--blog-rule);
+    background: var(--blog-card); color: var(--blog-ink-soft);
+    text-decoration: none; font-size: .85rem; font-weight: 500;
+    transition: all .2s ease;
+  }
+  .fe-blog-mag-cat:hover {
+    color: var(--blog-cat-color);
+    border-color: color-mix(in srgb, var(--blog-cat-color) 50%, var(--blog-rule));
+  }
+  .fe-blog-mag-cat.is-active {
+    background: color-mix(in srgb, var(--blog-cat-color) 14%, var(--blog-card));
+    color: var(--blog-cat-color);
+    border-color: color-mix(in srgb, var(--blog-cat-color) 60%, transparent);
+    font-weight: 600;
+  }
+  .fe-blog-mag-empty {
+    text-align: center; color: var(--blog-ink-soft);
+    font-style: italic; padding: 2rem 0;
+  }
+  /* ── Hero ─────────────────────────────────────────────────── */
+  .fe-blog-mag-hero {
+    background: var(--blog-card);
+    border: 1px solid var(--blog-rule);
+    border-radius: 18px;
+    overflow: hidden;
+    margin-bottom: clamp(2rem, 4vw, 3rem);
+    box-shadow: 0 1px 0 rgba(0,0,0,.02), 0 24px 48px -28px rgba(15,23,42,.18);
+    transition: transform .25s ease, box-shadow .25s ease;
+  }
+  .fe-blog-mag-hero:hover { transform: translateY(-3px); box-shadow: 0 1px 0 rgba(0,0,0,.02), 0 36px 70px -32px rgba(15,23,42,.28); }
+  .fe-blog-mag-hero-link {
+    display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    color: inherit; text-decoration: none;
+  }
+  @media (max-width: 880px) { .fe-blog-mag-hero-link { grid-template-columns: 1fr; } }
+  .fe-blog-mag-hero-art {
+    aspect-ratio: 4 / 3; position: relative; overflow: hidden;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--blog-accent) 16%, var(--blog-card)) 0%, var(--blog-card) 100%);
+  }
+  .fe-blog-mag-hero-art img { width: 100%; height: 100%; object-fit: cover; transition: transform .6s ease; }
+  .fe-blog-mag-hero:hover .fe-blog-mag-hero-art img { transform: scale(1.04); }
+  .fe-blog-mag-hero-art-placeholder {
+    display: grid; place-items: center; height: 100%;
+    color: color-mix(in srgb, var(--blog-accent) 50%, transparent);
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    font-size: 8rem; font-weight: 600; opacity: .35;
+  }
+  .fe-blog-mag-hero-badge {
+    position: absolute; top: 16px; left: 16px;
+    background: var(--blog-accent); color: #fff;
+    padding: 5px 12px; border-radius: 999px;
+    font-size: .68rem; letter-spacing: .14em; text-transform: uppercase; font-weight: 700;
+  }
+  .fe-blog-mag-hero-body {
+    padding: clamp(1.5rem, 3vw, 2.4rem);
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .fe-blog-mag-hero-cats { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1rem; }
+  .fe-blog-mag-hero-cat {
+    --blog-cat-color: var(--blog-accent);
+    color: var(--blog-cat-color);
+    background: color-mix(in srgb, var(--blog-cat-color) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--blog-cat-color) 30%, transparent);
+    padding: 3px 10px; border-radius: 999px;
+    font-size: .72rem; font-weight: 600; letter-spacing: .04em;
+  }
+  .fe-blog-mag-hero-title {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    font-weight: 600; line-height: 1.12; margin: 0 0 1rem;
+    font-size: clamp(1.8rem, 3.5vw, 2.5rem); letter-spacing: -.01em;
+  }
+  .fe-blog-mag-hero-summary {
+    margin: 0 0 1.4rem;
+    color: var(--blog-ink-soft);
+    font-size: 1.08rem; line-height: 1.65;
+  }
+  .fe-blog-mag-hero-meta {
+    display: flex; flex-wrap: wrap; gap: .9rem;
+    color: var(--blog-ink-soft);
+    font-size: .85rem;
+  }
+  .fe-blog-mag-hero-meta > span { position: relative; }
+  .fe-blog-mag-hero-meta > span + span::before {
+    content: "·"; margin-right: .9rem; opacity: .5;
+  }
+  /* ── Cards grid ──────────────────────────────────────────── */
+  .fe-blog-mag-grid {
+    list-style: none; padding: 0; margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+    gap: clamp(1.5rem, 3vw, 2.25rem);
+  }
+  .fe-blog-mag-card {
+    background: var(--blog-card);
+    border: 1px solid var(--blog-rule);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+  }
+  .fe-blog-mag-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 1px 0 rgba(0,0,0,.02), 0 18px 36px -18px rgba(15,23,42,.18);
+    border-color: color-mix(in srgb, var(--blog-accent) 30%, var(--blog-rule));
+  }
+  .fe-blog-mag-card.is-pinned { border-color: color-mix(in srgb, var(--blog-accent) 35%, var(--blog-rule)); }
+  .fe-blog-mag-card-link { display: block; color: inherit; text-decoration: none; }
+  .fe-blog-mag-card-art {
+    aspect-ratio: 16 / 10; position: relative; overflow: hidden;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--blog-accent) 12%, var(--blog-card)) 0%, var(--blog-card) 100%);
+  }
+  .fe-blog-mag-card-art img { width: 100%; height: 100%; object-fit: cover; transition: transform .5s ease; }
+  .fe-blog-mag-card:hover .fe-blog-mag-card-art img { transform: scale(1.05); }
+  .fe-blog-mag-card-art-placeholder {
+    display: grid; place-items: center; height: 100%;
+    color: color-mix(in srgb, var(--blog-accent) 50%, transparent);
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    font-size: 5rem; font-weight: 600; opacity: .3;
+  }
+  .fe-blog-mag-card-pin {
+    position: absolute; top: 10px; right: 10px;
+    background: var(--blog-card);
+    width: 28px; height: 28px; display: grid; place-items: center;
+    border-radius: 50%; border: 1px solid var(--blog-rule);
+    font-size: .9rem;
+  }
+  .fe-blog-mag-card-body { padding: 1.25rem 1.4rem 1.5rem; }
+  .fe-blog-mag-card-cats { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: .7rem; }
+  .fe-blog-mag-card-cat {
+    --blog-cat-color: var(--blog-accent);
+    color: var(--blog-cat-color);
+    background: color-mix(in srgb, var(--blog-cat-color) 14%, transparent);
+    padding: 2px 9px; border-radius: 999px;
+    font-size: .68rem; font-weight: 600; letter-spacing: .03em;
+  }
+  .fe-blog-mag-card-title {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    font-weight: 600; font-size: 1.25rem; line-height: 1.25;
+    margin: 0 0 .55rem; letter-spacing: -.005em;
+  }
+  .fe-blog-mag-card-summary {
+    margin: 0 0 .9rem; color: var(--blog-ink-soft);
+    font-size: .95rem; line-height: 1.55;
+  }
+  .fe-blog-mag-card-meta {
+    display: flex; flex-wrap: wrap; gap: .55rem;
+    color: var(--blog-ink-soft); font-size: .8rem;
+  }
+  .fe-blog-mag-card-meta > span + span::before {
+    content: "·"; margin-right: .55rem; opacity: .55;
+  }
+</style>

@@ -3072,8 +3072,13 @@
 
   function trackable(form) {
     if (!form.method || form.method.toLowerCase() !== 'post') return false;
-    if (form.closest('.modal')) return false;             // skip in-modal forms
     if (form.matches('[data-fe-skip-save-bar]')) return false;
+    // Modal forms opt-in via [data-fe-savebar]. Most modals carry
+    // their own Save/Cancel chrome and shouldn't fight the global
+    // yellow bar — but a few (e.g. the homepage hero modal) are tall,
+    // setting-dense, and rely on the global bar so the visitor isn't
+    // forced to scroll to the bottom for the Save button.
+    if (form.closest('.modal') && !form.matches('[data-fe-savebar]')) return false;
     // Skip the dashboard's auto-submitting toggle (clicking it navigates the
     // page itself; nothing for us to track).
     if (form.matches('[data-fe-auto-submit]')) return false;
@@ -3139,6 +3144,16 @@
     const origLabel = btn.textContent;
     btn.textContent = 'Saving…';
     const forms = [...dirty];
+    // When every dirty form lives inside a modal we skip the post-save
+    // reload — the visitor opened the modal to edit one block and would
+    // be jarred by it disappearing on save. Bar just animates out and
+    // the modal stays in front, so they can keep tweaking and re-save.
+    // Also stay open when ANY modal is currently visible — the page
+    // builder's Edit-layout modal re-dispatches its block-editor inputs
+    // onto the outer page form (so the form itself looks "non-modal"
+    // even though the visitor is actively working inside a modal panel).
+    const stayOpen = forms.every(f => f.closest('.modal')) ||
+                     !!document.querySelector('.modal.open');
     try {
       for (const f of forms) {
         const fd = new FormData(f);
@@ -3149,15 +3164,33 @@
         });
         if (!r.ok) throw new Error('save failed: ' + r.status);
       }
-      // Animate the bar dropping out of view, then reload so the freshly
-      // saved values are reflected in the form fields.
       msg.textContent = 'Saved';
-      const reload = () => window.location.reload();
-      bar.addEventListener('animationend', reload, { once: true });
-      bar.classList.add('is-leaving');
-      // Safety net: if the animationend doesn't fire (reduced-motion etc.)
-      // reload anyway after the keyframe duration.
-      setTimeout(reload, 360);
+      if (stayOpen) {
+        // Drop the dirty set + reset the bar's chrome BEFORE the
+        // animation runs so the next field change immediately re-arms
+        // the bar (rather than the user finding themselves stuck on
+        // "Saved" with the button disabled).
+        dirty.clear();
+        const finish = () => {
+          bar.hidden = true;
+          bar.classList.remove('is-leaving');
+          msg.textContent = 'Unsaved changes';
+          btn.disabled = false;
+          btn.textContent = origLabel;
+        };
+        bar.addEventListener('animationend', finish, { once: true });
+        bar.classList.add('is-leaving');
+        // Safety net for reduced-motion / hidden-tab cases where
+        // animationend never fires.
+        setTimeout(finish, 360);
+      } else {
+        // Non-modal forms reload so server-normalised values (clamps,
+        // sanitisation, redirects) flow back into the rendered fields.
+        const reload = () => window.location.reload();
+        bar.addEventListener('animationend', reload, { once: true });
+        bar.classList.add('is-leaving');
+        setTimeout(reload, 360);
+      }
     } catch (_) {
       btn.disabled = false;
       btn.textContent = origLabel;
@@ -3253,6 +3286,16 @@
     if (!found) return "";
     return found.kind === "custom" ? renderCustom(found.data) : renderSvg(found.data.paths);
   }
+  // Public helper: given an icon ref ("calendar", "custom:my-logo", etc.),
+  // return the SVG HTML that the icon picker's preview would show.
+  // Useful for re-painting previews when a host (page_features_modal.js etc.)
+  // populates icon hidden-input values from saved data — the hidden input
+  // alone can't render an SVG, but this helper resolves the ref against
+  // the live picker catalog (Lucide + admin uploads) and hands back the
+  // exact markup. Returns empty string for unknown refs.
+  window.tspRenderIconHtml = function (ref) {
+    return renderIconHtml(findIcon(ref));
+  };
 
   function buildGrid(filter) {
     const q = (filter || "").trim().toLowerCase();
@@ -3347,10 +3390,20 @@
   function openPicker(trigger) {
     activeTrigger = trigger;
     activeField = trigger.closest("[data-icon-field]");
-    activeIconInput = document.querySelector(trigger.getAttribute("data-icon-target"));
-    activeColorInput = document.querySelector(trigger.getAttribute("data-color-target"));
+    const iconSel = trigger.getAttribute("data-icon-target");
+    const colorSel = trigger.getAttribute("data-color-target");
     const sizeSel = trigger.getAttribute("data-size-target");
-    activeSizeInput = sizeSel && document.querySelector(sizeSel);
+    activeIconInput = iconSel ? document.querySelector(iconSel) : null;
+    activeColorInput = colorSel ? document.querySelector(colorSel) : null;
+    activeSizeInput = sizeSel ? document.querySelector(sizeSel) : null;
+    // Fallback: when a trigger has no `data-icon-target` (e.g. cloned
+    // utility-bar rows that can't carry stable global IDs), the hidden
+    // input lives inside the same [data-icon-field] wrapper and is
+    // tagged with [data-icon-input]. This keeps the picker generic
+    // without forcing every host template to mint unique IDs.
+    if (!activeIconInput && activeField) {
+      activeIconInput = activeField.querySelector("[data-icon-input]");
+    }
     activePreview = trigger.querySelector("[data-icon-preview]");
 
     const storedSize = activeSizeInput && parseInt(activeSizeInput.value, 10);
@@ -3430,9 +3483,32 @@
       e.preventDefault();
       const fieldWrap = clear.closest("[data-icon-field]");
       if (!fieldWrap) return;
-      const iconHidden = fieldWrap.querySelector('input[type="hidden"][data-block-field="icon_before"], input[type="hidden"][data-block-field="icon_after"]');
-      const colorHidden = fieldWrap.querySelector('input[type="hidden"][data-block-field$="_color"]');
-      const sizeHidden = fieldWrap.querySelector('input[type="hidden"][data-block-field$="_size"]');
+      // Two ways the inputs can be located: (1) the original nav-link
+      // shape uses block-field-named hidden inputs co-located in the
+      // wrapper, (2) other call sites just provide a sibling
+      // [data-open-icon-picker] trigger whose target selectors point
+      // at hidden inputs anywhere in the form. Resolve via the trigger
+      // first, then fall back to the wrapper-local lookup.
+      const trigger = fieldWrap.querySelector("[data-open-icon-picker]");
+      let iconHidden = null, colorHidden = null, sizeHidden = null;
+      if (trigger) {
+        const iconSel = trigger.getAttribute("data-icon-target");
+        const colorSel = trigger.getAttribute("data-color-target");
+        const sizeSel = trigger.getAttribute("data-size-target");
+        if (iconSel) iconHidden = document.querySelector(iconSel);
+        if (colorSel) colorHidden = document.querySelector(colorSel);
+        if (sizeSel) sizeHidden = document.querySelector(sizeSel);
+      }
+      if (!iconHidden) {
+        iconHidden = fieldWrap.querySelector("[data-icon-input]")
+                  || fieldWrap.querySelector('input[type="hidden"][data-block-field="icon_before"], input[type="hidden"][data-block-field="icon_after"]');
+      }
+      if (!colorHidden) {
+        colorHidden = fieldWrap.querySelector('input[type="hidden"][data-block-field$="_color"]');
+      }
+      if (!sizeHidden) {
+        sizeHidden = fieldWrap.querySelector('input[type="hidden"][data-block-field$="_size"]');
+      }
       const preview = fieldWrap.querySelector("[data-icon-preview]");
       if (iconHidden) { iconHidden.value = ""; dispatchChange(iconHidden); }
       if (colorHidden) { colorHidden.value = ""; dispatchChange(colorHidden); }
@@ -4332,4 +4408,11 @@
       closeSelf();
     }
   });
+
+  // Surface `applyToTrigger` so consumers that don't go through the
+  // picker modal (e.g. the per-page hero edit modal repopulating
+  // its trigger from a block's persisted data on open) can update
+  // a trigger's hidden inputs + visual state without duplicating
+  // the lookup logic for the catalog entry + thumbnail HTML.
+  window.applyDynbgTrigger = applyToTrigger;
 })();

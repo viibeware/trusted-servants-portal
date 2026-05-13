@@ -429,6 +429,142 @@
     })();
     </script>
     {% endif %}
+  {% elif t == 'blog_list' %}
+    {# Blog block — pulls a filtered list of BlogPost rows at request
+       time so admin edits propagate without re-saving every page that
+       references the block. The category / tag filter scopes the list,
+       letting one Blog table serve many distinct frontend "blogs"
+       (committee, group, meeting). Three styles share the same data
+       shape:
+         • cards     → grid of thumbnail cards (default)
+         • list      → stacked list rows with thumb on left
+         • headlines → text-only headlines + summaries (gazette feel)
+       Drafts and archives are filtered out by `blog_block_data`. #}
+    {%- set _bb_data = blog_block_data(
+        d.get('category_id') or 0,
+        d.get('tag_id') or 0,
+        sort=d.get('sort') or 'newest',
+        max_items=d.get('max_items') or 0,
+        only_featured=d.get('only_featured') or False,
+        only_pinned=d.get('only_pinned') or False) -%}
+    {%- set _bb_cat = _bb_data[0] -%}
+    {%- set _bb_tag = _bb_data[1] -%}
+    {%- set _bb_posts = _bb_data[2] -%}
+    {%- set _bb_style = d.get('style') or 'cards' -%}
+    {%- set _bb_cols = (d.get('columns') or 3) | int -%}
+    {%- if _bb_cols not in [1, 2, 3, 4] %}{%- set _bb_cols = 3 -%}{%- endif -%}
+    <div class="block block-blog block-blog--{{ _bb_style }}">
+      {% if d.get('title') or _bb_cat or _bb_tag %}
+      <header class="block-blog-head">
+        {% if d.get('title') %}
+        <h3 class="block-blog-title">{{ d.get('title') }}</h3>
+        {% elif _bb_cat %}
+        <h3 class="block-blog-title">{{ _bb_cat.name }}</h3>
+        {% elif _bb_tag %}
+        <h3 class="block-blog-title">#{{ _bb_tag.name }}</h3>
+        {% endif %}
+        {% if d.get('subtitle') %}
+        <p class="block-blog-sub">{{ d.get('subtitle') }}</p>
+        {% elif _bb_cat and _bb_cat.description %}
+        <p class="block-blog-sub">{{ _bb_cat.description }}</p>
+        {% endif %}
+      </header>
+      {% endif %}
+      {% if not _bb_posts %}
+      <p class="block-blog-empty muted small">No posts yet.</p>
+      {% elif _bb_style == 'headlines' %}
+        <ol class="block-blog-headlines" role="list">
+          {% for p in _bb_posts %}
+          <li class="block-blog-headline">
+            <a href="{{ url_for('frontend.blog_post_detail', slug=p.public_slug) }}">
+              {% if d.get('show_date') and p.display_date %}
+              <span class="block-blog-headline-date">{{ p.display_date.strftime('%b %-d, %Y') }}</span>
+              {% endif %}
+              <span class="block-blog-headline-title">{{ p.title }}</span>
+              {% if d.get('show_summary') and p.summary %}
+              <span class="block-blog-headline-summary">{{ p.summary[:140] }}{% if p.summary|length > 140 %}…{% endif %}</span>
+              {% endif %}
+            </a>
+          </li>
+          {% endfor %}
+        </ol>
+      {% elif _bb_style == 'list' %}
+        <ul class="block-blog-list" role="list">
+          {% for p in _bb_posts %}
+          <li class="block-blog-list-item">
+            <a class="block-blog-list-link" href="{{ url_for('frontend.blog_post_detail', slug=p.public_slug) }}">
+              {% if d.get('show_image', True) and p.featured_image_filename %}
+              <div class="block-blog-list-art">
+                <img src="{{ url_for('public.blog_post_featured_image', bid=p.id, thumb=300) }}" alt="" loading="lazy">
+              </div>
+              {% endif %}
+              <div class="block-blog-list-body">
+                {% if d.get('show_categories', True) and p.categories %}
+                <div class="block-blog-cats">
+                  {% for c in p.categories[:2] %}
+                  <span class="block-blog-cat-chip" {% if c.color %}style="--blog-cat-color: {{ c.color }};"{% endif %}>{{ c.name }}</span>
+                  {% endfor %}
+                </div>
+                {% endif %}
+                <h4 class="block-blog-list-title">{{ p.title }}</h4>
+                {% if d.get('show_summary', True) and p.summary %}
+                <p class="block-blog-list-summary">{{ p.summary[:160] }}{% if p.summary|length > 160 %}…{% endif %}</p>
+                {% endif %}
+                <div class="block-blog-list-meta">
+                  {% if p.author_name %}<span>{{ p.author_name }}</span>{% endif %}
+                  {% if d.get('show_date', True) and p.display_date %}<span>{{ p.display_date.strftime('%b %-d, %Y') }}</span>{% endif %}
+                  {% if p.reading_minutes %}<span>{{ p.reading_minutes }} min</span>{% endif %}
+                </div>
+              </div>
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        {%- set _bb_gap = d.get('gap') or '1.25rem' -%}
+        <div class="block-blog-cards" style="grid-template-columns: repeat({{ _bb_cols }}, minmax(0, 1fr)); gap: {{ _bb_gap }};">
+          {% for p in _bb_posts %}
+          <article class="block-blog-card{% if p.is_featured %} is-featured{% endif %}">
+            <a class="block-blog-card-link" href="{{ url_for('frontend.blog_post_detail', slug=p.public_slug) }}">
+              {% if d.get('show_image', True) and p.featured_image_filename %}
+              <div class="block-blog-card-art">
+                <img src="{{ url_for('public.blog_post_featured_image', bid=p.id, thumb=600) }}" alt="" loading="lazy">
+              </div>
+              {% endif %}
+              <div class="block-blog-card-body">
+                {% if d.get('show_categories', True) and p.categories %}
+                <div class="block-blog-cats">
+                  {% for c in p.categories[:2] %}
+                  <span class="block-blog-cat-chip" {% if c.color %}style="--blog-cat-color: {{ c.color }};"{% endif %}>{{ c.name }}</span>
+                  {% endfor %}
+                </div>
+                {% endif %}
+                <h4 class="block-blog-card-title">{{ p.title }}</h4>
+                {% if d.get('show_summary', True) and p.summary %}
+                <p class="block-blog-card-summary">{{ p.summary[:130] }}{% if p.summary|length > 130 %}…{% endif %}</p>
+                {% endif %}
+                <div class="block-blog-card-meta">
+                  {% if p.author_name %}<span>{{ p.author_name }}</span>{% endif %}
+                  {% if d.get('show_date', True) and p.display_date %}<span>{{ p.display_date.strftime('%b %-d, %Y') }}</span>{% endif %}
+                </div>
+              </div>
+            </a>
+          </article>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if d.get('show_more_link', True) and _bb_posts %}
+      <div class="block-blog-more">
+        {% if _bb_cat %}
+        <a class="block-blog-more-link" href="{{ url_for('frontend.blog_list', category=_bb_cat.slug) }}">View all {{ _bb_cat.name|lower }} posts →</a>
+        {% elif _bb_tag %}
+        <a class="block-blog-more-link" href="{{ url_for('frontend.blog_list', tag=_bb_tag.slug) }}">View all #{{ _bb_tag.name }} posts →</a>
+        {% else %}
+        <a class="block-blog-more-link" href="{{ url_for('frontend.blog_list') }}">View all posts →</a>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
   {% elif t == 'separator' %}
     <hr class="block block-separator">
   {% elif t == 'icon' %}
@@ -471,21 +607,80 @@
   {% set _disp = d.display or 'flex' %}
   {% set _ = _styles.append('display: ' ~ _disp) %}
   {% if _disp == 'grid' %}
-    {% set _ = _styles.append('grid-template-columns: ' ~ (d.grid_columns or 'repeat(2, 1fr)')) %}
+    {# Grid columns ride on a CSS custom property so the mobile media
+       query in frontend.css can collapse the container to a single
+       column without fighting inline-style specificity. Default
+       (two columns) is also encoded as the var() fallback in CSS so
+       containers without an explicit grid_columns value still
+       degrade correctly on phones. #}
+    {% set _ = _styles.append('--block-cont-grid-cols: ' ~ (d.grid_columns or 'repeat(2, 1fr)')) %}
   {% else %}
-    {% set _ = _styles.append('flex-direction: ' ~ (d.direction or 'column')) %}
+    {# Flex direction ditto — emit via a custom property so the same
+       mobile media query can flip row-direction containers to stack
+       vertically on phones. Wrap stays inline because it's a discrete
+       per-instance opt-in and rarely needs viewport-specific override.
+       `mobile_direction` (when set) flows into a second var that the
+       mobile media query reads INSTEAD OF the default column collapse,
+       so admins can opt into row / row-reverse / column-reverse on
+       phones (e.g. to surface the right column FIRST when a desktop
+       row collapses on mobile). Empty / missing = keep the historical
+       "flex containers stack to column on phones" behaviour. #}
+    {% set _ = _styles.append('--block-cont-flex-dir: ' ~ (d.direction or 'column')) %}
+    {% set _mdir = (d.get('mobile_direction') or '').strip() %}
+    {% if _mdir in ('row', 'row-reverse', 'column', 'column-reverse') %}
+      {% set _ = _styles.append('--block-cont-flex-dir-mobile: ' ~ _mdir) %}
+    {% endif %}
     {% if d.wrap %}{% set _ = _styles.append('flex-wrap: wrap') %}{% endif %}
   {% endif %}
   {% set _ = _styles.append('justify-content: ' ~ (d.justify or 'flex-start')) %}
   {% set _ = _styles.append('align-items: ' ~ (d.align or 'stretch')) %}
   {% set _ = _styles.append('gap: ' ~ (d.gap or '1rem')) %}
-  {% set _ = _styles.append('padding: ' ~ (d.padding or '1rem')) %}
+  {# Padding rides through a CSS custom property (rather than a direct
+     `padding:` declaration) so the mobile media query can override it
+     without fighting inline-style specificity. `padding_mobile` (when
+     set) layers a second var that the mobile query prefers; empty
+     means "mobile padding = desktop padding". #}
+  {% set _ = _styles.append('--block-cont-padding: ' ~ (d.padding or '1rem')) %}
+  {% set _padm = (d.get('padding_mobile') or '').strip() %}
+  {% if _padm %}{% set _ = _styles.append('--block-cont-padding-mobile: ' ~ _padm) %}{% endif %}
 
-  {% if d.bg_color %}{% set _ = _styles.append('background-color: ' ~ (d.bg_color|css_color)) %}{% endif %}
+  {# Background / border-color / shadow emit as inline CSS VARIABLES
+     (not direct properties). A global `.block-container` rule reads
+     the variables for the rest state. Direct properties would have
+     inline specificity 1,0,0,0 and defeat the `:hover` rules below
+     in frontend.css — the variable-driven approach lets hover win. #}
+  {% if d.bg_color %}{% set _ = _styles.append('--block-cont-bg: ' ~ (d.bg_color|css_color)) %}{% endif %}
   {% if d.get('bg_color_dark') %}{% set _ = _styles.append('--tsp-bg-dm: ' ~ (d.get('bg_color_dark')|css_color)) %}{% endif %}
+  {# Border — per-side widths fall back to uniform `border_width` when
+     the override field is empty. Always emit the 4-value `border-width:
+     T R B L` longhand (collapses to a single-value semantic when all
+     four match). Style stays a direct inline property; colour goes
+     into the `--block-cont-border-color` variable so hover can swap it. #}
   {% set _bw = (d.border_width if d.border_width is not none else 0) | int %}
-  {% if _bw and (d.border_style or 'solid') != 'none' %}
-    {% set _ = _styles.append('border: ' ~ _bw ~ 'px ' ~ (d.border_style or 'solid') ~ ' ' ~ ((d.border_color|css_color) or 'currentColor')) %}
+  {% if (d.border_style or 'solid') != 'none' %}
+    {% set _bwt_raw = d.get('border_w_top') %}
+    {% set _bwr_raw = d.get('border_w_right') %}
+    {% set _bwb_raw = d.get('border_w_bottom') %}
+    {% set _bwl_raw = d.get('border_w_left') %}
+    {% set _bwt = (_bwt_raw if _bwt_raw not in (none, '') else _bw) | int %}
+    {% set _bwr = (_bwr_raw if _bwr_raw not in (none, '') else _bw) | int %}
+    {% set _bwb = (_bwb_raw if _bwb_raw not in (none, '') else _bw) | int %}
+    {% set _bwl = (_bwl_raw if _bwl_raw not in (none, '') else _bw) | int %}
+    {% set _bmax = [_bwt, _bwr, _bwb, _bwl] | max %}
+    {# Emit border-style + width even with 0 rest widths when a hover
+       width override is set — otherwise hover swaps width but
+       `border-style: none` (default) keeps it invisible. #}
+    {% set _has_hover_bw = d.get('hover_border_width') not in (none, '') %}
+    {% if _bmax or _has_hover_bw %}
+      {% set _bstyle = d.border_style or 'solid' %}
+      {% set _ = _styles.append('border-style: ' ~ _bstyle) %}
+      {# border-width via variable so the :hover rule can swap it
+         (direct inline `border-width:` would beat hover on specificity). #}
+      {% set _ = _styles.append('--block-cont-border-width: ' ~ _bwt ~ 'px ' ~ _bwr ~ 'px ' ~ _bwb ~ 'px ' ~ _bwl ~ 'px') %}
+      {% if d.border_color %}
+        {% set _ = _styles.append('--block-cont-border-color: ' ~ (d.border_color|css_color)) %}
+      {% endif %}
+    {% endif %}
   {% endif %}
   {% if d.get('border_color_dark') %}{% set _ = _styles.append('--tsp-border-dm: ' ~ (d.get('border_color_dark')|css_color)) %}{% endif %}
   {% set _br = (d.border_radius if d.border_radius is not none else 0) | int %}
@@ -499,10 +694,20 @@
       {% set _ = _styles.append('margin-right: auto') %}
     {% endif %}
   {% endif %}
+  {# Height + min-height — only emitted when the admin filled the field
+     in. Common case is `height: 100%` so the container fills its grid
+     cell (which is already stretched by the grid's default
+     `align-items: stretch`), giving `justify-content: space-between`
+     somewhere to push children to. #}
+  {% set _h = (d.get('height') or '') | string | trim %}
+  {% if _h %}{% set _ = _styles.append('height: ' ~ _h) %}{% endif %}
+  {% set _mh = (d.get('min_height') or '') | string | trim %}
+  {% if _mh %}{% set _ = _styles.append('min-height: ' ~ _mh) %}{% endif %}
 
   {% set _shadow = _BLOCK_CONT_SHADOW.get(d.shadow or 'none', 'none') %}
-  {% set _ = _styles.append('--block-cont-shadow: ' ~ _shadow) %}
-  {% set _ = _styles.append('box-shadow: var(--block-cont-shadow)') %}
+  {% if _shadow != 'none' %}
+    {% set _ = _styles.append('--block-cont-shadow: ' ~ _shadow) %}
+  {% endif %}
 
   {# Hover behaviour gates on per-property classes so an unset hover
      value leaves the original property alone (rather than reverting
@@ -516,6 +721,11 @@
   {% if d.hover_border_color %}
     {% set _ = _styles.append('--block-cont-hover-border: ' ~ (d.hover_border_color|css_color)) %}
     {% set _ = _hover_classes.append('block-container--hover-border') %}
+  {% endif %}
+  {% set _hbw_raw = d.get('hover_border_width') %}
+  {% if _hbw_raw not in (none, '') %}
+    {% set _ = _styles.append('--block-cont-hover-border-width: ' ~ (_hbw_raw | int) ~ 'px') %}
+    {% set _ = _hover_classes.append('block-container--hover-border-width') %}
   {% endif %}
   {% if d.hover_shadow %}
     {% set _hs = _BLOCK_CONT_SHADOW.get(d.hover_shadow, '') %}

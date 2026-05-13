@@ -1,0 +1,150 @@
+{# Minimal layout — single-column, generous white space, image-light.
+   Stacked entries with title + summary + meta line. Feels like a
+   personal journal index. #}
+<section class="fe-blog fe-blog-minimal fe-blog-list--w-{{ list_width_mode }}">
+  <div class="{% if list_width_mode == 'boxed' %}fe-container{% else %}fe-blog-fullwrap{% endif %}"
+       {% if list_width_mode == 'boxed' %}style="max-width: {{ [list_max_width, 760]|min }}px;"
+       {%- elif list_padding_pct %}style="padding-left: {{ list_padding_pct }}vw; padding-right: {{ list_padding_pct }}vw;"{% endif %}>
+
+    <header class="fe-blog-min-head">
+      <h1 class="fe-blog-min-title">{{ list_heading or 'Notes' }}</h1>
+      {% if list_subheading %}
+      <p class="fe-blog-min-sub">{{ list_subheading }}</p>
+      {% endif %}
+    </header>
+
+    {% if all_categories %}
+    <nav class="fe-blog-min-cats" aria-label="Filter by category">
+      <a class="fe-blog-min-cat{% if not active_category %} is-active{% endif %}"
+         href="{{ url_for('frontend.blog_list') }}">all</a>
+      {% for c in all_categories %}
+      <a class="fe-blog-min-cat{% if active_category and active_category.id == c.id %} is-active{% endif %}"
+         href="{{ url_for('frontend.blog_list', category=c.slug) }}">{{ c.name|lower }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+
+    {% if not all_posts %}
+    <p class="fe-blog-min-empty">No notes yet.</p>
+    {% else %}
+    <ol class="fe-blog-min-list" role="list">
+      {% for p in all_posts %}
+      <li class="fe-blog-min-item">
+        <a class="fe-blog-min-link" href="{{ url_for('frontend.blog_post_detail', slug=p.public_slug) }}">
+          <div class="fe-blog-min-meta-top">
+            {% if p.display_date %}<time class="fe-blog-min-date">{{ p.display_date.strftime('%B %-d, %Y') }}</time>{% endif %}
+            {% if p.categories %}
+            <span class="fe-blog-min-cat-tag">{{ p.categories[0].name }}</span>
+            {% endif %}
+            {% if p.is_pinned %}<span class="fe-blog-min-pin" aria-label="Pinned">📌</span>{% endif %}
+          </div>
+          <h2 class="fe-blog-min-item-title">{{ p.title }}</h2>
+          {% if p.summary %}
+          <p class="fe-blog-min-item-summary">{{ p.summary }}</p>
+          {% endif %}
+          <div class="fe-blog-min-meta-bottom">
+            {% if p.author_name %}<span>{{ p.author_name }}</span>{% endif %}
+            {% if p.reading_minutes %}<span>{{ p.reading_minutes }} min</span>{% endif %}
+            <span class="fe-blog-min-arrow">→</span>
+          </div>
+        </a>
+      </li>
+      {% endfor %}
+    </ol>
+    {% endif %}
+  </div>
+</section>
+
+<style>
+  .fe-blog-minimal {
+    --blog-bg: var(--fe-color-bg, #ffffff);
+    --blog-ink: var(--fe-color-text, #0f172a);
+    --blog-ink-soft: var(--fe-color-muted, #64748b);
+    --blog-rule: var(--fe-color-border, #e2e8f0);
+    --blog-accent: var(--fe-color-accent, #2563eb);
+    background: var(--blog-bg); color: var(--blog-ink);
+    padding: clamp(3rem, 6vw, 5.5rem) 0 clamp(4rem, 8vw, 7rem);
+    font-family: var(--tpl-body-font, var(--fe-font-body, 'Inter', system-ui, sans-serif));
+  }
+  [data-theme="dark"] .fe-blog-minimal {
+    --blog-bg: #0a0e1a;
+    --blog-ink: #e2e8f0;
+    --blog-ink-soft: #94a3b8;
+    --blog-rule: #1e293b;
+  }
+  .fe-blog-min-head { margin-bottom: 2.5rem; }
+  .fe-blog-min-title {
+    font-family: var(--tpl-heading-font, var(--fe-font-heading, 'Fraunces', Georgia, serif));
+    font-weight: 600; font-size: clamp(2.2rem, 4.5vw, 3.5rem);
+    line-height: 1.05; margin: 0;
+    letter-spacing: -.02em;
+  }
+  .fe-blog-min-sub {
+    margin: .9rem 0 0; max-width: 36rem;
+    color: var(--blog-ink-soft); font-size: 1.06rem; line-height: 1.6;
+  }
+  .fe-blog-min-cats {
+    display: flex; flex-wrap: wrap; gap: 1.1rem;
+    margin-bottom: 3rem; font-size: .92rem;
+    border-bottom: 1px solid var(--blog-rule);
+    padding-bottom: 1.1rem;
+  }
+  .fe-blog-min-cat {
+    color: var(--blog-ink-soft); text-decoration: none;
+    transition: color .15s ease;
+  }
+  .fe-blog-min-cat:hover { color: var(--blog-accent); }
+  .fe-blog-min-cat.is-active { color: var(--blog-ink); font-weight: 600; }
+  .fe-blog-min-empty {
+    color: var(--blog-ink-soft); font-style: italic;
+    padding: 2rem 0;
+  }
+  .fe-blog-min-list { list-style: none; padding: 0; margin: 0; }
+  .fe-blog-min-item {
+    border-bottom: 1px solid var(--blog-rule);
+    padding: 2rem 0;
+  }
+  .fe-blog-min-item:first-child { padding-top: 0; }
+  .fe-blog-min-item:last-child { border-bottom: 0; }
+  .fe-blog-min-link {
+    color: inherit; text-decoration: none;
+    display: block;
+  }
+  .fe-blog-min-meta-top {
+    display: flex; gap: .8rem; align-items: center; flex-wrap: wrap;
+    color: var(--blog-ink-soft); font-size: .78rem;
+    text-transform: uppercase; letter-spacing: .12em;
+    margin-bottom: .65rem;
+  }
+  .fe-blog-min-cat-tag {
+    color: var(--blog-accent); font-weight: 600;
+  }
+  .fe-blog-min-pin { font-size: .9rem; }
+  .fe-blog-min-item-title {
+    font-family: var(--tpl-heading-font, var(--fe-font-heading, 'Fraunces', Georgia, serif));
+    font-weight: 600; font-size: clamp(1.5rem, 3vw, 2.1rem);
+    line-height: 1.2; margin: 0 0 .65rem;
+    letter-spacing: -.01em;
+    transition: color .2s ease;
+  }
+  .fe-blog-min-link:hover .fe-blog-min-item-title { color: var(--blog-accent); }
+  .fe-blog-min-item-summary {
+    margin: 0 0 1rem;
+    color: var(--blog-ink-soft);
+    font-size: 1.05rem; line-height: 1.65;
+  }
+  .fe-blog-min-meta-bottom {
+    display: flex; gap: .9rem; align-items: center;
+    color: var(--blog-ink-soft); font-size: .85rem;
+  }
+  .fe-blog-min-meta-bottom > span:not(.fe-blog-min-arrow) + span:not(.fe-blog-min-arrow)::before {
+    content: "·"; margin-right: .9rem; opacity: .5;
+  }
+  .fe-blog-min-arrow {
+    margin-left: auto; font-size: 1.1rem;
+    transition: transform .2s ease;
+  }
+  .fe-blog-min-link:hover .fe-blog-min-arrow {
+    transform: translateX(4px); color: var(--blog-accent);
+  }
+</style>

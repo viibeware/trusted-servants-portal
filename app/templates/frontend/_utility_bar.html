@@ -9,27 +9,34 @@
    for legibility, regardless of the admin's chosen idle palette. #}
 {% macro render_leaf(it) -%}
   {%- set _tgt = ' target="_blank" rel="noopener"' if it.open_in_new_tab else '' -%}
+  {# Admin-defined hover tooltip — stamps `title` on every leaf when
+     set. For icon-only items the same text is mirrored onto
+     `aria-label` so screen readers get the richer hover text;
+     other kinds keep their visible label as the accessible name. #}
+  {%- set _tip = (it.tooltip or '') | trim -%}
+  {%- set _tip_attr = ' title="' ~ _tip ~ '"' if _tip else '' -%}
   {%- if it.kind == 'link' -%}
-    <a class="fe-utility-link" href="{{ it.url }}"{{ _tgt|safe }}>
+    <a class="fe-utility-link" href="{{ it.url }}"{{ _tgt|safe }}{{ _tip_attr|safe }}>
       {% if it.icon %}<span class="fe-utility-icon" aria-hidden="true">{{ icon(it.icon) }}</span>{% endif %}
       <span>{{ it.label }}</span>
     </a>
   {%- elif it.kind == 'button' -%}
-    <a class="fe-utility-btn" href="{{ it.url }}"{{ _tgt|safe }}>
+    <a class="fe-utility-btn" href="{{ it.url }}"{{ _tgt|safe }}{{ _tip_attr|safe }}>
       {% if it.icon %}<span class="fe-utility-icon" aria-hidden="true">{{ icon(it.icon) }}</span>{% endif %}
       <span>{{ it.label }}</span>
     </a>
   {%- elif it.kind == 'text' -%}
-    <span class="fe-utility-text">
+    <span class="fe-utility-text"{{ _tip_attr|safe }}>
       {% if it.icon %}<span class="fe-utility-icon" aria-hidden="true">{{ icon(it.icon) }}</span>{% endif %}
       <span>{{ it.label }}</span>
     </span>
   {%- elif it.kind == 'icon' -%}
+    {%- set _aria = _tip or it.label or it.icon -%}
     {% if it.url -%}
       <a class="fe-utility-icon-only" href="{{ it.url }}"{{ _tgt|safe }}
-         aria-label="{{ it.label or it.icon }}">{{ icon(it.icon) }}</a>
+         aria-label="{{ _aria }}"{{ _tip_attr|safe }}>{{ icon(it.icon) }}</a>
     {%- else -%}
-      <span class="fe-utility-icon-only" aria-label="{{ it.label or it.icon }}">{{ icon(it.icon) }}</span>
+      <span class="fe-utility-icon-only" aria-label="{{ _aria }}"{{ _tip_attr|safe }}>{{ icon(it.icon) }}</span>
     {%- endif %}
   {%- elif it.kind == 'theme_toggle' -%}
     {# Singleton dark/light mode button — chrome is fixed, only its

@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block heading %}Blog tags{% endblock %}
+{% block heading_help %}Free-form topic labels. A post can carry many tags; a frontend page block can scope a list to a single tag.{% endblock %}
+{% block top_actions %}
+  <a class="btn" href="{{ url_for('main.blog_index') }}">← All posts</a>
+  <a class="btn btn-sm" href="{{ url_for('main.blog_categories') }}">Categories</a>
+{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="card-head">
+    <h2>{% if tags %}Existing tags{% else %}No tags yet{% endif %}</h2>
+    <span class="muted smaller">Click a tag to rename. New tags are usually added inline from the post editor.</span>
+  </div>
+  {% if tags %}
+  <div class="blog-tag-cloud">
+    {% for t in tags %}
+    <button type="button" class="blog-tag-chip-btn blog-tag-edit"
+            data-tag="{{ t.id }}"
+            data-name="{{ t.name }}"
+            data-slug="{{ t.slug or '' }}">
+      <span class="blog-tag-name">#{{ t.name }}</span>
+      <span class="blog-tag-count">{{ counts.get(t.id, 0) }}</span>
+    </button>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No tags yet — add some inline from a post's edit screen, or create one below.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2 id="tag-form-heading">Add a tag</h2>
+  </div>
+  <form method="post" action="{{ url_for('main.blog_tag_save') }}" class="form" id="blog-tag-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="tag_id" id="blog-tag-id" value="">
+    <div class="form-row">
+      <label>Name
+        <input type="text" name="name" id="blog-tag-name" required maxlength="80"
+               placeholder="recovery">
+      </label>
+      <label>Slug
+        <input type="text" name="slug" id="blog-tag-slug"
+               pattern="[a-z0-9-]*" maxlength="120" placeholder="auto from name">
+      </label>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary" id="blog-tag-submit">Add tag</button>
+      <button type="button" class="btn" id="blog-tag-cancel" hidden>Cancel edit</button>
+      <span id="blog-tag-delete-slot"></span>
+    </div>
+  </form>
+</section>
+
+<style>
+  .blog-tag-cloud { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .blog-tag-chip-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--panel-2, var(--panel));
+    color: inherit; font-size: .9rem; cursor: pointer;
+    transition: all .15s ease;
+  }
+  .blog-tag-chip-btn:hover {
+    border-color: var(--accent); color: var(--accent);
+  }
+  .blog-tag-name { font-weight: 600; }
+  .blog-tag-count {
+    font-size: .72rem; color: var(--muted);
+    background: var(--bg, transparent); border-radius: 999px;
+    padding: 2px 7px; min-width: 1.5rem; text-align: center;
+  }
+</style>
+
+<script>
+(function () {
+  var f = document.getElementById('blog-tag-form');
+  var idField = document.getElementById('blog-tag-id');
+  var name = document.getElementById('blog-tag-name');
+  var slug = document.getElementById('blog-tag-slug');
+  var submit = document.getElementById('blog-tag-submit');
+  var cancel = document.getElementById('blog-tag-cancel');
+  var delSlot = document.getElementById('blog-tag-delete-slot');
+  var heading = document.getElementById('tag-form-heading');
+  var csrf = '{{ csrf_token() }}';
+  var deleteUrlBase = '{{ url_for('main.blog_tag_delete', tid=0) }}'.replace(/0$/, '');
+  document.querySelectorAll('.blog-tag-edit').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var id = b.dataset.tag || '';
+      idField.value = id;
+      name.value = b.dataset.name || '';
+      slug.value = b.dataset.slug || '';
+      heading.textContent = 'Edit tag: #' + (b.dataset.name || '');
+      submit.textContent = 'Save changes';
+      cancel.hidden = false;
+      delSlot.innerHTML = '';
+      if (id) {
+        var del = document.createElement('form');
+        del.method = 'post';
+        del.action = deleteUrlBase + id + '/delete';
+        del.style.display = 'inline';
+        del.innerHTML =
+          '<input type="hidden" name="csrf_token" value="' + csrf + '">' +
+          '<button type="submit" class="btn btn-sm btn-danger">Delete tag</button>';
+        del.addEventListener('submit', function (e) {
+          if (!confirm('Delete this tag? Posts will keep their other tags.')) e.preventDefault();
+        });
+        delSlot.appendChild(del);
+      }
+      f.scrollIntoView({behavior: 'smooth', block: 'center'});
+    });
+  });
+  cancel.addEventListener('click', function () {
+    idField.value = '';
+    f.reset();
+    heading.textContent = 'Add a tag';
+    submit.textContent = 'Add tag';
+    cancel.hidden = true;
+    delSlot.innerHTML = '';
+  });
+})();
+</script>
+{% endblock %}

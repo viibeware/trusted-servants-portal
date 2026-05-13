@@ -152,6 +152,10 @@
       <textarea name="body" rows="8"
                 placeholder="The full body of the post. Markdown supported.">{{ (_p.body if _p else '') or '' }}</textarea>
     </label>
+    <label>Posted on <span class="muted small">(timestamp shown wherever the post surfaces; defaults to now on a new post and is preserved as-is on WordPress imports)</span>
+      <input type="datetime-local" name="published_at"
+             value="{% if _p and _p.published_at %}{{ _p.published_at.strftime('%Y-%m-%dT%H:%M') }}{% endif %}">
+    </label>
   </section>
 
   {# ── Featured image ─────────────────────────────────────────── #}

@@ -1,0 +1,251 @@
+{% extends "frontend/base.html" %}
+{% block title %}{{ post.title }} · {{ frontend_title }}{% endblock %}
+{% block content %}
+{%- set _dynbg_active = tpl_dynbg_key or tpl_dynbg_overlay -%}
+<div class="fe-page-dynbg-host{% if _dynbg_active %} fe-dynbg-host{% endif %}"{% if tpl_style %} style="{{ tpl_style }}"{% endif %}>
+{% if _dynbg_active %}{% with dynbg_key=tpl_dynbg_key, dynbg_config=tpl_dynbg_config %}{% include "frontend/_dynbg_apply.html" %}{% endwith %}{% endif %}
+
+{# Long-form layout — Medium/Substack-style essay treatment. Centered
+   serif body, narrow column, subtle drop-cap on the opening
+   paragraph, dropped header, no hero image (or small inline). #}
+<article class="fe-blog-post fe-blog-post-longform">
+  <div class="fe-blog-lf-shell">
+    <a class="fe-blog-lf-back" href="{{ url_for('frontend.blog_list') }}">← All posts</a>
+
+    <header class="fe-blog-lf-head">
+      {% if post.categories %}
+      <p class="fe-blog-lf-eyebrow">
+        {% for c in post.categories %}
+        <a href="{{ url_for('frontend.blog_list', category=c.slug) }}">{{ c.name }}</a>
+        {%- if not loop.last %} · {% endif %}
+        {% endfor %}
+      </p>
+      {% endif %}
+
+      <h1 class="fe-blog-lf-title">{{ post.title }}</h1>
+
+
+      <div class="fe-blog-lf-byline">
+        {% if post.author_name %}
+        <span class="fe-blog-lf-author">
+          By <i>{{ post.author_name }}</i>
+        </span>
+        {% endif %}
+        {% if post.display_date %}
+        <span class="fe-blog-lf-date">
+          {{ post.display_date.strftime('%B %-d, %Y') }}
+        </span>
+        {% endif %}
+        {% if post.reading_minutes %}
+        <span class="fe-blog-lf-rt">{{ post.reading_minutes }} min read</span>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if post.featured_image_filename %}
+    <figure class="fe-blog-lf-figure" data-lightbox-scope>
+      <img src="{{ url_for('public.blog_post_featured_image', bid=post.id, thumb=1200) }}"
+           data-lightbox-src="{{ url_for('public.blog_post_featured_image', bid=post.id) }}"
+           alt="{{ post.title }}" loading="eager">
+    </figure>
+    {% endif %}
+
+    <div class="fe-blog-lf-body" data-lightbox-scope>
+      {{ (post.body or '')|markdown }}
+    </div>
+
+    {% if post.tags %}
+    <div class="fe-blog-lf-tags">
+      {% for t in post.tags %}
+      <a class="fe-blog-lf-tag" href="{{ url_for('frontend.blog_list', tag=t.slug) }}">#{{ t.name }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if post.author_name and post.author_bio %}
+    <aside class="fe-blog-lf-bio">
+      <span class="fe-blog-lf-bio-label">About the author</span>
+      <h3 class="fe-blog-lf-bio-name">{{ post.author_name }}</h3>
+      <p class="fe-blog-lf-bio-text">{{ post.author_bio }}</p>
+    </aside>
+    {% endif %}
+
+    {% if related %}
+    <section class="fe-blog-lf-related">
+      <h2 class="fe-blog-lf-related-title">More to read</h2>
+      <ul class="fe-blog-lf-related-list" role="list">
+        {% for r in related %}
+        <li>
+          <a href="{{ url_for('frontend.blog_post_detail', slug=r.public_slug) }}" class="fe-blog-lf-related-link">
+            <h3>{{ r.title }}</h3>
+            {% if r.summary %}<p>{{ r.summary[:140] }}{% if r.summary|length > 140 %}…{% endif %}</p>{% endif %}
+            <span class="fe-blog-lf-related-meta">
+              {% if r.author_name %}{{ r.author_name }}{% endif %}
+              {% if r.display_date %} · {{ r.display_date.strftime('%b %-d, %Y') }}{% endif %}
+            </span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+  </div>
+</article>
+</div>
+
+<style>
+  .fe-blog-post-longform {
+    --blog-bg: var(--fe-color-bg, #fefefe);
+    --blog-ink: var(--fe-color-text, #1f2937);
+    --blog-ink-soft: var(--fe-color-muted, #6b7280);
+    --blog-rule: var(--fe-color-border, #e5e7eb);
+    --blog-accent: var(--fe-color-accent, #92400e);
+    background: var(--blog-bg); color: var(--blog-ink);
+    padding: clamp(2rem, 5vw, 4rem) 0 clamp(4rem, 8vw, 6rem);
+    font-family: var(--tpl-body-font, 'Fraunces', 'Iowan Old Style', Georgia, serif);
+  }
+  [data-theme="dark"] .fe-blog-post-longform {
+    --blog-bg: #0f0e0d;
+    --blog-ink: #e7e3d8;
+    --blog-ink-soft: #a39a85;
+    --blog-rule: #2a2620;
+  }
+  .fe-blog-lf-shell {
+    max-width: 680px; margin: 0 auto;
+    padding: 0 clamp(1.2rem, 4vw, 2rem);
+  }
+  .fe-blog-lf-back {
+    display: inline-block; color: var(--blog-ink-soft);
+    text-decoration: none; font-size: .9rem; font-style: italic;
+    margin-bottom: 2rem;
+  }
+  .fe-blog-lf-back:hover { color: var(--blog-accent); }
+  .fe-blog-lf-head { text-align: center; margin-bottom: 2rem; }
+  .fe-blog-lf-eyebrow {
+    margin: 0 0 1.2rem;
+    text-transform: uppercase; letter-spacing: .26em;
+    font-size: .72rem; color: var(--blog-ink-soft);
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  .fe-blog-lf-eyebrow a { color: inherit; text-decoration: none; }
+  .fe-blog-lf-eyebrow a:hover { color: var(--blog-accent); }
+  .fe-blog-lf-title {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    font-weight: 500; font-size: clamp(2.4rem, 5vw, 3.6rem);
+    line-height: 1.1; margin: 0 0 1.4rem;
+    letter-spacing: -.01em; font-style: italic;
+  }
+  .fe-blog-lf-deck {
+    color: var(--blog-ink-soft);
+    font-size: 1.2rem; line-height: 1.55;
+    margin: 0 0 2rem;
+    font-family: var(--tpl-body-font, 'Fraunces', Georgia, serif);
+  }
+  .fe-blog-lf-byline {
+    display: flex; gap: .85rem; justify-content: center; flex-wrap: wrap;
+    color: var(--blog-ink-soft); font-size: .9rem;
+    padding-top: 1.5rem; border-top: 1px solid var(--blog-rule);
+  }
+  .fe-blog-lf-byline > span:not(:first-child)::before {
+    content: "·"; margin-right: .85rem; opacity: .55;
+  }
+  .fe-blog-lf-figure { margin: 2.5rem 0 3rem; }
+  .fe-blog-lf-figure img {
+    width: 100%; height: auto; display: block;
+    border-radius: 4px;
+    box-shadow: 0 1px 0 rgba(0,0,0,.04), 0 24px 48px -28px rgba(0,0,0,.25);
+  }
+  .fe-blog-lf-body {
+    font-size: 1.18rem; line-height: 1.78;
+    color: var(--blog-ink);
+  }
+  .fe-blog-lf-body > p:first-of-type::first-letter {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    float: left; font-size: 4.4em; line-height: .85;
+    margin: 0.05em .12em -0.02em 0;
+    color: var(--blog-accent);
+    font-weight: 600; font-style: italic;
+  }
+  .fe-blog-lf-body p { margin: 0 0 1.4rem; }
+  .fe-blog-lf-body h2 {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    font-weight: 500; font-style: italic;
+    font-size: 1.85rem; margin: 2.6rem 0 1rem;
+  }
+  .fe-blog-lf-body h3 {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    font-weight: 500; font-size: 1.4rem;
+    margin: 2rem 0 .8rem;
+  }
+  .fe-blog-lf-body a {
+    color: var(--blog-accent); text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .fe-blog-lf-body blockquote {
+    margin: 2rem -1rem; padding: 1rem 2rem;
+    border-left: 3px solid var(--blog-accent);
+    background: color-mix(in srgb, var(--blog-accent) 5%, transparent);
+    font-style: italic; font-size: 1.25rem;
+    color: var(--blog-ink-soft);
+  }
+  .fe-blog-lf-body blockquote p:last-child { margin-bottom: 0; }
+  .fe-blog-lf-body img { max-width: 100%; height: auto; border-radius: 4px; margin: 1.6rem 0; }
+  .fe-blog-lf-tags {
+    display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+    margin: 3.5rem 0 0; padding-top: 1.5rem;
+    border-top: 1px solid var(--blog-rule);
+  }
+  .fe-blog-lf-tag {
+    color: var(--blog-ink-soft); font-size: .82rem;
+    padding: 3px 10px; border-radius: 4px;
+    text-decoration: none;
+    border: 1px solid var(--blog-rule);
+    transition: all .15s ease;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  .fe-blog-lf-tag:hover { color: var(--blog-accent); border-color: var(--blog-accent); }
+  .fe-blog-lf-bio {
+    margin-top: 3rem; padding: 2rem 1.5rem;
+    background: color-mix(in srgb, var(--blog-accent) 4%, transparent);
+    border-radius: 8px; text-align: center;
+  }
+  .fe-blog-lf-bio-label {
+    text-transform: uppercase; letter-spacing: .26em;
+    font-size: .68rem; color: var(--blog-ink-soft);
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  .fe-blog-lf-bio-name {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    margin: .8rem 0 .8rem; font-size: 1.3rem;
+    font-style: italic; font-weight: 500;
+  }
+  .fe-blog-lf-bio-text {
+    margin: 0; color: var(--blog-ink-soft);
+    line-height: 1.65; font-size: 1rem;
+  }
+  .fe-blog-lf-related {
+    margin-top: 4rem; padding-top: 2.5rem;
+    border-top: 1px solid var(--blog-rule);
+  }
+  .fe-blog-lf-related-title {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    font-style: italic; font-weight: 500;
+    text-align: center; font-size: 1.6rem; margin: 0 0 1.5rem;
+  }
+  .fe-blog-lf-related-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 1.2rem; }
+  .fe-blog-lf-related-link {
+    display: block; padding: 1rem 0;
+    border-bottom: 1px dashed var(--blog-rule);
+    color: inherit; text-decoration: none;
+  }
+  .fe-blog-lf-related-link:last-child { border-bottom: 0; }
+  .fe-blog-lf-related-link h3 {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    margin: 0 0 .35rem; font-size: 1.15rem; font-weight: 500;
+  }
+  .fe-blog-lf-related-link:hover h3 { color: var(--blog-accent); }
+  .fe-blog-lf-related-link p { margin: 0 0 .35rem; color: var(--blog-ink-soft); font-size: .95rem; }
+  .fe-blog-lf-related-meta { color: var(--blog-ink-soft); font-size: .8rem; }
+</style>
+{% include "frontend/_lightbox.html" %}
+{% endblock %}

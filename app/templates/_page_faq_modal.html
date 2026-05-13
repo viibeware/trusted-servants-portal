@@ -1,0 +1,134 @@
+{# Per-page FAQ block edit modal — verbatim copy of the homepage's
+   `editor_faq()` + `_faq_item_row()` macros (lines 1075-1156 of
+   frontend_homepage.html), wrapped in modal-panel chrome with a
+   sticky Done footer.
+
+   Differences from homepage:
+   - No `<form>` wrapper — values flow through JS into the active
+     FAQ block's `data` and save with the parent page-edit form via
+     `blocks_json`.
+   - Each per-item input carries `data-faq-card-field="<key>"` for
+     two-way binding (the homepage `name="faq_item_<idx>_*"` posts
+     to /frontend/save; per-page FAQ saves through blocks_json).
+   - The items list is rendered EMPTY server-side — JS clones the
+     `<template>` once per saved item on pill click.
+   - Sticky Done footer at the bottom of the scrolling panel.
+
+   Caller passes:
+     vals — dict with `items` (proxy always returns `items: []`; JS
+            populates from the active block).
+#}
+{% macro _faq_item_row(idx, item) %}
+{# One editable FAQ item. `idx` scopes the hidden field IDs the icon
+   picker writes into via selector. JS reuses the same indexing when
+   cloning new items from the empty template. The hidden `name=`
+   attributes are kept for parity with the homepage markup but never
+   post to the server — the page-edit form serialises through
+   blocks_json instead. #}
+<div class="fe-faq-card" data-faq-item data-item-index="{{ idx }}">
+  <input type="hidden" name="faq_item_present" value="{{ idx }}">
+  <div class="fe-faq-card-handle" aria-hidden="true">{{ icon('grip-vertical') }}</div>
+  <div class="fe-faq-card-icon{% if item and item.icon %} has-icon{% endif %}" data-icon-field>
+    <button type="button" class="icon-picker-trigger fe-faq-icon-trigger"
+            data-open-icon-picker
+            data-icon-target="#faq-item-{{ idx }}-icon"
+            data-color-target="#faq-item-{{ idx }}-icon-color"
+            data-size-target="#faq-item-{{ idx }}-icon-size"
+            title="Choose icon">
+      <span class="icon-picker-preview" data-icon-preview
+            {% if item and item.icon_size %}style="--icon-size: {{ item.icon_size }}px;"{% endif %}>
+        {% if item and item.icon %}{{ icon(item.icon) }}{% endif %}
+      </span>
+      <span class="icon-picker-trigger-empty" data-icon-empty>{{ icon('image') }}<span>Icon</span></span>
+    </button>
+    <input type="hidden" id="faq-item-{{ idx }}-icon"
+           name="faq_item_{{ idx }}_icon"
+           data-faq-card-field="icon"
+           value="{{ (item.icon if item else '') or '' }}">
+    {# Color is vestigial — site-wide picker rule never writes it. Kept so
+       the picker JS's color-target selector resolves. #}
+    <input type="hidden" id="faq-item-{{ idx }}-icon-color" value="">
+    <input type="hidden" id="faq-item-{{ idx }}-icon-size"
+           name="faq_item_{{ idx }}_icon_size"
+           data-faq-card-field="icon_size"
+           value="{{ (item.icon_size if item else '') or '' }}">
+  </div>
+  <div class="fe-faq-card-fields">
+    <input class="fe-faq-card-question" type="text"
+           data-faq-card-field="question"
+           value="{{ (item.question if item else '') or '' }}"
+           placeholder="Question — e.g. Do I have to share?">
+    <div class="md-editor md-editor-live fe-faq-card-md"
+         data-md-editor data-md-live="1" data-md-mode="block">
+      <div class="md-editor-pane md-editor-pane-write active">
+        <textarea class="fe-faq-card-answer" rows="4"
+                  data-faq-card-field="answer"
+                  placeholder="Answer — Markdown supported.">{{ (item.answer if item else '') or '' }}</textarea>
+      </div>
+      <div class="md-editor-pane md-editor-pane-preview active">
+        <div class="md-editor-preview"><p class="muted smaller">Preview appears here.</p></div>
+      </div>
+    </div>
+  </div>
+  <button type="button" class="fe-faq-card-remove" data-faq-remove
+          title="Remove item" aria-label="Remove item">{{ icon('trash-2') }}</button>
+</div>
+{% endmacro %}
+
+<div class="modal fe-page-edit-modal fe-page-edit-modal--wide" id="page-faq-edit-modal" aria-hidden="true" data-page-faq-modal>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel fe-page-edit-modal-panel" role="dialog" aria-modal="true">
+    <button type="button" class="icon-btn fe-page-edit-modal-close" data-close
+            aria-label="Close">{{ icon('x') }}</button>
+<section class="card fe-faq-editor"
+         data-faq-editor
+         data-faq-max="20">
+  <div class="card-head">
+    <h2>FAQ</h2>
+    <span class="muted smaller">Up to twenty accordion items. Drag to reorder. <b>Markdown</b> in answers (live preview on the right); inline HTML in questions.</span>
+  </div>
+
+  {# Heading + subheading rendered above the cards list, matching the
+     pattern features uses. Cleared values let the public partial fall
+     back to the homepage's defaults so the section-head never disappears. #}
+  <div class="fe-feat-head-grid">
+    <label>Heading
+      <input type="text"
+             data-faq-field="heading"
+             value="{{ vals.heading or '' }}"
+             placeholder="Frequently asked questions">
+    </label>
+    <label>Subheading
+      <textarea data-faq-field="subheading" rows="2"
+                placeholder="Common questions from people who are about to attend their first meeting.">{{ vals.subheading or '' }}</textarea>
+    </label>
+  </div>
+
+  <div class="fe-faq-cards" data-faq-list>
+    {# Server-rendered items intentionally omitted — page_faq_modal.js
+       clones the <template> below once per saved item on pill click,
+       so the modal stays in sync with the active block's data without
+       a flash of placeholder content. #}
+  </div>
+
+  <div class="fe-faq-actions">
+    <button type="button" class="btn btn-sm" data-faq-add>
+      {{ icon('plus') }} <span>Add item</span>
+    </button>
+    <span class="muted smaller fe-faq-count" data-faq-count></span>
+  </div>
+
+  {# Empty-item template — page_faq_modal.js clones this on "Add item"
+     and when populating the list from a saved block on pill open. The
+     `__IDX__` placeholder is rewritten to a unique counter so the
+     cloned item's id="…" fields don't collide. #}
+  <template data-faq-item-template>
+    {{ _faq_item_row('__IDX__', None) }}
+  </template>
+
+  <div class="form-actions hero-unified-actions">
+    <button type="button" class="btn btn-primary" data-close>Done</button>
+  </div>
+</section>
+  </div>{# /modal-panel #}
+</div>{# /page-faq-edit-modal #}

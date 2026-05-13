@@ -15,7 +15,6 @@
 {% set _ub = utility_bar_admin(site) %}
 {% set _ub_left = _ub.left %}
 {% set _ub_right = _ub.right %}
-{% set _ub_icons = utility_bar_icon_choices() %}
 {% set _ub_mobile_default = _ub.mobile_default or '' %}
 
 {% macro render_leaf(it) -%}
@@ -106,15 +105,27 @@
     <input type="text" data-utility-field="label" value="{{ it.label or '' }}"
            maxlength="100" placeholder="Container label (admin only — not shown on public site)"
            class="utility-bar-container-label-input">
-    <label class="utility-bar-container-collapsed-label"
-           title="When set, this container collapses to a single icon button while the live meetings bar is showing. Leave as &quot;No icon&quot; to always render the full content.">
-      <span>Collapsed icon</span>
-      <select data-utility-field="collapsed_icon">
-        {% for nn, nl in _ub_icons %}
-          <option value="{{ nn }}" {% if (it.collapsed_icon or '') == nn %}selected{% endif %}>{{ nl }}</option>
-        {% endfor %}
-      </select>
-    </label>
+    {# Collapsed icon: chooser button that opens the shared icon-picker
+       modal. When set, the container collapses to a single icon while
+       the live meetings bar is showing. The hidden input keeps the
+       saver's [data-utility-field="collapsed_icon"] contract. #}
+    <div class="utility-bar-container-collapsed-label utility-bar-icon-field{% if it.collapsed_icon %} has-icon{% endif %}"
+         title="When set, this container collapses to a single icon button while the live meetings bar is showing. Leave empty to always render the full content."
+         data-icon-field>
+      <span class="utility-bar-icon-field-lbl">Collapsed icon</span>
+      <div class="icon-picker-trigger-wrap">
+        <button type="button" class="icon-picker-trigger" data-open-icon-picker>
+          <span class="icon-picker-preview" data-icon-preview>
+            {% if it.collapsed_icon %}{{ icon(it.collapsed_icon) }}{% endif %}
+          </span>
+          <span class="icon-picker-trigger-empty" data-icon-empty>Choose…</span>
+        </button>
+        <button type="button" class="icon-picker-clear" data-icon-clear
+                title="Clear icon">{{ icon('x') }}</button>
+      </div>
+      <input type="hidden" data-utility-field="collapsed_icon" data-icon-input
+             value="{{ it.collapsed_icon or '' }}">
+    </div>
     <button type="button" class="icon-btn utility-bar-remove" data-utility-remove
             aria-label="Remove container" title="Remove container">{{ icon('x') }}</button>
   </div>
@@ -255,6 +266,7 @@
     const cb = row.querySelector(':scope > .utility-bar-row-fields [data-utility-field="open_in_new_tab"]');
     return {kind: get('kind') || 'link', label: get('label'),
             url: get('url'), icon: get('icon'),
+            tooltip: get('tooltip'),
             open_in_new_tab: !!(cb && cb.checked)};
   }
   function readRow(row){

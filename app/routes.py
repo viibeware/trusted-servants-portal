@@ -12,7 +12,8 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from .models import (db, User, Meeting, MeetingFile, MeetingSchedule, MeetingLibrary, CustomIcon, CustomFont, CustomLayout, FrontendHeroButton,
-                     Post, Story, ZoomAccount, ZoomOtpEmail, Location, Library, LibraryItem,
+                     Post, Story, BlogPost, BlogCategory, BlogTag,
+                     ZoomAccount, ZoomOtpEmail, Location, Library, LibraryItem,
                      LibraryCategory, MediaItem, NavLink, SiteSetting,
                      IntergroupAccount, AccessRequest, ContactSubmission, PasswordResetToken,
                      FrontendNavItem,
@@ -806,10 +807,17 @@ def meetings():
         items.reverse()
     zoom_accounts = ZoomAccount.query.order_by(ZoomAccount.name).all()
     locations = Location.query.order_by(Location.name).all()
+    # Shadow the `all_libraries` Jinja global (which is registered as
+    # the underlying function, not its result) with a concrete list so
+    # the shared `_meeting_modal.html` partial's `{% for lib in
+    # all_libraries %}` loop works on this page too — matches the
+    # pattern the meeting-edit route already uses.
+    all_libraries = Library.query.order_by(Library.name).all()
     archived_count = Meeting.query.filter(Meeting.archived_at.isnot(None)).count()
     resp = current_app.make_response(
         render_template("meetings.html", meetings=items,
                         zoom_accounts=zoom_accounts, locations=locations,
+                        all_libraries=all_libraries,
                         sort=sort, direction=direction, view=view,
                         show=show, archived_count=archived_count))
     resp.set_cookie("view-meetings", view, max_age=60*60*24*365, samesite="Lax")
@@ -998,6 +1006,44 @@ def _unique_story_slug(base_slug, *, exclude_id=None):
     if exclude_id is not None:
         q = q.filter(Story.id != exclude_id)
     used = {st.public_slug for st in q.all()}
+    candidate = base
+    n = 2
+    while candidate in used:
+        candidate = f"{base}-{n}"
+        n += 1
+    return candidate
+
+
+def _unique_blog_slug(base_slug, *, exclude_id=None):
+    """Same uniqueness sweep as ``_unique_post_slug``, scoped to
+    BlogPost so the public ``/blog/<slug>`` route can rely on each
+    row owning its URL."""
+    base = _normalize_slug(base_slug)
+    if not base:
+        return None
+    q = BlogPost.query
+    if exclude_id is not None:
+        q = q.filter(BlogPost.id != exclude_id)
+    used = {bp.public_slug for bp in q.all()}
+    candidate = base
+    n = 2
+    while candidate in used:
+        candidate = f"{base}-{n}"
+        n += 1
+    return candidate
+
+
+def _unique_blog_taxonomy_slug(model, base_slug, *, exclude_id=None):
+    """Slug uniqueness sweep for BlogCategory / BlogTag. Each taxonomy
+    has a unique ``slug`` column with its own URL surface, so we
+    auto-disambiguate by appending ``-2``, ``-3``, ... until free."""
+    base = _normalize_slug(base_slug)
+    if not base:
+        return None
+    q = model.query
+    if exclude_id is not None:
+        q = q.filter(model.id != exclude_id)
+    used = {row.slug for row in q.all() if row.slug}
     candidate = base
     n = 2
     while candidate in used:
@@ -1284,12 +1330,16 @@ def locations():
     if not _can_edit_locations():
         flash("You don't have permission to manage Meeting Locations.", "danger")
         return redirect(url_for("main.index"))
-    from .models import IntergroupOfficer
+    from .models import IntergroupOfficer, Fellowship
     items = Location.query.order_by(Location.name).all()
     officers = (IntergroupOfficer.query
                 .order_by(IntergroupOfficer.sort_order, IntergroupOfficer.id)
                 .all())
-    return render_template("locations.html", locations=items, officers=officers)
+    fellowships = (Fellowship.query
+                   .order_by(Fellowship.sort_order, Fellowship.id)
+                   .all())
+    return render_template("locations.html", locations=items, officers=officers,
+                           fellowships=fellowships)
 
 
 @bp.route("/officers/save", methods=["POST"])
@@ -1344,6 +1394,77 @@ def officers_save():
             db.session.delete(o)
     db.session.commit()
     flash("Intergroup officers updated", "success")
+    return redirect(url_for("main.locations",
+                            **({"embed": "1"} if request.values.get("embed") == "1" else {})))
+
+
+@bp.route("/fellowships/save", methods=["POST"])
+@login_required
+def fellowships_save():
+    """Save the repeatable Fellowships Index table from Settings →
+    Global. Same form-array reconciliation pattern as officers_save:
+    parallel ``fellowship_*`` arrays, one slot per row. Empty rows
+    (no name) are dropped. Existing rows whose ids aren't in the
+    submission are deleted, so unchecking-by-row-removal works.
+
+    Each row submits exactly one ``fellowship_is_virtual`` value
+    ("0" or "1") via a hidden input that the per-row JS keeps in
+    lockstep with the visible Virtual toggle. That contract is what
+    keeps the parallel arrays aligned — a missing or doubled-up
+    submission would shift every subsequent row's virtual flag, so
+    the template must always render the hidden input alongside the
+    checkbox. Virtual rows have their country + state_region wiped
+    at save time so a future toggle back to regional starts clean.
+    """
+    if not _can_edit_locations():
+        flash("You don't have permission to manage the Fellowships Index.", "danger")
+        return redirect(url_for("main.index"))
+    from .models import Fellowship
+    ids       = request.form.getlist("fellowship_id")
+    names     = request.form.getlist("fellowship_name")
+    countries = request.form.getlist("fellowship_country")
+    regions   = request.form.getlist("fellowship_state_region")
+    urls      = request.form.getlist("fellowship_url")
+    raw_virtual = request.form.getlist("fellowship_is_virtual")
+    virtuals = [v == "1" for v in raw_virtual]
+    existing = {f.id: f for f in Fellowship.query.all()}
+    seen = set()
+    rows = list(zip(ids, names, virtuals, countries, regions, urls))
+    for pos, (fid, name, is_virtual, country, region, url) in enumerate(rows):
+        name = (name or "").strip()
+        if not name:
+            # Blank rows are placeholders the admin opened with
+            # +Add but never filled in. Drop them silently.
+            continue
+        country = (country or "").strip()
+        region = (region or "").strip()
+        url = (url or "").strip()
+        if is_virtual:
+            country = ""
+            region = ""
+        if fid and fid.isdigit() and int(fid) in existing:
+            f = existing[int(fid)]
+            f.name = name
+            f.is_virtual = bool(is_virtual)
+            f.country = country or None
+            f.state_region = region or None
+            f.url = url or None
+            f.sort_order = pos
+            seen.add(f.id)
+        else:
+            db.session.add(Fellowship(
+                name=name,
+                is_virtual=bool(is_virtual),
+                country=country or None,
+                state_region=region or None,
+                url=url or None,
+                sort_order=pos,
+            ))
+    for fid, f in existing.items():
+        if fid not in seen:
+            db.session.delete(f)
+    db.session.commit()
+    flash("Fellowships Index updated", "success")
     return redirect(url_for("main.locations",
                             **({"embed": "1"} if request.values.get("embed") == "1" else {})))
 
@@ -1914,6 +2035,7 @@ def module_role_save():
         "zoom_tech":         "zoom_tech_required_role",
         "posts":             "posts_required_role",
         "stories":           "stories_required_role",
+        "blog":              "blog_required_role",
         "frontend_module":   "frontend_module_required_role",
     }
     col = columns.get(module)
@@ -1968,6 +2090,28 @@ def _require_stories_enabled():
     if not s.stories_enabled:
         abort(404)
     if not user_meets_role(current_user, s.stories_required_role or "admin"):
+        abort(404)
+
+
+@bp.route("/settings/blog-toggle", methods=["POST"])
+@admin_required
+def blog_toggle():
+    s = _get_site_setting()
+    s.blog_enabled = request.form.get("blog_enabled") == "1"
+    db.session.commit()
+    flash("Blog " + ("enabled" if s.blog_enabled else "disabled"), "success")
+    return redirect(request.referrer or url_for("main.index"))
+
+
+def _require_blog_enabled():
+    """Module gate for the Blog admin section. Same shape as the Posts
+    and Stories gates — admin-only by default; an admin loosens it via
+    the Modules tab on the Settings page."""
+    from .permissions import user_meets_role
+    s = _get_site_setting()
+    if not getattr(s, "blog_enabled", False):
+        abort(404)
+    if not user_meets_role(current_user, getattr(s, "blog_required_role", "admin") or "admin"):
         abort(404)
 
 
@@ -2639,7 +2783,7 @@ def wp_import_connect():
     site = (request.form.get("site_url") or "").strip()
     user = (request.form.get("wp_user") or "").strip() or None
     pw = (request.form.get("wp_password") or "").strip() or None
-    posts, cats, err = wp_importer.fetch_wp(site, user, pw)
+    posts, cats, tags, err = wp_importer.fetch_wp(site, user, pw)
     if err:
         flash(err, "danger")
         return redirect(url_for("main.wp_import_start", **_wp_embed_kwargs()))
@@ -2647,12 +2791,24 @@ def wp_import_connect():
         flash("No posts found at that WordPress site. The REST API returned an empty list.", "warning")
         return redirect(url_for("main.wp_import_start", **_wp_embed_kwargs()))
     token = wp_importer.new_token()
+    # Split the rich category/tag dicts into a flat name list (used by
+    # the mapping UI's per-category form keys) and a parallel meta map
+    # (used by apply_plan's BlogCategory / BlogTag resolver to carry
+    # source slug + description through).
+    cat_names = [c["name"] for c in (cats or [])]
+    cat_meta = {c["name"]: {"slug": c.get("slug", ""), "description": c.get("description", "")}
+                for c in (cats or [])}
+    tag_names = [t["name"] for t in (tags or [])]
+    tag_meta = {t["name"]: {"slug": t.get("slug", "")} for t in (tags or [])}
     wp_importer.stash_save(token, {
         "source": "rest",
         "site_url": site,
         "wp_user": user,
         "posts": posts,
-        "categories": cats,
+        "categories": cat_names,
+        "category_meta": cat_meta,
+        "tags": tag_names,
+        "tag_meta": tag_meta,
         "mapping": {},
         "category_mapping": {},
         "created_at": datetime.utcnow().isoformat() + "Z",
@@ -2672,16 +2828,24 @@ def wp_import_upload_csv():
     if not f or not f.filename:
         flash("Please choose a CSV file.", "danger")
         return redirect(url_for("main.wp_import_start", **_wp_embed_kwargs()))
-    posts, cats, err = wp_importer.parse_csv(f)
+    posts, cats, tags, err = wp_importer.parse_csv(f)
     if err:
         flash(err, "danger")
         return redirect(url_for("main.wp_import_start", **_wp_embed_kwargs()))
     token = wp_importer.new_token()
+    cat_names = [c["name"] for c in (cats or [])]
+    cat_meta = {c["name"]: {"slug": c.get("slug", ""), "description": c.get("description", "")}
+                for c in (cats or [])}
+    tag_names = [t["name"] for t in (tags or [])]
+    tag_meta = {t["name"]: {"slug": t.get("slug", "")} for t in (tags or [])}
     wp_importer.stash_save(token, {
         "source": "csv",
         "filename": f.filename,
         "posts": posts,
-        "categories": cats,
+        "categories": cat_names,
+        "category_meta": cat_meta,
+        "tags": tag_names,
+        "tag_meta": tag_meta,
         "mapping": {},
         "category_mapping": {},
         "created_at": datetime.utcnow().isoformat() + "Z",
@@ -2748,10 +2912,33 @@ def wp_import_map(token):
     for cat in stash.get("categories") or []:
         cat_counts[cat] = sum(1 for p in (stash.get("posts") or [])
                               if cat in (p.get("categories") or []))
+    # Hide the Blog target pill when the module is off so an admin can't
+    # accidentally route imports into a disabled module. The mapping UI
+    # iterates ``targets`` for the radio group, so trimming the tuple
+    # keeps the choice off the form entirely.
+    site = _get_site_setting()
+    blog_on = bool(site and getattr(site, "blog_enabled", False))
+    if blog_on:
+        targets = wp_importer.TARGETS
+    else:
+        targets = tuple(t for t in wp_importer.TARGETS if t != "blog")
+    # Stale-stash detection. A wizard token created before the ACF
+    # capture path was added has a stash whose posts are all missing
+    # the ``acf`` key — re-using such a stash would silently produce
+    # ACF-less imports. We surface a banner with a Re-connect link so
+    # the admin can start a fresh fetch instead of clicking through.
+    posts_for_check = stash.get("posts") or []
+    stale_acf_stash = (
+        (stash.get("source") == "rest")
+        and bool(posts_for_check)
+        and not any(p.get("acf") for p in posts_for_check)
+    )
     return render_template("wp_import_map.html", token=token, stash=stash,
-                           targets=wp_importer.TARGETS,
+                           targets=targets,
                            target_labels=wp_importer.TARGET_LABELS,
                            cat_counts=cat_counts,
+                           blog_enabled=blog_on,
+                           stale_acf_stash=stale_acf_stash,
                            embed=_wp_embed())
 
 
@@ -2770,32 +2957,74 @@ def wp_import_dry_run(token):
                                        stash.get("mapping") or {})
 
     if request.method == "POST":
+        # Per-row archive overrides ride along on the dry-run form. The
+        # checkboxes are named ``archive:<post_key>`` and admins can flip
+        # any subset (or use the bulk select-all to flag every row).
+        # Validated against the actual post keys so a tampered form can't
+        # smuggle archive flags onto skipped rows.
+        valid_keys = {a["post"]["key"] for a in actions if a["target"] != "skip"}
+        archive_keys = set()
+        for raw in request.form.keys():
+            if raw.startswith("archive:"):
+                k = raw[len("archive:"):]
+                if k in valid_keys:
+                    archive_keys.add(k)
+        # Persist the choice to the stash so a re-render after a flash
+        # message keeps the admin's selections (e.g. when they forget
+        # to type IMPORT and bounce back).
+        stash["archive_keys"] = sorted(archive_keys)
+        wp_importer.stash_save(token, stash)
+
         if request.form.get("confirm") != "IMPORT":
             flash("Type IMPORT in the confirmation field to proceed.", "warning")
             return redirect(url_for("main.wp_import_dry_run", token=token, **_wp_embed_kwargs()))
 
         def _img_cb(url):
-            return wp_importer.download_image_to_uploads(
+            # Returns ``(stored_filename, original_filename)`` so both
+            # the featured-image apply step (uses stored) and the
+            # inline-image rewriter (uses original to build /pub/<…>)
+            # can share one callback.
+            return wp_importer._download_image_full(
                 url, uploaded_by=getattr(current_user, "id", None))
 
-        result = wp_importer.apply_plan(actions, dry_run=False, image_cb=_img_cb,
-                                        created_by=getattr(current_user, "id", None))
+        result = wp_importer.apply_plan(
+            actions, dry_run=False, image_cb=_img_cb,
+            created_by=getattr(current_user, "id", None),
+            category_meta=stash.get("category_meta") or {},
+            tag_meta=stash.get("tag_meta") or {},
+            archive_keys=archive_keys,
+        )
         from . import activity
         activity.log("wp_import.commit", entity_type="wp_import",
                      summary=(f"Imported {result['counts']['stories']} stor{'y' if result['counts']['stories']==1 else 'ies'}, "
                               f"{result['counts']['announcements']} announcement(s), "
-                              f"{result['counts']['events']} event(s) from "
+                              f"{result['counts']['events']} event(s), "
+                              f"{result['counts']['blog']} blog post(s) from "
                               f"{stash.get('source','?')}"))
         wp_importer.stash_delete(token)
         return render_template("wp_import_done.html", result=result,
                                source=stash.get("source"),
                                embed=_wp_embed())
 
-    preview = wp_importer.apply_plan(actions, dry_run=True)
+    archive_keys = set(stash.get("archive_keys") or [])
+    preview = wp_importer.apply_plan(
+        actions, dry_run=True,
+        category_meta=stash.get("category_meta") or {},
+        tag_meta=stash.get("tag_meta") or {},
+        archive_keys=archive_keys,
+    )
+    posts_for_check = stash.get("posts") or []
+    stale_acf_stash = (
+        (stash.get("source") == "rest")
+        and bool(posts_for_check)
+        and not any(p.get("acf") for p in posts_for_check)
+    )
     return render_template("wp_import_dry_run.html",
                            token=token, stash=stash,
                            actions=actions, preview=preview,
+                           archive_keys=archive_keys,
                            target_labels=wp_importer.TARGET_LABELS,
+                           stale_acf_stash=stale_acf_stash,
                            embed=_wp_embed())
 
 
@@ -3426,336 +3655,6 @@ def _clamp_int(raw, lo, hi, default):
     return max(lo, min(hi, n))
 
 
-@bp.route("/frontend/save", methods=["POST"])
-@admin_required
-def frontend_save():
-    """Save homepage text content (branding, about, contact, block content).
-    Hero options are saved by frontend_hero_save. Public toggle state and
-    footer text are handled by frontend_toggle / frontend_footer_save."""
-    import json as _json
-    from .blocks import (site_blocks, parse_features, parse_stats,
-                         parse_testimonials, parse_faq, parse_quick_links,
-                         parse_cta, parse_inclusion)
-    s = _get_site_setting()
-    for col in ("frontend_title",
-                "frontend_about_heading", "frontend_contact_heading"):
-        setattr(s, col, (request.form.get(col) or "").strip() or None)
-    for col in ("frontend_about_body", "frontend_contact_body"):
-        setattr(s, col, (request.form.get(col) or "").strip() or None)
-
-    # Block content. Only update keys that arrived in this submission so
-    # editors hidden by the active layout's block list aren't blanked out.
-    blocks = site_blocks(s)  # current values, including defaults
-    if "features_present" in request.form:
-        blocks["features"] = parse_features(request.form)
-    if "block_stats" in request.form:
-        blocks["stats"] = parse_stats(request.form.get("block_stats"))
-    if "block_testimonials" in request.form:
-        blocks["testimonials"] = parse_testimonials(request.form.get("block_testimonials"))
-    if "faq_present" in request.form:
-        blocks["faq"] = parse_faq(request.form)
-    if "block_quick_links" in request.form:
-        blocks["quick_links"] = parse_quick_links(request.form.get("block_quick_links"))
-    if "block_cta_heading" in request.form:
-        blocks["cta"] = parse_cta(request.form)
-    if "inclusion_present" in request.form:
-        blocks["inclusion"] = parse_inclusion(request.form)
-
-    # Meetings settings (only updated when the meetings editor was on the
-    # form, signaled by a meetings_filter field).
-    if "meetings_filter" in request.form:
-        ms = dict(blocks.get("_meetings") or {})
-        f = (request.form.get("meetings_filter") or "upcoming_today").strip()
-        if f in {"today_all","upcoming_today","next_24h","next_7_days","this_week","all"}:
-            ms["filter"] = f
-        ms["heading"] = (request.form.get("meetings_heading") or "").strip() or "Upcoming Meetings"
-        ms["intro"] = (request.form.get("meetings_intro") or "").strip()
-        ms["empty_message"] = (request.form.get("meetings_empty_message") or "").strip() or "No meetings scheduled — check back soon."
-        try: ms["max_count"] = max(1, min(30, int(request.form.get("meetings_max_count", 6))))
-        except (TypeError, ValueError): ms["max_count"] = 6
-        try: ms["show_first_n"] = max(1, min(7, int(request.form.get("meetings_show_first_n", 3))))
-        except (TypeError, ValueError): ms["show_first_n"] = 3
-        try: ms["stagger_ms"] = max(0, min(200, int(request.form.get("meetings_stagger_ms", 60))))
-        except (TypeError, ValueError): ms["stagger_ms"] = 60
-        a = (request.form.get("meetings_animation") or "fade").strip()
-        ms["animation"] = a if a in {"fade","slide","none"} else "fade"
-        ms["group_by_day"] = request.form.get("meetings_group_by_day") == "1"
-        ms["show_type_chip"] = request.form.get("meetings_show_type_chip") == "1"
-        ms["show_schedule"] = request.form.get("meetings_show_schedule") == "1"
-        blocks["_meetings"] = ms
-
-    # Events block settings — persisted under _events similar to _meetings.
-    # The presence of an `events_heading` field signals the events editor
-    # was on the form; we read every related field together so partial
-    # writes don't blank out unsaved sub-fields.
-    if "events_heading" in request.form:
-        es = dict(blocks.get("_events") or {})
-        es["heading"] = (request.form.get("events_heading") or "").strip() or "Upcoming Events"
-        es["intro"] = (request.form.get("events_intro") or "").strip()
-        es["empty_message"] = (request.form.get("events_empty_message") or "").strip() or "No upcoming events — check back soon."
-        try: es["max_count"] = max(1, min(24, int(request.form.get("events_max_count", 6))))
-        except (TypeError, ValueError): es["max_count"] = 6
-        try: es["stagger_ms"] = max(0, min(200, int(request.form.get("events_stagger_ms", 60))))
-        except (TypeError, ValueError): es["stagger_ms"] = 60
-        a = (request.form.get("events_animation") or "fade").strip()
-        es["animation"] = a if a in {"fade","slide","none"} else "fade"
-        es["show_image"] = request.form.get("events_show_image") == "1"
-        es["show_summary"] = request.form.get("events_show_summary") == "1"
-        es["show_location"] = request.form.get("events_show_location") == "1"
-        blocks["_events"] = es
-
-    s.frontend_blocks_json = _json.dumps(blocks)
-
-    # Two-panel split settings live on each split block in the active
-    # layout's blocks_json. We mutate the CustomLayout row in place.
-    # Form fields are scoped by split index ("split_0_width",
-    # "split_1_padding", ...) so multiple splits in one layout each
-    # get their own settings.
-    present_indices = set()
-    for raw in request.form.getlist("split_present") or []:
-        try: present_indices.add(int(raw))
-        except (TypeError, ValueError): pass
-    if present_indices:
-        active_key = (s.frontend_homepage_template or "classic")
-        layout = CustomLayout.query.filter_by(key=active_key, kind="homepage").first()
-        if layout and not layout.is_prebuilt:
-            try:
-                seq = _json.loads(layout.blocks_json or "[]") or []
-            except (ValueError, TypeError):
-                seq = []
-            split_idx = 0
-            for b in seq:
-                if not (isinstance(b, dict) and b.get("type") == "split"):
-                    continue
-                if split_idx in present_indices:
-                    def _set_spacing(key, form_key):
-                        v = (request.form.get(form_key) or "").strip().lower()
-                        if v in _SPLIT_VALID_SPACING: b[key] = v
-                    w = (request.form.get(f"split_{split_idx}_width") or "").strip().lower()
-                    if w in _SPLIT_VALID_WIDTHS: b["width"] = w
-                    _set_spacing("padding",    f"split_{split_idx}_padding")
-                    _set_spacing("gap",        f"split_{split_idx}_gap")
-                    _set_spacing("gap_top",    f"split_{split_idx}_gap_top")
-                    _set_spacing("gap_bottom", f"split_{split_idx}_gap_bottom")
-                    def _set_pct(json_key, form_key):
-                        raw = (request.form.get(form_key) or "").strip()
-                        try:
-                            n = int(float(raw))
-                        except (TypeError, ValueError):
-                            n = 0
-                        n = max(0, min(50, n))
-                        if n: b[json_key] = n
-                        else: b.pop(json_key, None)
-                    _set_pct("pad_left_pct",  f"split_{split_idx}_pad_left_pct")
-                    _set_pct("pad_right_pct", f"split_{split_idx}_pad_right_pct")
-                    def _set_bg(json_key, form_prefix):
-                        if request.form.get(f"{form_prefix}_enabled") == "1":
-                            v = (request.form.get(form_prefix) or "").strip()
-                            if v and _SPLIT_HEX_RE.match(v):
-                                b[json_key] = v
-                            else:
-                                b.pop(json_key, None)
-                        else:
-                            b.pop(json_key, None)
-                    _set_bg("bg_color",       f"split_{split_idx}_bg_color")
-                    _set_bg("bg_color_left",  f"split_{split_idx}_bg_color_left")
-                    _set_bg("bg_color_right", f"split_{split_idx}_bg_color_right")
-                    if request.form.get(f"split_{split_idx}_bg_dark_mode") == "1":
-                        b["bg_dark_mode"] = True
-                    else:
-                        b.pop("bg_dark_mode", None)
-                    # Legacy `margin` field is no longer written; remove
-                    # it on first save so the JSON stays clean.
-                    b.pop("margin", None)
-                split_idx += 1
-            layout.blocks_json = _json.dumps(seq)
-
-    db.session.commit()
-    flash("Homepage content saved", "success")
-    return redirect(url_for("main.frontend_homepage"))
-
-
-@bp.route("/frontend/hero/save", methods=["POST"])
-@admin_required
-def frontend_hero_save():
-    """Save all hero options (text, typography, background, image)."""
-    s = _get_site_setting()
-    for col in ("frontend_hero_heading", "frontend_hero_subheading", "frontend_tagline"):
-        setattr(s, col, (request.form.get(col) or "").strip() or None)
-    s.frontend_tagline_enabled = request.form.get("frontend_tagline_enabled") == "1"
-
-    # Heading typography
-    font = (request.form.get("frontend_hero_heading_font") or "fraunces").strip().lower()
-    s.frontend_hero_heading_font = font if font in _HERO_HEADING_FONTS else "fraunces"
-    s.frontend_hero_heading_size = _clamp_int(request.form.get("frontend_hero_heading_size"), 50, 200, 100)
-    s.frontend_hero_heading_grad_start = _sanitize_icon_color(request.form.get("frontend_hero_heading_grad_start"))
-    s.frontend_hero_heading_grad_end = _sanitize_icon_color(request.form.get("frontend_hero_heading_grad_end"))
-    if request.form.get("reset_heading_colors") == "1":
-        s.frontend_hero_heading_grad_start = None
-        s.frontend_hero_heading_grad_end = None
-    s.frontend_hero_text_dynamic = request.form.get("frontend_hero_text_dynamic") == "1"
-
-    # Hero background generator
-    bg_style = (request.form.get("frontend_hero_bg_style") or "frosty").strip().lower()
-    s.frontend_hero_bg_style = bg_style if bg_style in _HERO_BG_STYLES else "frosty"
-    s.frontend_hero_bg_color = _sanitize_icon_color(request.form.get("frontend_hero_bg_color"))
-    s.frontend_hero_bg_color_2 = _sanitize_icon_color(request.form.get("frontend_hero_bg_color_2"))
-    s.frontend_hero_bg_gradient_angle = _clamp_int(request.form.get("frontend_hero_bg_gradient_angle"), 0, 360, 180)
-    s.frontend_hero_bg_hue = _clamp_int(request.form.get("frontend_hero_bg_hue"), 0, 360, 225)
-    s.frontend_hero_bg_hue_2 = _clamp_int(request.form.get("frontend_hero_bg_hue_2"), 0, 360, 170)
-    s.frontend_hero_bg_blur = _clamp_int(request.form.get("frontend_hero_bg_blur"), 0, 200, 80)
-    s.frontend_hero_bg_opacity = _clamp_int(request.form.get("frontend_hero_bg_opacity"), 0, 100, 45)
-    s.frontend_hero_bg_randomize = request.form.get("frontend_hero_bg_randomize") == "1"
-    # Dynamic-background catalog key (None when not on the dynamic
-    # style or when the admin cleared it). Coerced through the
-    # catalog so a tampered POST can only land on a known key.
-    if "frontend_hero_bg_dynamic_key" in request.form:
-        from . import dynbg as _dynbg
-        s.frontend_hero_bg_dynamic_key = _dynbg.normalize(
-            request.form.get("frontend_hero_bg_dynamic_key"))
-        s.frontend_hero_bg_dynbg_config_json = _dynbg_config_from_form(
-            request.form, "frontend_hero_bg_dynbg_config_json")
-
-    # Hero background image
-    mode = (request.form.get("frontend_hero_bg_image_mode") or "cover").strip().lower()
-    s.frontend_hero_bg_image_mode = mode if mode in _HERO_IMAGE_MODES else "cover"
-    s.frontend_hero_bg_image_scale = _clamp_int(request.form.get("frontend_hero_bg_image_scale"), 10, 400, 100)
-
-    # Sinewave: 1–4 hex colors → JSON list. If none valid, store NULL so the
-    # frontend falls back to the default teal→blue→purple palette.
-    import json as _json
-    sw_colors = []
-    for i in range(1, 5):
-        c = (request.form.get(f"frontend_hero_sinewave_c{i}") or "").strip()
-        if _HEX_COLOR_RE.match(c):
-            sw_colors.append(c)
-    s.frontend_hero_sinewave_colors = _json.dumps(sw_colors) if sw_colors else None
-
-    # Hero background video (muted autoplay loop, object-fit: cover)
-    s.frontend_hero_bg_video_mode = "loop"
-    try:
-        vsp = int(request.form.get("frontend_hero_bg_video_speed") or 100)
-    except (TypeError, ValueError):
-        vsp = 100
-    s.frontend_hero_bg_video_speed = vsp if vsp in _HERO_VIDEO_SPEEDS else 100
-    if request.form.get("clear_hero_bg_video") == "1":
-        old_v = s.frontend_hero_bg_video_filename
-        s.frontend_hero_bg_video_filename = None
-        _cleanup_retired_asset(old_v)
-    uploaded_v = request.files.get("frontend_hero_bg_video")
-    if uploaded_v and uploaded_v.filename:
-        old_v = s.frontend_hero_bg_video_filename
-        stored, _original = _save_upload(uploaded_v)
-        s.frontend_hero_bg_video_filename = stored
-        if old_v and old_v != stored:
-            _cleanup_retired_asset(old_v)
-
-    # Particle overlay (works with any bg style)
-    s.frontend_hero_particle_enabled = request.form.get("frontend_hero_particle_enabled") == "1"
-    eff = (request.form.get("frontend_hero_particle_effect") or "stars").strip().lower()
-    s.frontend_hero_particle_effect = eff if eff in _HERO_PARTICLE_EFFECTS else "stars"
-    s.frontend_hero_particle_speed = _clamp_int(request.form.get("frontend_hero_particle_speed"), 10, 300, 100)
-    s.frontend_hero_particle_size = _clamp_int(request.form.get("frontend_hero_particle_size"), 25, 400, 100)
-    if request.form.get("clear_hero_bg_image") == "1":
-        old = s.frontend_hero_bg_image_filename
-        s.frontend_hero_bg_image_filename = None
-        _cleanup_retired_asset(old)
-    uploaded = request.files.get("frontend_hero_bg_image")
-    if uploaded and uploaded.filename:
-        old = s.frontend_hero_bg_image_filename
-        stored, _original = _save_upload(uploaded)
-        s.frontend_hero_bg_image_filename = stored
-        if old and old != stored:
-            _cleanup_retired_asset(old)
-
-    db.session.commit()
-    flash("Hero saved", "success")
-    return redirect(url_for("main.frontend_homepage"))
-
-
-# ---- Hero buttons (CRUD) ----
-def _apply_hero_button_form(btn, form):
-    btn.label = (form.get("label") or "").strip() or btn.label or "Button"
-    btn.url = (form.get("url") or "").strip() or None
-    style = (form.get("style") or "primary").strip().lower()
-    btn.style = style if style in _HERO_BUTTON_STYLES else "primary"
-    btn.custom_bg_color = _sanitize_icon_color(form.get("custom_bg_color"))
-    btn.custom_text_color = _sanitize_icon_color(form.get("custom_text_color"))
-    btn.icon_before = _sanitize_icon_name(form.get("icon_before"))
-    btn.icon_after = _sanitize_icon_name(form.get("icon_after"))
-    btn.icon_before_color = _sanitize_icon_color(form.get("icon_before_color"))
-    btn.icon_after_color = _sanitize_icon_color(form.get("icon_after_color"))
-    btn.icon_before_size = _sanitize_icon_size(form.get("icon_before_size"))
-    btn.icon_after_size = _sanitize_icon_size(form.get("icon_after_size"))
-    btn.open_in_new_tab = form.get("open_in_new_tab") == "1"
-
-
-@bp.route("/frontend/hero-button/new", methods=["POST"])
-@admin_required
-def frontend_hero_button_new():
-    max_pos = db.session.query(db.func.coalesce(db.func.max(FrontendHeroButton.position), -1)).scalar() + 1
-    btn = FrontendHeroButton(label="New button", position=max_pos)
-    _apply_hero_button_form(btn, request.form)
-    db.session.add(btn)
-    db.session.commit()
-    return redirect(url_for("main.frontend_homepage"))
-
-
-@bp.route("/frontend/hero-button/<int:bid>/edit", methods=["POST"])
-@admin_required
-def frontend_hero_button_edit(bid):
-    btn = db.session.get(FrontendHeroButton, bid) or abort(404)
-    _apply_hero_button_form(btn, request.form)
-    db.session.commit()
-    return redirect(url_for("main.frontend_homepage"))
-
-
-@bp.route("/frontend/hero-button/<int:bid>/delete", methods=["POST"])
-@admin_required
-def frontend_hero_button_delete(bid):
-    btn = db.session.get(FrontendHeroButton, bid) or abort(404)
-    db.session.delete(btn)
-    db.session.commit()
-    return redirect(url_for("main.frontend_homepage"))
-
-
-@bp.route("/frontend/hero-buttons/reorder", methods=["POST"])
-@admin_required
-def frontend_hero_buttons_reorder():
-    payload = request.get_json(silent=True) or {}
-    valid = {b.id for b in FrontendHeroButton.query.all()}
-    for pos, bid in enumerate(payload.get("order") or []):
-        try:
-            bid_int = int(bid)
-        except (TypeError, ValueError):
-            continue
-        if bid_int not in valid:
-            continue
-        btn = db.session.get(FrontendHeroButton, bid_int)
-        if btn:
-            btn.position = pos
-    db.session.commit()
-    return jsonify(ok=True)
-
-
-@public_bp.route("/site-branding/hero-bg")
-def site_hero_bg_image():
-    s = SiteSetting.query.first()
-    if not s or not s.frontend_hero_bg_image_filename:
-        abort(404)
-    return send_from_directory(current_app.config["UPLOAD_FOLDER"],
-                               s.frontend_hero_bg_image_filename)
-
-
-@public_bp.route("/site-branding/hero-bg-video")
-def site_hero_bg_video():
-    s = SiteSetting.query.first()
-    if not s or not s.frontend_hero_bg_video_filename:
-        abort(404)
-    return send_from_directory(current_app.config["UPLOAD_FOLDER"],
-                               s.frontend_hero_bg_video_filename)
-
-
 @bp.route("/frontend/toggle", methods=["POST"])
 @admin_required
 def frontend_toggle():
@@ -4349,6 +4248,54 @@ def _sanitize_svg(text_bytes):
     return s.encode("utf-8")
 
 
+# Affinity Designer / Serif tools export with `width="100%" height="100%"`
+# on the root <svg>, which leaves the file with no intrinsic pixel size —
+# only an aspect ratio from the viewBox. An <img> pointing at such a file
+# collapses to 0 width when placed inside a flex/grid item without a
+# definite parent width. The normalizer below rewrites the root tag's
+# width + height to the viewBox dimensions so the SVG has real intrinsic
+# pixels and renders the same in any container.
+_SVG_ROOT_TAG_RE = _re.compile(r'<svg\b([^>]*)>', _re.IGNORECASE)
+_SVG_VIEWBOX_RE = _re.compile(
+    r'viewBox\s*=\s*["\']\s*([-\d.eE]+)\s+([-\d.eE]+)\s+([-\d.eE]+)\s+([-\d.eE]+)\s*["\']',
+    _re.IGNORECASE,
+)
+_SVG_WIDTH_PCT_RE = _re.compile(r'(\bwidth\s*=\s*)(["\'])100%\2', _re.IGNORECASE)
+_SVG_HEIGHT_PCT_RE = _re.compile(r'(\bheight\s*=\s*)(["\'])100%\2', _re.IGNORECASE)
+
+
+def _normalize_svg_dimensions(svg_bytes):
+    """Conservative rewrite: only fires when the root <svg> has BOTH
+    width="100%" AND height="100%" AND a parseable viewBox. Partial or
+    pixel-valued dimensions, inner <svg> elements, and viewBox-less files
+    are left untouched."""
+    try:
+        s = svg_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return svg_bytes
+    m = _SVG_ROOT_TAG_RE.search(s)
+    if not m:
+        return svg_bytes
+    attrs = m.group(1)
+    if not (_SVG_WIDTH_PCT_RE.search(attrs) and _SVG_HEIGHT_PCT_RE.search(attrs)):
+        return svg_bytes
+    vb = _SVG_VIEWBOX_RE.search(attrs)
+    if not vb:
+        return svg_bytes
+    try:
+        w = float(vb.group(3))
+        h = float(vb.group(4))
+    except (ValueError, TypeError):
+        return svg_bytes
+    if w <= 0 or h <= 0:
+        return svg_bytes
+    def _fmt(n):
+        return str(int(n)) if n == int(n) else str(n)
+    new_attrs = _SVG_WIDTH_PCT_RE.sub(rf'\g<1>"{_fmt(w)}"', attrs)
+    new_attrs = _SVG_HEIGHT_PCT_RE.sub(rf'\g<1>"{_fmt(h)}"', new_attrs)
+    return (s[:m.start(1)] + new_attrs + s[m.end(1):]).encode("utf-8")
+
+
 def _custom_icon_json(ci):
     return {
         "id": ci.id, "name": ci.name, "mime_type": ci.mime_type,
@@ -4379,6 +4326,7 @@ def frontend_custom_icon_upload():
         return jsonify(ok=False, error="Icon is larger than 512 KB"), 400
     if ext == ".svg":
         data = _sanitize_svg(data)
+        data = _normalize_svg_dimensions(data)
     stored = f"{uuid.uuid4().hex}{ext}"
     path = os.path.join(current_app.config["UPLOAD_FOLDER"], stored)
     with open(path, "wb") as f:
@@ -4792,6 +4740,25 @@ def frontend_contact_template_save():
     s.contact_form_show_pic_name = request.form.get("contact_form_show_pic_name") == "1"
     s.contact_form_show_pic_email = request.form.get("contact_form_show_pic_email") == "1"
     s.contact_form_show_pic_phone = request.form.get("contact_form_show_pic_phone") == "1"
+    # Container-width controls — mirror the events/announcements/stories
+    # list endpoints. Width mode falls through to the model default on
+    # an out-of-range value rather than blanking it; numeric inputs
+    # clamp to the schema bounds.
+    width = (request.form.get("contact_form_width_mode") or "").strip()
+    if width in ("boxed", "full"):
+        s.contact_form_width_mode = width
+    if "contact_form_max_width" in request.form:
+        try:
+            max_w = int(request.form.get("contact_form_max_width") or 1160)
+        except ValueError:
+            max_w = 1160
+        s.contact_form_max_width = max(640, min(2400, max_w))
+    if "contact_form_padding_pct" in request.form:
+        try:
+            pad = int(request.form.get("contact_form_padding_pct") or 5)
+        except ValueError:
+            pad = 5
+        s.contact_form_padding_pct = max(0, min(20, pad))
     db.session.commit()
     flash("Contact page saved", "success")
     return redirect(url_for("main.frontend_templates"))
@@ -5143,131 +5110,6 @@ _HOMEPAGE_BLOCK_CATALOG = [
 ]
 
 
-@bp.route("/frontend/homepage")
-@admin_required
-def frontend_homepage():
-    from .frontend import HOMEPAGE_TEMPLATES
-    from .blocks import (site_blocks,
-                         format_stats, format_testimonials,
-                         format_faq, format_quick_links)
-    import json as _json
-    s = _get_site_setting()
-    hero_buttons = FrontendHeroButton.query.order_by(FrontendHeroButton.position).all()
-    homepage_layouts = (CustomLayout.query
-                        .filter_by(kind="homepage")
-                        .order_by(CustomLayout.is_prebuilt.desc(), CustomLayout.created_at)
-                        .all())
-    # Resolve which block-editors to render based on the active layout.
-    # Walk into split blocks so editors for blocks nested in a split get
-    # rendered too — otherwise the admin shows nothing while the public
-    # site is happily rendering them.
-    active_key = (s.frontend_homepage_template if s else None) or "classic"
-    active_layout = next((l for l in homepage_layouts if l.key == active_key), None)
-    active_layout_seq = []
-    active_layout_blocks = []
-    active_layout_splits = []   # list of {index, width, margin, padding, left:[types], right:[types]}
-    if active_layout:
-        try:
-            active_layout_seq = _json.loads(active_layout.blocks_json or "[]") or []
-        except (ValueError, TypeError):
-            active_layout_seq = []
-    def _walk_types(seq, out):
-        for b in (seq or []):
-            if not isinstance(b, dict):
-                continue
-            t = b.get("type")
-            if not t:
-                continue
-            out.append(t)
-            if t == "split":
-                _walk_types(b.get("left") or [], out)
-                _walk_types(b.get("right") or [], out)
-    _walk_types(active_layout_seq, active_layout_blocks)
-    # Annotate each split entry with its document-order index so the
-    # admin's structure-card "Settings" buttons can target the matching
-    # per-split modal (homepage-split-settings-{idx}). Mutating a copy
-    # of the sequence keeps the underlying CustomLayout JSON untouched.
-    annotated_seq = []
-    _split_counter = 0
-    for b in active_layout_seq:
-        if isinstance(b, dict) and b.get("type") == "split":
-            entry = dict(b)
-            entry["_split_idx"] = _split_counter
-            annotated_seq.append(entry)
-            _split_counter += 1
-        else:
-            annotated_seq.append(b)
-    active_layout_seq = annotated_seq
-    # Record each split in document order so the admin can render a
-    # visualization + settings card per split.
-    split_idx = 0
-    for b in active_layout_seq:
-        if isinstance(b, dict) and b.get("type") == "split":
-            # Legacy `margin` migrates into both top + bottom gap on
-            # read, so older saved layouts pick up the new fields
-            # automatically without the admin having to re-set them.
-            legacy_m = (b.get("margin") or "").strip().lower()
-            gt = (b.get("gap_top") or legacy_m or "none")
-            gb = (b.get("gap_bottom") or legacy_m or "none")
-            try: _pl = max(0, min(50, int(b.get("pad_left_pct") or 0)))
-            except (TypeError, ValueError): _pl = 0
-            try: _pr = max(0, min(50, int(b.get("pad_right_pct") or 0)))
-            except (TypeError, ValueError): _pr = 0
-            active_layout_splits.append({
-                "index":          split_idx,
-                "width":          (b.get("width") or "boxed"),
-                "padding":        (b.get("padding") or "default"),
-                "gap":            (b.get("gap") or "none"),
-                "gap_top":        gt,
-                "gap_bottom":     gb,
-                "pad_left_pct":   _pl,
-                "pad_right_pct":  _pr,
-                "bg_color":       (b.get("bg_color") or ""),
-                "bg_color_left":  (b.get("bg_color_left") or ""),
-                "bg_color_right": (b.get("bg_color_right") or ""),
-                "bg_dark_mode":   bool(b.get("bg_dark_mode")),
-                "left":  [bb.get("type") for bb in (b.get("left") or [])
-                          if isinstance(bb, dict) and bb.get("type")],
-                "right": [bb.get("type") for bb in (b.get("right") or [])
-                          if isinstance(bb, dict) and bb.get("type")],
-            })
-            split_idx += 1
-    block_content = site_blocks(s)
-    block_text = {
-        "stats":        format_stats(block_content.get("stats")),
-        "testimonials": format_testimonials(block_content.get("testimonials")),
-        "faq":          format_faq(block_content.get("faq")),
-        "quick_links":  format_quick_links(block_content.get("quick_links")),
-    }
-    return render_template("frontend_homepage.html", site=s,
-                           homepage_templates=HOMEPAGE_TEMPLATES,
-                           homepage_layouts=homepage_layouts,
-                           homepage_block_catalog=_HOMEPAGE_BLOCK_CATALOG,
-                           active_layout=active_layout,
-                           active_layout_seq=active_layout_seq,
-                           active_layout_blocks=active_layout_blocks,
-                           active_layout_splits=active_layout_splits,
-                           active_layout_key=active_key,
-                           block_content=block_content,
-                           block_text=block_text,
-                           hero_buttons=hero_buttons)
-
-
-@bp.route("/frontend/homepage-template", methods=["POST"])
-@admin_required
-def frontend_homepage_template_save():
-    from .frontend import HOMEPAGE_TEMPLATES
-    s = _get_site_setting()
-    key = (request.form.get("frontend_homepage_template") or "").strip()
-    legacy = {t["key"] for t in HOMEPAGE_TEMPLATES}
-    custom = {l.key for l in CustomLayout.query.filter_by(kind="homepage").all()}
-    if key in (legacy | custom):
-        s.frontend_homepage_template = key
-        db.session.commit()
-        flash(f"Homepage layout set to {key}", "success")
-    return redirect(url_for("main.frontend_homepage"))
-
-
 # ---------------------------------------------------------------------------
 # Templates admin — single page that hosts pickers for every reusable
 # entity-detail template (Meeting Detail, Event Detail, and any future
@@ -5280,9 +5122,11 @@ def frontend_homepage_template_save():
 def frontend_templates():
     from .frontend import (MEETING_TEMPLATES, EVENT_TEMPLATES,
                            MEETINGS_LIST_TEMPLATES, EVENTS_LIST_TEMPLATES,
-                           ANNOUNCEMENTS_LIST_TEMPLATES,
+                           ANNOUNCEMENTS_LIST_TEMPLATES, ARCHIVE_TEMPLATES,
                            STORIES_LIST_TEMPLATES, STORY_TEMPLATES,
+                           BLOG_LIST_TEMPLATES, BLOG_POST_TEMPLATES,
                            LITERATURE_LIBRARY_TEMPLATES, SITE_INDEX_TEMPLATES,
+                           FELLOWSHIPS_LIST_TEMPLATES,
                            template_settings, meetings_list_protips_resolved)
     from .fonts import all_fonts
     s = _get_site_setting()
@@ -5291,10 +5135,14 @@ def frontend_templates():
     meetings_list_key = (s.frontend_meetings_list_template if s else None) or "sidebar"
     events_list_key = (s.frontend_events_list_template if s else None) or "cards"
     announcements_list_key = (s.frontend_announcements_list_template if s else None) or "omni"
+    archive_key = (s.frontend_archive_template if s else None) or "year-sidebar"
     stories_list_key = (s.frontend_stories_list_template if s else None) or "paper-stack"
     story_key = (s.frontend_story_template if s else None) or "paper"
+    blog_list_key = (s.frontend_blog_list_template if s else None) or "magazine"
+    blog_post_key = (s.frontend_blog_post_template if s else None) or "modern"
     literature_library_key = (s.frontend_literature_library_template if s else None) or "classic"
     site_index_key = (s.frontend_site_index_template if s else None) or "grouped"
+    fellowships_list_key = (s.frontend_fellowships_list_template if s else None) or "sidebar"
     # Render the cards alphabetised by display name so admins always
     # see them in a stable, predictable order regardless of how each
     # `*_TEMPLATES` catalog list happens to be declared. Sort is
@@ -5314,10 +5162,16 @@ def frontend_templates():
                            events_list_active_key=events_list_key,
                            announcements_list_templates=_by_name(ANNOUNCEMENTS_LIST_TEMPLATES),
                            announcements_list_active_key=announcements_list_key,
+                           archive_templates=_by_name(ARCHIVE_TEMPLATES),
+                           archive_active_key=archive_key,
                            stories_list_templates=_by_name(STORIES_LIST_TEMPLATES),
                            stories_list_active_key=stories_list_key,
                            story_templates=_by_name(STORY_TEMPLATES),
                            story_active_key=story_key,
+                           blog_list_templates=_by_name(BLOG_LIST_TEMPLATES),
+                           blog_list_active_key=blog_list_key,
+                           blog_post_templates=_by_name(BLOG_POST_TEMPLATES),
+                           blog_post_active_key=blog_post_key,
                            literature_library_templates=_by_name(LITERATURE_LIBRARY_TEMPLATES),
                            literature_library_active_key=literature_library_key,
                            meeting_active_settings=template_settings(s, "meeting", meeting_key),
@@ -5329,8 +5183,11 @@ def frontend_templates():
                            meetings_list_active_settings=template_settings(s, "meetings_list", meetings_list_key),
                            events_list_active_settings=template_settings(s, "events_list", events_list_key),
                            announcements_list_active_settings=template_settings(s, "announcements_list", announcements_list_key),
+                           archive_active_settings=template_settings(s, "archive", archive_key),
                            stories_list_active_settings=template_settings(s, "stories_list", stories_list_key),
                            story_active_settings=template_settings(s, "story", story_key),
+                           blog_list_active_settings=template_settings(s, "blog_list", blog_list_key),
+                           blog_post_active_settings=template_settings(s, "blog_post", blog_post_key),
                            literature_library_active_settings=template_settings(s, "literature_library", literature_library_key),
                            # Printlist has no template variants (single layout); use a
                            # synthetic 'default' key so the customize panel keeps the same
@@ -5340,6 +5197,9 @@ def frontend_templates():
                            site_index_templates=_by_name(SITE_INDEX_TEMPLATES),
                            site_index_active_key=site_index_key,
                            site_index_active_settings=template_settings(s, "site_index", site_index_key),
+                           fellowships_list_templates=_by_name(FELLOWSHIPS_LIST_TEMPLATES),
+                           fellowships_list_active_key=fellowships_list_key,
+                           fellowships_list_active_settings=template_settings(s, "fellowships_list", fellowships_list_key),
                            font_options=all_fonts())
 
 
@@ -5347,11 +5207,12 @@ def frontend_templates():
 # resolve a catalog (or a one-key sentinel like printlist_default) so
 # the form's `key` URL segment can be validated. Keeping this in one
 # place means adding a future section is a single edit.
-_TEMPLATE_KINDS = ("meeting", "event", "story",
+_TEMPLATE_KINDS = ("meeting", "event", "story", "blog_post",
                    "meetings_list", "events_list",
-                   "announcements_list", "stories_list",
+                   "announcements_list", "archive",
+                   "stories_list", "blog_list",
                    "literature_library", "printlist", "contact",
-                   "site_index")
+                   "site_index", "fellowships_list")
 
 
 @bp.route("/frontend/template-settings/<kind>/<key>", methods=["POST"])
@@ -5364,9 +5225,12 @@ def frontend_template_settings_save(kind, key):
     import json as _json
     import re as _re
     from .frontend import (MEETING_TEMPLATES, EVENT_TEMPLATES, STORY_TEMPLATES,
+                            BLOG_POST_TEMPLATES, BLOG_LIST_TEMPLATES,
                             MEETINGS_LIST_TEMPLATES, EVENTS_LIST_TEMPLATES,
-                            ANNOUNCEMENTS_LIST_TEMPLATES, STORIES_LIST_TEMPLATES,
-                            LITERATURE_LIBRARY_TEMPLATES, SITE_INDEX_TEMPLATES)
+                            ANNOUNCEMENTS_LIST_TEMPLATES, ARCHIVE_TEMPLATES,
+                            STORIES_LIST_TEMPLATES,
+                            LITERATURE_LIBRARY_TEMPLATES, SITE_INDEX_TEMPLATES,
+                            FELLOWSHIPS_LIST_TEMPLATES)
     from .fonts import font_by_key
     if kind not in _TEMPLATE_KINDS:
         abort(404)
@@ -5379,12 +5243,16 @@ def frontend_template_settings_save(kind, key):
         "meeting": MEETING_TEMPLATES,
         "event": EVENT_TEMPLATES,
         "story": STORY_TEMPLATES,
+        "blog_post": BLOG_POST_TEMPLATES,
         "meetings_list": MEETINGS_LIST_TEMPLATES,
         "events_list": EVENTS_LIST_TEMPLATES,
         "announcements_list": ANNOUNCEMENTS_LIST_TEMPLATES,
+        "archive": ARCHIVE_TEMPLATES,
         "stories_list": STORIES_LIST_TEMPLATES,
+        "blog_list": BLOG_LIST_TEMPLATES,
         "literature_library": LITERATURE_LIBRARY_TEMPLATES,
         "site_index": SITE_INDEX_TEMPLATES,
+        "fellowships_list": FELLOWSHIPS_LIST_TEMPLATES,
     }
     if kind in catalog_map:
         if key not in {t["key"] for t in catalog_map[kind]}:
@@ -5572,6 +5440,38 @@ def frontend_announcements_list_template_save():
     return redirect(url_for("main.frontend_templates"))
 
 
+@bp.route("/frontend/archive-template", methods=["POST"])
+@admin_required
+def frontend_archive_template_save():
+    """Persist the /archive layout, pagination strategy, initial page
+    size, and per-page dynamic-background selection from the admin
+    Templates page. The archive reuses the events-list width/padding
+    settings; everything else lives on `frontend_archive_*` columns."""
+    from .frontend import ARCHIVE_TEMPLATES
+    s = _get_site_setting()
+    key = (request.form.get("frontend_archive_template") or "").strip()
+    if key in {t["key"] for t in ARCHIVE_TEMPLATES}:
+        s.frontend_archive_template = key
+    mode = (request.form.get("frontend_archive_pagination_mode") or "").strip()
+    if mode in ("infinite", "numbered"):
+        s.frontend_archive_pagination_mode = mode
+    if "frontend_archive_page_size" in request.form:
+        try:
+            size = int(request.form.get("frontend_archive_page_size") or 20)
+        except ValueError:
+            size = 20
+        s.frontend_archive_page_size = max(1, min(200, size))
+    if "frontend_archive_bg_dynamic_key" in request.form:
+        from . import dynbg as _dynbg
+        s.frontend_archive_bg_dynamic_key = _dynbg.normalize(
+            request.form.get("frontend_archive_bg_dynamic_key"))
+        s.frontend_archive_bg_dynbg_config_json = _dynbg_config_from_form(
+            request.form, "frontend_archive_bg_dynbg_config_json")
+    db.session.commit()
+    flash("Archive settings saved", "success")
+    return redirect(url_for("main.frontend_templates"))
+
+
 @bp.route("/frontend/stories-list-template", methods=["POST"])
 @admin_required
 def frontend_stories_list_template_save():
@@ -5632,6 +5532,69 @@ def frontend_story_template_save():
             request.form, "frontend_story_bg_dynbg_config_json")
     db.session.commit()
     flash("Story template settings saved", "success")
+    return redirect(url_for("main.frontend_templates"))
+
+
+@bp.route("/frontend/blog-list-template", methods=["POST"])
+@admin_required
+def frontend_blog_list_template_save():
+    """Persist the blog-list template + container width + page heading
+    selections from the admin Templates page. Mirrors the announcements-
+    list save endpoint."""
+    from .frontend import BLOG_LIST_TEMPLATES
+    s = _get_site_setting()
+    key = (request.form.get("frontend_blog_list_template") or "").strip()
+    if key in {t["key"] for t in BLOG_LIST_TEMPLATES}:
+        s.frontend_blog_list_template = key
+    width = (request.form.get("frontend_blog_list_width_mode") or "").strip()
+    if width in ("boxed", "full"):
+        s.frontend_blog_list_width_mode = width
+    if "frontend_blog_list_max_width" in request.form:
+        try:
+            max_w = int(request.form.get("frontend_blog_list_max_width") or 1160)
+        except ValueError:
+            max_w = 1160
+        s.frontend_blog_list_max_width = max(640, min(2400, max_w))
+    if "frontend_blog_list_padding_pct" in request.form:
+        try:
+            pad = int(request.form.get("frontend_blog_list_padding_pct") or 5)
+        except ValueError:
+            pad = 5
+        s.frontend_blog_list_padding_pct = max(0, min(20, pad))
+    if "frontend_blog_list_heading" in request.form:
+        heading = (request.form.get("frontend_blog_list_heading") or "").strip()
+        s.frontend_blog_list_heading = heading[:200] or None
+    if "frontend_blog_list_subheading" in request.form:
+        subheading = (request.form.get("frontend_blog_list_subheading") or "").strip()
+        s.frontend_blog_list_subheading = subheading[:500] or None
+    if "frontend_blog_list_bg_dynamic_key" in request.form:
+        from . import dynbg as _dynbg
+        s.frontend_blog_list_bg_dynamic_key = _dynbg.normalize(
+            request.form.get("frontend_blog_list_bg_dynamic_key"))
+        s.frontend_blog_list_bg_dynbg_config_json = _dynbg_config_from_form(
+            request.form, "frontend_blog_list_bg_dynbg_config_json")
+    db.session.commit()
+    flash("Blog list settings saved", "success")
+    return redirect(url_for("main.frontend_templates"))
+
+
+@bp.route("/frontend/blog-post-template", methods=["POST"])
+@admin_required
+def frontend_blog_post_template_save():
+    """Persist the per-blog-post detail template selection."""
+    from .frontend import BLOG_POST_TEMPLATES
+    s = _get_site_setting()
+    key = (request.form.get("frontend_blog_post_template") or "").strip()
+    if key in {t["key"] for t in BLOG_POST_TEMPLATES}:
+        s.frontend_blog_post_template = key
+    if "frontend_blog_post_bg_dynamic_key" in request.form:
+        from . import dynbg as _dynbg
+        s.frontend_blog_post_bg_dynamic_key = _dynbg.normalize(
+            request.form.get("frontend_blog_post_bg_dynamic_key"))
+        s.frontend_blog_post_bg_dynbg_config_json = _dynbg_config_from_form(
+            request.form, "frontend_blog_post_bg_dynbg_config_json")
+    db.session.commit()
+    flash("Blog post template settings saved", "success")
     return redirect(url_for("main.frontend_templates"))
 
 
@@ -5824,6 +5787,58 @@ def frontend_site_index_template_save():
     return redirect(url_for("main.frontend_templates"))
 
 
+@bp.route("/frontend/fellowships-list-template", methods=["POST"])
+@admin_required
+def frontend_fellowships_list_template_save():
+    """Persist the /fellowships layout choice, container width, page
+    heading copy, default sort mode, enable toggle, and dynbg config
+    from the admin Templates page. Field-presence checks let multiple
+    forms (cards-only picker vs the broader settings panel) POST here
+    without clobbering each other's columns."""
+    from .frontend import FELLOWSHIPS_LIST_TEMPLATES
+    s = _get_site_setting()
+    if "frontend_fellowships_list_template" in request.form:
+        key = (request.form.get("frontend_fellowships_list_template") or "").strip()
+        if key in {t["key"] for t in FELLOWSHIPS_LIST_TEMPLATES}:
+            s.frontend_fellowships_list_template = key
+    if "frontend_fellowships_enabled_present" in request.form:
+        s.frontend_fellowships_enabled = request.form.get("frontend_fellowships_enabled") == "1"
+    width = (request.form.get("frontend_fellowships_list_width_mode") or "").strip()
+    if width in ("boxed", "full"):
+        s.frontend_fellowships_list_width_mode = width
+    if "frontend_fellowships_list_max_width" in request.form:
+        try:
+            max_w = int(request.form.get("frontend_fellowships_list_max_width") or 1160)
+        except ValueError:
+            max_w = 1160
+        s.frontend_fellowships_list_max_width = max(640, min(2400, max_w))
+    if "frontend_fellowships_list_padding_pct" in request.form:
+        try:
+            pad = int(request.form.get("frontend_fellowships_list_padding_pct") or 5)
+        except ValueError:
+            pad = 5
+        s.frontend_fellowships_list_padding_pct = max(0, min(20, pad))
+    if "frontend_fellowships_list_heading" in request.form:
+        heading = (request.form.get("frontend_fellowships_list_heading") or "").strip()
+        s.frontend_fellowships_list_heading = heading[:200] or None
+    if "frontend_fellowships_list_subheading" in request.form:
+        subheading = (request.form.get("frontend_fellowships_list_subheading") or "").strip()
+        s.frontend_fellowships_list_subheading = subheading[:500] or None
+    if "frontend_fellowships_list_sort_mode" in request.form:
+        sort = (request.form.get("frontend_fellowships_list_sort_mode") or "").strip()
+        if sort in ("name-asc", "name-desc", "country-asc", "newest", "oldest"):
+            s.frontend_fellowships_list_sort_mode = sort
+    if "frontend_fellowships_list_bg_dynamic_key" in request.form:
+        from . import dynbg as _dynbg
+        s.frontend_fellowships_list_bg_dynamic_key = _dynbg.normalize(
+            request.form.get("frontend_fellowships_list_bg_dynamic_key"))
+        s.frontend_fellowships_list_bg_dynbg_config_json = _dynbg_config_from_form(
+            request.form, "frontend_fellowships_list_bg_dynbg_config_json")
+    db.session.commit()
+    flash("Fellowships list settings saved", "success")
+    return redirect(url_for("main.frontend_templates"))
+
+
 @bp.route("/frontend/event-template", methods=["POST"])
 @admin_required
 def frontend_event_template_save():
@@ -5850,6 +5865,17 @@ _CUSTOM_LAYOUT_BLOCK_TYPES = {
 _PAGE_LAYOUT_BLOCK_TYPES = {
     "split", "container", "heading", "paragraph", "image", "button",
     "list", "callout", "video", "code", "separator", "toc_sidebar", "icon",
+    # Homepage section blocks made available to content pages too.
+    # `hero` embeds the site-wide hero (Settings → Frontend → Hero
+    # drives every instance). `meetings` / `events` carry their own
+    # per-instance config (same defaults as the homepage's section
+    # blocks) and the page route pre-fetches the matching rows.
+    # `features` is a self-contained cards block — heading / subheading
+    # plus an inline list of {icon, title, body, href, …} items.
+    # `faq` is a list of {question, answer, icon, icon_size} accordion
+    # items; the public render's section heading is hardcoded (same as
+    # the homepage's behaviour).
+    "hero", "meetings", "events", "features", "faq",
 }
 
 # Block types valid inside a footer custom layout. The footer dispatcher
@@ -6213,6 +6239,21 @@ _PAGE_BLOCK_CATALOG = [
     {"key": "separator", "name": "Divider",
      "icon": "minus",
      "desc": "Horizontal hairline separator."},
+    {"key": "hero", "name": "Hero",
+     "icon": "image",
+     "desc": "Embed the site-wide hero (heading, subheading, CTA buttons, background style). Pulls live from Settings → Frontend → Hero so every page using the block stays in sync."},
+    {"key": "meetings", "name": "Meetings list",
+     "icon": "calendar-clock",
+     "desc": "Live list of meetings filtered by your choice of window (today, next 24h, this week, all). Same configurable card grid the homepage uses."},
+    {"key": "events", "name": "Upcoming events",
+     "icon": "calendar",
+     "desc": "Upcoming-events list pulled from the Posts module. Same configurable list block the homepage uses."},
+    {"key": "features", "name": "Features",
+     "icon": "layout-grid",
+     "desc": "Up to six clickable cards with icon, title, and Markdown body. Same configurable cards grid the homepage 'Features' section uses."},
+    {"key": "faq", "name": "FAQ",
+     "icon": "help-circle",
+     "desc": "Up to twenty accordion items with optional per-question icon. Markdown answers, drag-to-reorder. Same accordion the homepage FAQ section uses."},
 ]
 
 
@@ -6304,6 +6345,117 @@ def _page_is_customized(page, active_layout):
         if b:
             expected_sections.append({"title": "", "blocks": [b]})
     return _layout_section_shape(page_sections) != _layout_section_shape(expected_sections)
+
+
+def _hero_block_modal_proxy(data):
+    """Build a SimpleNamespace shim that mirrors `SiteSetting.frontend_hero_*`
+    attribute names from a hero block's `data` dict. Lets the page hero
+    modal reuse the homepage hero modal's markup verbatim — the markup
+    references `site.frontend_hero_<x>` throughout; we hand it this
+    proxy instead. Keys mirror the homepage's column names so admins
+    edit the same fields in either context."""
+    from types import SimpleNamespace
+    d = data or {}
+    sw_raw = d.get("bg_sinewave_colors") or []
+    return SimpleNamespace(
+        frontend_hero_heading=d.get("heading", ""),
+        frontend_hero_subheading=d.get("subheading", ""),
+        frontend_tagline=d.get("eyebrow", ""),
+        frontend_tagline_enabled=bool(d.get("tagline_enabled", True)),
+        frontend_hero_heading_font=d.get("heading_font", "fraunces"),
+        frontend_hero_heading_size=d.get("heading_size_pct", 100),
+        frontend_hero_heading_grad_start=d.get("heading_grad_start", "#0f172a"),
+        frontend_hero_heading_grad_end=d.get("heading_grad_end", "#374151"),
+        # Dark-mode gradient stops. Defaults match the existing dark
+        # hero CSS (`#fff → #94a3b8`) so unedited blocks render the
+        # same in dark mode as they did before the field existed.
+        frontend_hero_heading_grad_start_dark=d.get("heading_grad_start_dark", "#ffffff"),
+        frontend_hero_heading_grad_end_dark=d.get("heading_grad_end_dark", "#94a3b8"),
+        frontend_hero_subheading_font=d.get("subheading_font", "inter"),
+        frontend_hero_subheading_size=d.get("subheading_size_pct", 100),
+        frontend_hero_subheading_color=d.get("subheading_color", "#475569"),
+        # Same dark-mode default for subheading — `#94a3b8` matches
+        # the existing hardcoded dark colour.
+        frontend_hero_subheading_color_dark=d.get("subheading_color_dark", "#94a3b8"),
+        frontend_hero_text_dynamic=bool(d.get("text_dynamic", False)),
+        frontend_hero_height_vh_desktop=d.get("height_vh_desktop", 0),
+        frontend_hero_height_vh_mobile=d.get("height_vh_mobile", 0),
+        frontend_hero_bg_style=d.get("bg_style", "solid"),
+        frontend_hero_bg_color=d.get("bg_color", ""),
+        frontend_hero_bg_color_2=d.get("bg_color_2", ""),
+        frontend_hero_bg_gradient_angle=d.get("bg_gradient_angle", 180),
+        frontend_hero_bg_image_mode=d.get("bg_image_mode", "cover"),
+        frontend_hero_bg_image_scale=d.get("bg_image_scale", 100),
+        frontend_hero_bg_hue=d.get("bg_hue", 225),
+        frontend_hero_bg_hue_2=d.get("bg_hue_2", 170),
+        frontend_hero_bg_blur=d.get("bg_blur", 80),
+        frontend_hero_bg_opacity=d.get("bg_opacity", 45),
+        frontend_hero_bg_randomize=bool(d.get("bg_randomize", False)),
+        frontend_hero_sinewave_colors_list=sw_raw if isinstance(sw_raw, list) else [],
+        frontend_hero_bg_video_speed=d.get("bg_video_speed", 100),
+        frontend_hero_bg_dynamic_key=d.get("bg_dynamic_key", ""),
+        frontend_hero_particle_enabled=bool(d.get("particle_enabled", False)),
+        frontend_hero_particle_effect=d.get("particle_effect", "stars"),
+        frontend_hero_particle_speed=d.get("particle_speed", 100),
+        frontend_hero_particle_size=d.get("particle_size", 100),
+    )
+
+
+def _meetings_block_modal_proxy(data):
+    """Build a dict shim that mirrors the homepage macro's
+    `block_content._meetings` shape from a per-page meetings block's
+    `data` dict. The page meetings modal partial reuses the homepage's
+    `editor_meetings()` macro markup verbatim — the markup references
+    `_ms.<key>` throughout (where `_ms = block_content._meetings`); we
+    just pass our block's data through `MEETINGS_DEFAULTS` so missing
+    keys fall back to the same defaults the public renderer uses."""
+    from .blocks import MEETINGS_DEFAULTS
+    d = data or {}
+    return {**MEETINGS_DEFAULTS, **d}
+
+
+def _events_block_modal_proxy(data):
+    """Same shim pattern as `_meetings_block_modal_proxy` for the
+    per-page upcoming-events block. The modal partial reuses the
+    homepage's `editor_events()` macro markup verbatim; the macro
+    reads `_es.<key>` (where `_es = block_content._events`) so we
+    merge with `EVENTS_DEFAULTS` and hand the dict in as `vals`."""
+    from .blocks import EVENTS_DEFAULTS
+    d = data or {}
+    return {**EVENTS_DEFAULTS, **d}
+
+
+def _features_block_modal_proxy(data):
+    """Per-page features block proxy. Mirrors the homepage's
+    `block_content.features` shape so the page modal can reuse the
+    homepage's `editor_features()` macro markup. The cards list is
+    rendered empty server-side and populated by `page_features_modal.js`
+    on pill click — so the initial proxy needs heading / subheading
+    keys but an empty `items` list, regardless of what defaults
+    `DEFAULTS["features"]` carries (otherwise the placeholder cards
+    would flash before JS overwrites them)."""
+    d = data or {}
+    return {
+        "heading": d.get("heading") or "",
+        "subheading": d.get("subheading") or "",
+        "items": [],
+    }
+
+
+def _faq_block_modal_proxy(data):
+    """Per-page FAQ block proxy. Same flash-prevention pattern as
+    features: the modal renders an empty `items` list server-side
+    and `page_faq_modal.js` clones the `<template>` once per saved
+    item on pill click. Heading + subheading are exposed for per-page
+    overrides — the public partial falls back to the homepage's
+    hardcoded strings when these are empty, so cleared values still
+    produce a valid section-head."""
+    d = data or {}
+    return {
+        "heading": d.get("heading") or "",
+        "subheading": d.get("subheading") or "",
+        "items": [],
+    }
 
 
 def _block_preview(b):
@@ -6431,6 +6583,37 @@ def _block_preview(b):
         return {"kind": "text", "label": "Icon",
                 "text": nm or "(none)",
                 "subtext": f"{sz}px"}
+    if t == "hero":
+        h = (d.get("heading") or "").strip()
+        sub = (d.get("subheading") or "").strip()
+        n_buttons = len(d.get("buttons") or [])
+        return {"kind": "text", "label": "Hero",
+                "text": h or "(no heading set)",
+                "subtext": (sub[:120] if sub else "")
+                            + ((" · " if sub else "") + f"{n_buttons} button"
+                               + ("" if n_buttons == 1 else "s") if n_buttons else "")}
+    if t == "meetings":
+        cap = d.get("max_count") or 6
+        flt = d.get("filter") or "upcoming_today"
+        return {"kind": "text", "label": "Meetings list",
+                "text": (d.get("heading") or "Upcoming Meetings"),
+                "subtext": f"{flt} · max {cap}" + (" · grouped by day" if d.get("group_by_day") else "")}
+    if t == "events":
+        cap = d.get("max_count") or 6
+        return {"kind": "text", "label": "Upcoming events",
+                "text": (d.get("heading") or "Upcoming Events"),
+                "subtext": f"max {cap}"}
+    if t == "features":
+        n = len(d.get("items") or [])
+        h = (d.get("heading") or "").strip()
+        return {"kind": "text", "label": "Features",
+                "text": h or "(no heading set)",
+                "subtext": f"{n} card" + ("" if n == 1 else "s")}
+    if t == "faq":
+        n = len(d.get("items") or [])
+        return {"kind": "text", "label": "FAQ",
+                "text": "Frequently asked questions",
+                "subtext": f"{n} item" + ("" if n == 1 else "s")}
     return {"kind": "text", "label": t or "block"}
 
 
@@ -6678,6 +6861,24 @@ def frontend_page_edit(page_id):
     for bid, b in _walk_blocks_by_id(_sections_for_preview):
         block_previews[bid] = _block_preview(b)
         block_payloads[bid] = b
+    # Hero-modal proxy — the dedicated `#page-hero-edit-modal` (a verbatim
+    # copy of the homepage hero modal markup) reads its values off a
+    # `site`-shaped object so the existing markup just works. Default
+    # proxy = empty block data; JS repopulates the form when the admin
+    # opens a specific hero block.
+    hero_modal_vals = _hero_block_modal_proxy({})
+    # Same pattern for the per-page meetings modal — verbatim reuse of
+    # the homepage's `editor_meetings()` macro markup, fed a dict shim
+    # that mirrors the homepage's `block_content._meetings` shape.
+    meetings_modal_vals = _meetings_block_modal_proxy({})
+    # And again for the per-page upcoming-events modal.
+    events_modal_vals = _events_block_modal_proxy({})
+    # Per-page features modal — heading + subheading rendered empty
+    # server-side, cards list populated by JS on pill click.
+    features_modal_vals = _features_block_modal_proxy({})
+    # Per-page FAQ modal — same flash-prevention pattern (empty items
+    # list server-side, JS clones template on pill click).
+    faq_modal_vals = _faq_block_modal_proxy({})
     return render_template("frontend_page_edit.html", site=s, page=page,
                            blocks_json=page.blocks_json or "[]",
                            page_layouts=layouts,
@@ -6688,7 +6889,15 @@ def frontend_page_edit(page_id):
                            active_layout_customized=_page_is_customized(page, active_layout),
                            block_previews=block_previews,
                            block_payloads=block_payloads,
-                           page_block_catalog=_PAGE_BLOCK_CATALOG)
+                           page_block_catalog=_PAGE_BLOCK_CATALOG,
+                           hero_modal_vals=hero_modal_vals,
+                           hero_modal_buttons=[],
+                           hero_modal_bg_image_url='',
+                           hero_modal_bg_video_url='',
+                           meetings_modal_vals=meetings_modal_vals,
+                           events_modal_vals=events_modal_vals,
+                           features_modal_vals=features_modal_vals,
+                           faq_modal_vals=faq_modal_vals)
 
 
 @bp.route("/frontend/pages/<int:page_id>/layout", methods=["POST"])
@@ -7177,6 +7386,23 @@ def frontend_page_save():
         full_padding_pct = 4
     full_padding_pct = max(0, min(full_padding_pct, 20))
 
+    # Page-shell spacing knobs. All four are px integers with 0 as
+    # the minimum (true flush) and a generous upper bound for over-
+    # padded layouts. Missing form fields fall back to the legacy
+    # defaults so a partial submit (older client / API call) doesn't
+    # zero anything out unintentionally.
+    def _clamp_px(name, lo, hi, default):
+        try:
+            v = int(request.form.get(name) or default)
+        except (TypeError, ValueError):
+            v = default
+        return max(lo, min(hi, v))
+    pad_top = _clamp_px("pad_top", 0, 400, 80)
+    pad_bottom = _clamp_px("pad_bottom", 0, 400, 96)
+    pad_x = _clamp_px("pad_x", 0, 200, 16)
+    section_gap = _clamp_px("section_gap", 0, 200, 32)
+    block_margin_y = _clamp_px("block_margin_y", 0, 80, 12)
+
     # Typography overrides — color hex (#rgb / #rrggbb), font key,
     # alignment. Blank values clear the override and let the theme
     # take over.
@@ -7331,6 +7557,11 @@ def frontend_page_save():
     page.width_mode = width_mode
     page.max_width = max_width
     page.full_padding_pct = full_padding_pct
+    page.pad_top = pad_top
+    page.pad_bottom = pad_bottom
+    page.pad_x = pad_x
+    page.section_gap = section_gap
+    page.block_margin_y = block_margin_y
     if has_heading_color:    page.heading_color    = heading_color
     if has_subheading_color: page.subheading_color = subheading_color
     if has_heading_font:     page.heading_font     = heading_font
@@ -7386,6 +7617,31 @@ def frontend_page_status(page_id):
         return redirect(url_for("main.frontend_page_edit", page_id=page.id))
     db.session.commit()
     flash(f"Page “{page.title}” marked {status}", "success")
+    return redirect(request.referrer
+                    or url_for("main.frontend_page_edit", page_id=page.id))
+
+
+@bp.route("/frontend/pages/<int:page_id>/set-homepage", methods=["POST"])
+@admin_required
+def frontend_page_set_homepage(page_id):
+    """Designate `page_id` as the Page that renders at the public `/`
+    root (`SiteSetting.homepage_page_id`). Pages can be promoted /
+    demoted freely — the public route reads the current value on every
+    request, so there's no cache to invalidate. The previous homepage
+    (if any) is left in place as a regular content page; nothing about
+    its row changes other than no longer being the homepage."""
+    from .models import Page
+    page = Page.query.get_or_404(page_id)
+    if not page.is_published:
+        # Make the page publishable in one step — admins shouldn't have
+        # to flip status separately just to designate a homepage. This
+        # mirrors the "publish + make homepage" intent of the button.
+        page.is_published = True
+        page.is_private = False
+    s = _get_site_setting()
+    s.homepage_page_id = page.id
+    db.session.commit()
+    flash(f"“{page.title}” is now the homepage", "success")
     return redirect(request.referrer
                     or url_for("main.frontend_page_edit", page_id=page.id))
 
@@ -8499,6 +8755,8 @@ def _save_upload(uploaded):
         if not getattr(current_user, "is_authenticated", False) or not current_user.is_admin():
             abort(400, description=f"File type '{ext}' is only allowed for admins.")
     data = uploaded.read()
+    if ext == ".svg":
+        data = _normalize_svg_dimensions(data)
     h = hashlib.sha256(data).hexdigest()
     existing = MediaItem.query.filter_by(content_hash=h).first()
     if existing:
@@ -8583,11 +8841,57 @@ def _interface_stored_filenames():
     return names
 
 
+_PUB_URL_RE = re.compile(r'/pub/([^\s"\'<>?#]+)')
+
+
+def _extract_body_pub_originals(html):
+    """Return the set of ``original_filename`` values referenced as
+    ``/pub/<filename>`` inside an HTML body chunk. Empty / None HTML
+    returns an empty set. The /pub Flask route resolves each token
+    back to a ``MediaItem`` via ``original_filename`` — callers can
+    look the row up and pull its ``stored_filename`` for cleanup."""
+    if not html:
+        return set()
+    return set(_PUB_URL_RE.findall(html))
+
+
+def _collect_body_inline_stored(html):
+    """Resolve every ``/pub/<original_filename>`` inside a body HTML
+    chunk to its current ``stored_filename`` via the MediaItem catalog.
+    Returns a list (de-duplicated) of stored filenames that the inline
+    images on this body reference — caller pipes each through
+    ``_cleanup_retired_asset`` after the parent row is deleted so the
+    reference-count scan inside the helper doesn't see the dying row."""
+    originals = _extract_body_pub_originals(html)
+    if not originals:
+        return []
+    rows = (MediaItem.query
+            .filter(MediaItem.original_filename.in_(originals))
+            .all())
+    seen = set()
+    out = []
+    for m in rows:
+        if m.stored_filename and m.stored_filename not in seen:
+            seen.add(m.stored_filename)
+            out.append(m.stored_filename)
+    return out
+
+
 def _cleanup_retired_asset(stored):
     """Delete a file from disk and its MediaItem row, but only if nothing
-    else in the system still references it (other SiteSetting columns,
-    meetings, readings, meeting files, thumbnails). Safe to call with
-    None or a filename that's already gone."""
+    else in the system still references it. References checked:
+
+      - SiteSetting branding columns (logos, OG, favicon, 404)
+      - MeetingFile.stored_filename
+      - LibraryItem.stored_filename + thumbnail_filename
+      - Meeting.logo_filename
+      - Post / Story.featured_image_filename
+      - INLINE references inside Post / Story / BlogPost / Page body
+        HTML (``/pub/<original_filename>`` tokens). The body scan
+        protects inline screenshots a WP import (or block editor)
+        pasted into one post that another post still embeds.
+
+    Safe to call with None or a filename that's already gone."""
     if not stored:
         return
     s = SiteSetting.query.first()
@@ -8604,6 +8908,19 @@ def _cleanup_retired_asset(stored):
             + Story.query.filter_by(featured_image_filename=stored).count())
     if refs > 0:
         return
+    # Inline body image survival — if any post / story / blog body
+    # still embeds /pub/<original_filename> pointing at this stored
+    # file, keep it alive. Resolve stored -> original through the
+    # MediaItem catalog so the body LIKE-scan matches the URL shape
+    # the public /pub route resolves on render.
+    m_item = MediaItem.query.filter_by(stored_filename=stored).first()
+    if m_item and m_item.original_filename:
+        token = "/pub/" + m_item.original_filename
+        body_refs = (Post.query.filter(Post.body.contains(token)).count()
+                     + Story.query.filter(Story.body.contains(token)).count()
+                     + BlogPost.query.filter(BlogPost.body.contains(token)).count())
+        if body_refs > 0:
+            return
     # Drop any cached thumbnails generated from this source so they
     # don't linger as orphans in the uploads dir.
     try:
@@ -8672,12 +8989,14 @@ def media_upload():
     if not uploaded or not uploaded.filename:
         return jsonify({"error": "no file"}), 400
     data = uploaded.read()
+    original = secure_filename(uploaded.filename) or "upload"
+    ext = os.path.splitext(original)[1]
+    if ext.lower() == ".svg":
+        data = _normalize_svg_dimensions(data)
     h = hashlib.sha256(data).hexdigest()
     existing = MediaItem.query.filter_by(content_hash=h).first()
     if existing:
         return jsonify({"item": _media_json(existing), "deduped": True})
-    original = secure_filename(uploaded.filename) or "upload"
-    ext = os.path.splitext(original)[1]
     stored = f"{uuid.uuid4().hex}{ext}"
     with open(os.path.join(current_app.config["UPLOAD_FOLDER"], stored), "wb") as f:
         f.write(data)
@@ -9728,6 +10047,12 @@ def posts():
     _auto_archive_events()
     show = (request.args.get("show") or "active").strip()
     kind = (request.args.get("kind") or "all").strip()
+    sort = (request.args.get("sort") or "").strip()
+    try:
+        page = max(1, int(request.args.get("page") or 1))
+    except (TypeError, ValueError):
+        page = 1
+    per_page = 100
     q = Post.query
     if show == "archived":
         q = q.filter(Post.is_archived.is_(True),
@@ -9741,6 +10066,7 @@ def posts():
         q = q.filter(Post.is_pending_review.is_(True),
                      Post.is_archived.is_(False))
     else:  # active
+        show = "active"
         q = q.filter(Post.is_archived.is_(False),
                      Post.is_draft.is_(False),
                      Post.is_pending_review.is_(False))
@@ -9748,17 +10074,61 @@ def posts():
         q = q.filter(Post.is_event.is_(True))
     elif kind == "announcements":
         q = q.filter(Post.is_announcement.is_(True))
-    # Newest first; events sort by event-start when set so upcoming reads top.
-    # Pending tab sorts by submission time so freshest submissions land top.
-    if show == "pending":
-        items = q.order_by(Post.submitted_at.desc().nulls_last(),
-                           Post.updated_at.desc()).all()
-    else:
-        items = q.order_by(Post.event_starts_at.desc().nulls_last(),
-                           Post.updated_at.desc()).all()
+    # Sort modes. Default flips by tab — pending shows freshest
+    # submissions on top, every other tab shows by event-start so
+    # upcoming events read first. Admin can override via the column-
+    # header click which sets ?sort=… directly.
+    default_sort = "submitted_desc" if show == "pending" else "event_desc"
+    if sort not in ("event_asc", "event_desc",
+                    "title_asc", "title_desc",
+                    "updated_asc", "updated_desc",
+                    "submitted_asc", "submitted_desc",
+                    "posted_asc", "posted_desc",
+                    "type_asc", "type_desc"):
+        sort = default_sort
+    if sort == "event_asc":
+        q = q.order_by(Post.event_starts_at.asc().nulls_last(),
+                       Post.updated_at.desc())
+    elif sort == "event_desc":
+        q = q.order_by(Post.event_starts_at.desc().nulls_last(),
+                       Post.updated_at.desc())
+    elif sort == "title_asc":
+        q = q.order_by(Post.title.asc())
+    elif sort == "title_desc":
+        q = q.order_by(Post.title.desc())
+    elif sort == "updated_asc":
+        q = q.order_by(Post.updated_at.asc())
+    elif sort == "updated_desc":
+        q = q.order_by(Post.updated_at.desc())
+    elif sort == "submitted_asc":
+        q = q.order_by(Post.submitted_at.asc().nulls_last(),
+                       Post.updated_at.asc())
+    elif sort == "submitted_desc":
+        q = q.order_by(Post.submitted_at.desc().nulls_last(),
+                       Post.updated_at.desc())
+    elif sort == "posted_asc":
+        # `published_at` falls back to `created_at` for legacy rows
+        # via COALESCE so the order is sensible when most rows have
+        # NULL in the new column.
+        q = q.order_by(db.func.coalesce(Post.published_at, Post.created_at).asc())
+    elif sort == "posted_desc":
+        q = q.order_by(db.func.coalesce(Post.published_at, Post.created_at).desc())
+    elif sort == "type_asc":
+        q = q.order_by(Post.is_event.asc(), Post.is_announcement.asc(),
+                       Post.event_starts_at.desc().nulls_last())
+    elif sort == "type_desc":
+        q = q.order_by(Post.is_event.desc(), Post.is_announcement.desc(),
+                       Post.event_starts_at.desc().nulls_last())
+    total = q.count()
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    if page > total_pages:
+        page = total_pages
+    items = q.offset((page - 1) * per_page).limit(per_page).all()
     pending_count = (Post.query.filter(Post.is_pending_review.is_(True),
                                         Post.is_archived.is_(False)).count())
     return render_template("posts.html", posts=items, show=show, kind=kind,
+                           sort=sort, page=page, per_page=per_page,
+                           total=total, total_pages=total_pages,
                            pending_count=pending_count)
 
 
@@ -9831,6 +10201,13 @@ def post_save():
 
     post.event_starts_at = _parse_post_dt(request.form.get("event_starts_at"))
     post.event_ends_at = _parse_post_dt(request.form.get("event_ends_at"))
+    # Posted-on timestamp — admin-controllable so a post can be back-
+    # or forward-dated. Only overwrite when the form submitted a value;
+    # blank input keeps whatever's already on the row (or NULL on a
+    # fresh post, which the post-create branch defaults to "now").
+    if "published_at" in request.form:
+        parsed_pub = _parse_post_dt(request.form.get("published_at"))
+        post.published_at = parsed_pub
 
     post.is_online = request.form.get("is_online") == "1"
     post.location_name = (request.form.get("location_name") or "").strip()[:255] or None
@@ -9872,6 +10249,12 @@ def post_save():
         post.is_draft = False
     elif creating:
         post.is_draft = False  # default: new posts are active
+
+    # Default published_at on first save when the admin didn't set
+    # one — keeps every row sortable by posted date without forcing
+    # the form to require it.
+    if creating and post.published_at is None:
+        post.published_at = datetime.utcnow()
 
     if creating:
         db.session.add(post)
@@ -9972,13 +10355,105 @@ def post_delete(pid):
     # post (e.g. one created by Duplicate) still points at the same
     # stored filename, the helper sees it and keeps the file.
     old_image = post.featured_image_filename
+    # Snapshot inline /pub/ image stored filenames BEFORE the delete so
+    # we still have the body text to scan. The cleanup helper runs
+    # AFTER commit so its reference-count scan doesn't still see this
+    # row's body holding the same /pub/<filename>.
+    body_inline_stored = _collect_body_inline_stored(post.body)
     post.featured_image_filename = None
     if old_image:
         _cleanup_retired_asset(old_image)
     db.session.delete(post)
     db.session.commit()
+    for s in body_inline_stored:
+        _cleanup_retired_asset(s)
     flash("Post deleted", "success")
     return redirect(url_for("main.posts"))
+
+
+@bp.route("/announcementsevents/bulk", methods=["POST"])
+@login_required
+def post_bulk():
+    """Apply a single state change to many posts at once. Form fields:
+
+      action  — one of archive | unarchive | draft | publish | delete
+      ids     — repeated ``ids`` field, one per checked row
+
+    Posts whose ids don't resolve are silently skipped so a stale form
+    (e.g. someone deleted a post in another tab) doesn't error out the
+    whole batch. Image cleanup runs once for delete actions, after the
+    rows are removed, so a duplicate sharing the same stored file
+    keeps the asset alive."""
+    _require_posts_enabled()
+    action = (request.form.get("action") or "").strip().lower()
+    if action not in ("archive", "unarchive", "draft", "publish", "delete"):
+        flash("Unknown bulk action", "danger")
+        return redirect(request.referrer or url_for("main.posts"))
+
+    raw_ids = request.form.getlist("ids")
+    pids = []
+    for v in raw_ids:
+        try:
+            pids.append(int(v))
+        except (TypeError, ValueError):
+            continue
+    if not pids:
+        flash("No posts selected", "warning")
+        return redirect(request.referrer or url_for("main.posts"))
+
+    rows = Post.query.filter(Post.id.in_(pids)).all()
+    if not rows:
+        flash("No posts matched the selection", "warning")
+        return redirect(request.referrer or url_for("main.posts"))
+
+    from . import activity
+    n = len(rows)
+    label = {"archive": "archived", "unarchive": "restored",
+             "draft": "moved to drafts", "publish": "published",
+             "delete": "deleted"}[action]
+
+    if action == "delete":
+        # Delete: clear image refs first so the cleanup helper sees the
+        # post is no longer pointing at the stored file before it
+        # checks for residual referrers. Cleanup runs after commit so
+        # one delete doesn't strand the asset on the filesystem when a
+        # sibling row in the same batch shares the file.
+        retired_assets = []
+        retired_inline = []
+        for p in rows:
+            if p.featured_image_filename:
+                retired_assets.append(p.featured_image_filename)
+                p.featured_image_filename = None
+            # Inline /pub/ images in the post body. Snapshot before
+            # delete so the post-commit cleanup pass sees the same
+            # files; per-batch dedupe happens inside the helper via
+            # the body LIKE-scan on sibling rows still in flight.
+            retired_inline.extend(_collect_body_inline_stored(p.body))
+        for p in rows:
+            db.session.delete(p)
+        db.session.commit()
+        for asset in retired_assets:
+            _cleanup_retired_asset(asset)
+        for asset in retired_inline:
+            _cleanup_retired_asset(asset)
+    else:
+        for p in rows:
+            if action == "archive":
+                p.is_archived = True
+            elif action == "unarchive":
+                p.is_archived = False
+            elif action == "draft":
+                p.is_draft = True
+            elif action == "publish":
+                p.is_draft = False
+                p.is_archived = False
+                p.is_pending_review = False
+        db.session.commit()
+
+    activity.log(f"post.bulk_{action}", entity_type="post",
+                 summary=f"Bulk {label} {n} post{'s' if n != 1 else ''}")
+    flash(f"{n} post{'s' if n != 1 else ''} {label}", "success")
+    return redirect(request.referrer or url_for("main.posts"))
 
 
 @bp.route("/announcementsevents/<int:pid>/duplicate", methods=["POST"])
@@ -10053,6 +10528,7 @@ def post_featured_image(pid):
 def stories():
     _require_stories_enabled()
     show = (request.args.get("show") or "active").strip()
+    sort = (request.args.get("sort") or "posted_desc").strip()
     q = Story.query
     if show == "archived":
         q = q.filter(Story.is_archived.is_(True))
@@ -10061,9 +10537,25 @@ def stories():
     else:
         show = "active"
         q = q.filter(Story.is_archived.is_(False), Story.is_draft.is_(False))
-    items = q.order_by(Story.story_date.desc().nulls_last(),
-                       Story.updated_at.desc()).all()
-    return render_template("stories.html", stories=items, show=show)
+    if sort == "posted_asc":
+        q = q.order_by(db.func.coalesce(Story.published_at, Story.created_at).asc())
+    elif sort == "title_asc":
+        q = q.order_by(Story.title.asc())
+    elif sort == "title_desc":
+        q = q.order_by(Story.title.desc())
+    elif sort == "author_asc":
+        q = q.order_by(Story.author_name.asc().nulls_last(), Story.title.asc())
+    elif sort == "story_date_asc":
+        q = q.order_by(Story.story_date.asc().nulls_last(), Story.updated_at.desc())
+    elif sort == "story_date_desc":
+        q = q.order_by(Story.story_date.desc().nulls_last(), Story.updated_at.desc())
+    elif sort == "updated_desc":
+        q = q.order_by(Story.updated_at.desc())
+    else:
+        sort = "posted_desc"
+        q = q.order_by(db.func.coalesce(Story.published_at, Story.created_at).desc())
+    items = q.all()
+    return render_template("stories.html", stories=items, show=show, sort=sort)
 
 
 def _story_embed():
@@ -10138,6 +10630,8 @@ def story_save():
     story.sobriety_date = _parse_date_only(request.form.get("sobriety_date"))
     story.story_date = _parse_date_only(request.form.get("story_date"))
     story.is_featured = request.form.get("is_featured") == "1"
+    if "published_at" in request.form:
+        story.published_at = _parse_post_dt(request.form.get("published_at"))
 
     if request.form.get("clear_featured_image") == "1":
         old = story.featured_image_filename
@@ -10158,6 +10652,9 @@ def story_save():
         story.is_draft = False
     elif creating:
         story.is_draft = False
+
+    if creating and story.published_at is None:
+        story.published_at = datetime.utcnow()
 
     if creating:
         db.session.add(story)
@@ -10245,11 +10742,14 @@ def story_delete(sid):
     activity.log("story.delete", entity_type="story", entity_id=story.id,
                  summary=f"Deleted story “{story.title}”")
     old_image = story.featured_image_filename
+    body_inline_stored = _collect_body_inline_stored(story.body)
     story.featured_image_filename = None
     if old_image:
         _cleanup_retired_asset(old_image)
     db.session.delete(story)
     db.session.commit()
+    for s in body_inline_stored:
+        _cleanup_retired_asset(s)
     flash("Story deleted", "success")
     # When deleting from inside the new-story modal, render a tiny
     # auto-close stub that postMessages the parent so the modal goes
@@ -10302,5 +10802,646 @@ def public_meeting_logo(mid):
     if not m or not m.logo_filename:
         abort(404)
     return send_from_directory(current_app.config["UPLOAD_FOLDER"], m.logo_filename)
+
+
+# ---------------------------------------------------------------------------
+# Blog — long-form editorial posts with categories + tags. The same
+# data table can serve many distinct frontend "blogs" by filtering
+# the page-block on category/tag, which lets a fellowship host one
+# blog per committee or group without parallel data tables.
+# ---------------------------------------------------------------------------
+def _estimate_reading_minutes(text):
+    """Rough reading-time estimate. ~225 words per minute is the canonical
+    number for English prose; we round up so a one-line post still
+    reads as "1 min". Returns None on empty input so the column can
+    stay NULL."""
+    if not text:
+        return None
+    word_count = len(re.findall(r"\b\w+\b", text))
+    if word_count <= 0:
+        return None
+    return max(1, (word_count + 224) // 225)
+
+
+def _resolve_blog_category_ids(form):
+    """Pull selected category ids out of the multi-checkbox form. Filters
+    out anything that doesn't resolve to an existing row so a stale
+    deleted id doesn't error the save."""
+    raw = form.getlist("category_ids") if hasattr(form, "getlist") else []
+    out = []
+    for v in raw:
+        try:
+            cid = int(v)
+        except (TypeError, ValueError):
+            continue
+        if BlogCategory.query.get(cid):
+            out.append(cid)
+    return out
+
+
+def _resolve_blog_tag_assignments(form):
+    """Resolve tag assignments from the form. Supports two inputs:
+    a multi-select of existing tag ids (``tag_ids``) AND a free-text
+    field of comma-separated names (``tag_names_new``). New names are
+    auto-created with a unique slug. Returns a list of BlogTag rows
+    (existing + newly-added). Caller still has to commit."""
+    raw_ids = form.getlist("tag_ids") if hasattr(form, "getlist") else []
+    rows = []
+    seen = set()
+    for v in raw_ids:
+        try:
+            tid = int(v)
+        except (TypeError, ValueError):
+            continue
+        t = BlogTag.query.get(tid)
+        if t and t.id not in seen:
+            seen.add(t.id)
+            rows.append(t)
+    new_names = (form.get("tag_names_new") or "").strip()
+    if new_names:
+        for raw_name in new_names.split(","):
+            name = raw_name.strip()[:80]
+            if not name:
+                continue
+            existing = BlogTag.query.filter(db.func.lower(BlogTag.name) == name.lower()).first()
+            if existing:
+                if existing.id not in seen:
+                    seen.add(existing.id)
+                    rows.append(existing)
+                continue
+            slug = _unique_blog_taxonomy_slug(BlogTag, _normalize_slug(name) or name.lower())
+            tag = BlogTag(name=name, slug=slug)
+            db.session.add(tag)
+            db.session.flush()
+            seen.add(tag.id)
+            rows.append(tag)
+    return rows
+
+
+@bp.route("/blog")
+@login_required
+def blog_index():
+    _require_blog_enabled()
+    show = (request.args.get("show") or "active").strip()
+    sort = (request.args.get("sort") or "published_desc").strip()
+    cat_id = (request.args.get("category") or "").strip()
+    tag_id = (request.args.get("tag") or "").strip()
+    q_text = (request.args.get("q") or "").strip()
+    q = BlogPost.query
+    if show == "archived":
+        q = q.filter(BlogPost.is_archived.is_(True))
+    elif show == "drafts":
+        q = q.filter(BlogPost.is_draft.is_(True), BlogPost.is_archived.is_(False))
+    elif show == "featured":
+        q = q.filter(BlogPost.is_featured.is_(True),
+                     BlogPost.is_archived.is_(False),
+                     BlogPost.is_draft.is_(False))
+    else:
+        show = "active"
+        q = q.filter(BlogPost.is_archived.is_(False), BlogPost.is_draft.is_(False))
+    # Category / tag filters.
+    if cat_id.isdigit():
+        q = q.filter(BlogPost.categories.any(BlogCategory.id == int(cat_id)))
+    if tag_id.isdigit():
+        q = q.filter(BlogPost.tags.any(BlogTag.id == int(tag_id)))
+    # Title / summary search — small dataset, basic ILIKE is enough.
+    if q_text:
+        like = f"%{q_text}%"
+        q = q.filter(db.or_(BlogPost.title.ilike(like),
+                            BlogPost.summary.ilike(like),
+                            BlogPost.author_name.ilike(like)))
+    # Sort modes.
+    if sort == "published_asc":
+        q = q.order_by(BlogPost.is_pinned.desc(),
+                       BlogPost.published_at.asc().nulls_last(),
+                       BlogPost.created_at.asc())
+    elif sort == "title_asc":
+        q = q.order_by(BlogPost.is_pinned.desc(), BlogPost.title.asc())
+    elif sort == "title_desc":
+        q = q.order_by(BlogPost.is_pinned.desc(), BlogPost.title.desc())
+    elif sort == "updated_desc":
+        q = q.order_by(BlogPost.is_pinned.desc(), BlogPost.updated_at.desc())
+    elif sort == "author_asc":
+        q = q.order_by(BlogPost.is_pinned.desc(),
+                       BlogPost.author_name.asc().nulls_last(),
+                       BlogPost.published_at.desc().nulls_last())
+    else:  # published_desc
+        sort = "published_desc"
+        q = q.order_by(BlogPost.is_pinned.desc(),
+                       BlogPost.published_at.desc().nulls_last(),
+                       BlogPost.created_at.desc())
+    items = q.all()
+    categories = BlogCategory.query.order_by(BlogCategory.position, BlogCategory.name).all()
+    tags = BlogTag.query.order_by(BlogTag.name).all()
+    counts = {
+        "active": BlogPost.query.filter(BlogPost.is_archived.is_(False),
+                                         BlogPost.is_draft.is_(False)).count(),
+        "drafts": BlogPost.query.filter(BlogPost.is_draft.is_(True),
+                                         BlogPost.is_archived.is_(False)).count(),
+        "archived": BlogPost.query.filter(BlogPost.is_archived.is_(True)).count(),
+        "featured": BlogPost.query.filter(BlogPost.is_featured.is_(True),
+                                           BlogPost.is_archived.is_(False),
+                                           BlogPost.is_draft.is_(False)).count(),
+    }
+    return render_template("blog_list.html", posts=items, show=show, sort=sort,
+                           categories=categories, tags=tags,
+                           selected_cat=cat_id, selected_tag=tag_id, q_text=q_text,
+                           counts=counts)
+
+
+@bp.route("/blog/new")
+@login_required
+def blog_new():
+    _require_blog_enabled()
+    categories = BlogCategory.query.order_by(BlogCategory.position, BlogCategory.name).all()
+    tags = BlogTag.query.order_by(BlogTag.name).all()
+    return render_template("blog_edit.html", post=None, categories=categories, tags=tags)
+
+
+@bp.route("/blog/<int:bid>")
+@login_required
+def blog_edit(bid):
+    _require_blog_enabled()
+    post = db.session.get(BlogPost, bid) or abort(404)
+    categories = BlogCategory.query.order_by(BlogCategory.position, BlogCategory.name).all()
+    tags = BlogTag.query.order_by(BlogTag.name).all()
+    return render_template("blog_edit.html", post=post, categories=categories, tags=tags)
+
+
+@bp.route("/blog/save", methods=["POST"])
+@login_required
+def blog_save():
+    """Create or update a blog post. ``post_id`` empty → create, set →
+    update. Mirrors ``story_save`` shape."""
+    _require_blog_enabled()
+    pid_raw = (request.form.get("post_id") or "").strip()
+    if pid_raw:
+        post = db.session.get(BlogPost, int(pid_raw)) or abort(404)
+        creating = False
+    else:
+        post = BlogPost(created_by=getattr(current_user, "id", None))
+        creating = True
+
+    _prev_public_slug = post.public_slug if not creating else None
+
+    title = (request.form.get("title") or "").strip()[:255]
+    if not title:
+        flash("Title is required", "danger")
+        return redirect(request.referrer or url_for("main.blog_new"))
+    post.title = title
+
+    explicit_slug = None
+    if current_user.is_authenticated and current_user.can_edit_frontend():
+        explicit_slug = _normalize_slug(request.form.get("slug"))
+
+    title_slug = _normalize_slug(post.title)
+    base = explicit_slug or title_slug
+    unique = _unique_blog_slug(base, exclude_id=post.id if not creating else None)
+    if explicit_slug:
+        post.slug = unique
+        if explicit_slug != unique:
+            flash(f"URL already taken — saved as “{unique}”.", "info")
+    else:
+        post.slug = None if unique == title_slug else unique
+
+    post.summary = (request.form.get("summary") or "").strip() or None
+    post.body = (request.form.get("body") or "").strip() or None
+    post.author_name = (request.form.get("author_name") or "").strip()[:120] or None
+    post.author_bio = (request.form.get("author_bio") or "").strip() or None
+    post.published_at = _parse_post_dt(request.form.get("published_at"))
+    post.is_featured = request.form.get("is_featured") == "1"
+    post.is_pinned = request.form.get("is_pinned") == "1"
+    post.allow_comments = request.form.get("allow_comments") == "1"
+
+    rm_raw = (request.form.get("reading_minutes") or "").strip()
+    if rm_raw.isdigit():
+        post.reading_minutes = max(1, min(999, int(rm_raw)))
+    else:
+        post.reading_minutes = _estimate_reading_minutes(post.body or "")
+
+    if request.form.get("clear_featured_image") == "1":
+        old = post.featured_image_filename
+        post.featured_image_filename = None
+        _cleanup_retired_asset(old)
+    uploaded = request.files.get("featured_image")
+    if uploaded and uploaded.filename:
+        old = post.featured_image_filename
+        stored, _original = _save_upload(uploaded)
+        post.featured_image_filename = stored
+        if old and old != stored:
+            _cleanup_retired_asset(old)
+
+    # Category + tag relations — must flush the post first when creating
+    # so the M2M tables have a real id to reference.
+    if creating:
+        db.session.add(post)
+        db.session.flush()
+    cat_ids = _resolve_blog_category_ids(request.form)
+    post.categories = BlogCategory.query.filter(BlogCategory.id.in_(cat_ids)).all() if cat_ids else []
+    post.tags = _resolve_blog_tag_assignments(request.form)
+
+    action = (request.form.get("action") or "").strip()
+    if action == "draft":
+        post.is_draft = True
+    elif action == "publish":
+        post.is_draft = False
+        if post.published_at is None:
+            post.published_at = datetime.utcnow()
+    elif creating:
+        post.is_draft = False
+        if post.published_at is None:
+            post.published_at = datetime.utcnow()
+
+    if not creating:
+        if _prev_public_slug and _prev_public_slug != post.public_slug:
+            _record_slug_change("blog", post.id, _prev_public_slug, post.public_slug)
+    db.session.commit()
+    from . import activity
+    activity.log("blog.create" if creating else "blog.update",
+                 entity_type="blog", entity_id=post.id,
+                 summary=(f"Created blog post “{post.title}”" if creating
+                          else f"Updated blog post “{post.title}”"))
+    if creating:
+        flash(("Draft saved: " + post.title) if post.is_draft else ("Published: " + post.title), "success")
+        return redirect(url_for("main.blog_index", show=("drafts" if post.is_draft else "active")))
+    flash("Post saved", "success")
+    return redirect(url_for("main.blog_edit", bid=post.id))
+
+
+@bp.route("/blog/<int:bid>/publish", methods=["POST"])
+@login_required
+def blog_publish(bid):
+    _require_blog_enabled()
+    post = db.session.get(BlogPost, bid) or abort(404)
+    post.is_draft = False
+    if post.published_at is None:
+        post.published_at = datetime.utcnow()
+    db.session.commit()
+    flash("Published", "success")
+    return redirect(request.referrer or url_for("main.blog_index"))
+
+
+@bp.route("/blog/<int:bid>/unpublish", methods=["POST"])
+@login_required
+def blog_unpublish(bid):
+    _require_blog_enabled()
+    post = db.session.get(BlogPost, bid) or abort(404)
+    post.is_draft = True
+    db.session.commit()
+    flash("Moved to drafts", "success")
+    return redirect(request.referrer or url_for("main.blog_index", show="drafts"))
+
+
+@bp.route("/blog/<int:bid>/archive", methods=["POST"])
+@login_required
+def blog_archive(bid):
+    _require_blog_enabled()
+    post = db.session.get(BlogPost, bid) or abort(404)
+    post.is_archived = True
+    db.session.commit()
+    flash("Archived", "success")
+    return redirect(request.referrer or url_for("main.blog_index"))
+
+
+@bp.route("/blog/<int:bid>/unarchive", methods=["POST"])
+@login_required
+def blog_unarchive(bid):
+    _require_blog_enabled()
+    post = db.session.get(BlogPost, bid) or abort(404)
+    post.is_archived = False
+    db.session.commit()
+    flash("Restored", "success")
+    return redirect(request.referrer or url_for("main.blog_index"))
+
+
+@bp.route("/blog/<int:bid>/duplicate", methods=["POST"])
+@login_required
+def blog_duplicate(bid):
+    """Clone a blog post into a Draft. Title gets a "(copy)" suffix; the
+    duplicate is a draft so the admin can re-tune it before publishing.
+    Categories + tags carry over."""
+    _require_blog_enabled()
+    src = db.session.get(BlogPost, bid) or abort(404)
+    copy = BlogPost(
+        title=(src.title or "Untitled")[:240] + " (copy)",
+        summary=src.summary,
+        body=src.body,
+        featured_image_filename=src.featured_image_filename,
+        author_name=src.author_name,
+        author_bio=src.author_bio,
+        is_featured=False,
+        is_pinned=False,
+        is_draft=True,
+        is_archived=False,
+        allow_comments=src.allow_comments,
+        reading_minutes=src.reading_minutes,
+        created_by=getattr(current_user, "id", None),
+    )
+    db.session.add(copy)
+    db.session.flush()
+    copy.categories = list(src.categories)
+    copy.tags = list(src.tags)
+    db.session.commit()
+    flash("Duplicated as draft", "success")
+    return redirect(url_for("main.blog_edit", bid=copy.id))
+
+
+@bp.route("/blog/<int:bid>/delete", methods=["POST"])
+@login_required
+def blog_delete(bid):
+    _require_blog_enabled()
+    post = db.session.get(BlogPost, bid) or abort(404)
+    from . import activity
+    activity.log("blog.delete", entity_type="blog", entity_id=post.id,
+                 summary=f"Deleted blog post “{post.title}”")
+    old_image = post.featured_image_filename
+    body_inline_stored = _collect_body_inline_stored(post.body)
+    post.featured_image_filename = None
+    if old_image:
+        _cleanup_retired_asset(old_image)
+    db.session.delete(post)
+    db.session.commit()
+    for s in body_inline_stored:
+        _cleanup_retired_asset(s)
+    flash("Post deleted", "success")
+    return redirect(url_for("main.blog_index"))
+
+
+@bp.route("/blog/bulk", methods=["POST"])
+@login_required
+def blog_bulk():
+    """Apply a single state change to many blog posts at once. Form
+    fields:
+
+      action    — archive | unarchive | draft | publish | delete
+                | feature | unfeature | pin | unpin
+                | add_category | remove_category | replace_categories
+                | add_tag | remove_tag
+      ids       — repeated ``ids`` field, one per checked row
+      category_id — int (required for *_category actions)
+      tag_id      — int (required for *_tag actions)
+
+    Posts whose ids don't resolve are silently skipped so a stale
+    form (e.g. someone deleted a post in another tab) doesn't error
+    out the whole batch."""
+    _require_blog_enabled()
+    action = (request.form.get("action") or "").strip().lower()
+    valid = {"archive", "unarchive", "draft", "publish", "delete",
+             "feature", "unfeature", "pin", "unpin",
+             "add_category", "remove_category", "replace_categories",
+             "add_tag", "remove_tag"}
+    if action not in valid:
+        flash("Unknown bulk action", "danger")
+        return redirect(request.referrer or url_for("main.blog_index"))
+
+    raw_ids = request.form.getlist("ids")
+    pids = []
+    for v in raw_ids:
+        try:
+            pids.append(int(v))
+        except (TypeError, ValueError):
+            continue
+    if not pids:
+        flash("No posts selected", "warning")
+        return redirect(request.referrer or url_for("main.blog_index"))
+
+    rows = BlogPost.query.filter(BlogPost.id.in_(pids)).all()
+    if not rows:
+        flash("No posts matched the selection", "warning")
+        return redirect(request.referrer or url_for("main.blog_index"))
+
+    n = len(rows)
+    label = ""
+
+    if action == "delete":
+        retired_assets = []
+        retired_inline = []
+        for p in rows:
+            if p.featured_image_filename:
+                retired_assets.append(p.featured_image_filename)
+                p.featured_image_filename = None
+            retired_inline.extend(_collect_body_inline_stored(p.body))
+        for p in rows:
+            db.session.delete(p)
+        db.session.commit()
+        for asset in retired_assets:
+            _cleanup_retired_asset(asset)
+        for asset in retired_inline:
+            _cleanup_retired_asset(asset)
+        label = "deleted"
+    elif action in ("add_category", "remove_category", "replace_categories"):
+        try:
+            cid = int(request.form.get("category_id") or 0)
+        except (TypeError, ValueError):
+            cid = 0
+        cat = db.session.get(BlogCategory, cid) if cid else None
+        if cat is None:
+            flash("Pick a category to apply.", "warning")
+            return redirect(request.referrer or url_for("main.blog_index"))
+        for p in rows:
+            if action == "add_category":
+                if cat not in p.categories:
+                    p.categories.append(cat)
+            elif action == "remove_category":
+                if cat in p.categories:
+                    p.categories.remove(cat)
+            else:  # replace_categories
+                p.categories = [cat]
+        db.session.commit()
+        label = {
+            "add_category": f"tagged with “{cat.name}”",
+            "remove_category": f"untagged from “{cat.name}”",
+            "replace_categories": f"category set to “{cat.name}”",
+        }[action]
+    elif action in ("add_tag", "remove_tag"):
+        try:
+            tid = int(request.form.get("tag_id") or 0)
+        except (TypeError, ValueError):
+            tid = 0
+        tag = db.session.get(BlogTag, tid) if tid else None
+        if tag is None:
+            flash("Pick a tag to apply.", "warning")
+            return redirect(request.referrer or url_for("main.blog_index"))
+        for p in rows:
+            if action == "add_tag":
+                if tag not in p.tags:
+                    p.tags.append(tag)
+            else:
+                if tag in p.tags:
+                    p.tags.remove(tag)
+        db.session.commit()
+        label = (f"tagged #{tag.name}" if action == "add_tag"
+                 else f"untagged from #{tag.name}")
+    else:
+        for p in rows:
+            if action == "archive":
+                p.is_archived = True
+            elif action == "unarchive":
+                p.is_archived = False
+            elif action == "draft":
+                p.is_draft = True
+            elif action == "publish":
+                p.is_draft = False
+                p.is_archived = False
+                if p.published_at is None:
+                    p.published_at = datetime.utcnow()
+            elif action == "feature":
+                p.is_featured = True
+            elif action == "unfeature":
+                p.is_featured = False
+            elif action == "pin":
+                p.is_pinned = True
+            elif action == "unpin":
+                p.is_pinned = False
+        db.session.commit()
+        label = {"archive": "archived", "unarchive": "restored",
+                 "draft": "moved to drafts", "publish": "published",
+                 "feature": "marked featured", "unfeature": "unfeatured",
+                 "pin": "pinned", "unpin": "unpinned"}[action]
+
+    from . import activity
+    activity.log(f"blog.bulk_{action}", entity_type="blog",
+                 summary=f"Bulk {action}: {n} post{'s' if n != 1 else ''} {label}")
+    flash(f"{n} post{'s' if n != 1 else ''} {label}", "success")
+    return redirect(request.referrer or url_for("main.blog_index"))
+
+
+# ─── Categories ──────────────────────────────────────────────────────
+@bp.route("/blog/categories")
+@login_required
+def blog_categories():
+    _require_blog_enabled()
+    categories = BlogCategory.query.order_by(BlogCategory.position, BlogCategory.name).all()
+    # Posts-per-category (active + drafts, excluding archived) so the
+    # admin can see at a glance which categories are in use.
+    counts = {}
+    for c in categories:
+        counts[c.id] = (BlogPost.query
+                        .filter(BlogPost.is_archived.is_(False))
+                        .filter(BlogPost.categories.any(BlogCategory.id == c.id))
+                        .count())
+    return render_template("blog_categories.html", categories=categories, counts=counts)
+
+
+@bp.route("/blog/categories/save", methods=["POST"])
+@login_required
+def blog_category_save():
+    _require_blog_enabled()
+    cid_raw = (request.form.get("category_id") or "").strip()
+    if cid_raw:
+        cat = db.session.get(BlogCategory, int(cid_raw)) or abort(404)
+        creating = False
+    else:
+        cat = BlogCategory()
+        creating = True
+    name = (request.form.get("name") or "").strip()[:120]
+    if not name:
+        flash("Category name is required", "danger")
+        return redirect(url_for("main.blog_categories"))
+    cat.name = name
+    explicit_slug = _normalize_slug(request.form.get("slug"))
+    base = explicit_slug or _normalize_slug(name)
+    cat.slug = _unique_blog_taxonomy_slug(BlogCategory, base,
+                                           exclude_id=cat.id if not creating else None)
+    cat.description = (request.form.get("description") or "").strip() or None
+    cat.color = (request.form.get("color") or "").strip()[:16] or None
+    pos_raw = (request.form.get("position") or "").strip()
+    if pos_raw.lstrip("-").isdigit():
+        cat.position = int(pos_raw)
+    if creating:
+        db.session.add(cat)
+    db.session.commit()
+    flash("Category saved", "success")
+    return redirect(url_for("main.blog_categories"))
+
+
+@bp.route("/blog/categories/<int:cid>/delete", methods=["POST"])
+@login_required
+def blog_category_delete(cid):
+    _require_blog_enabled()
+    cat = db.session.get(BlogCategory, cid) or abort(404)
+    db.session.delete(cat)
+    db.session.commit()
+    flash("Category deleted", "success")
+    return redirect(url_for("main.blog_categories"))
+
+
+# ─── Tags ────────────────────────────────────────────────────────────
+@bp.route("/blog/tags")
+@login_required
+def blog_tags():
+    _require_blog_enabled()
+    tags = BlogTag.query.order_by(BlogTag.name).all()
+    counts = {}
+    for t in tags:
+        counts[t.id] = (BlogPost.query
+                        .filter(BlogPost.is_archived.is_(False))
+                        .filter(BlogPost.tags.any(BlogTag.id == t.id))
+                        .count())
+    return render_template("blog_tags.html", tags=tags, counts=counts)
+
+
+@bp.route("/blog/tags/save", methods=["POST"])
+@login_required
+def blog_tag_save():
+    _require_blog_enabled()
+    tid_raw = (request.form.get("tag_id") or "").strip()
+    if tid_raw:
+        tag = db.session.get(BlogTag, int(tid_raw)) or abort(404)
+        creating = False
+    else:
+        tag = BlogTag()
+        creating = True
+    name = (request.form.get("name") or "").strip()[:80]
+    if not name:
+        flash("Tag name is required", "danger")
+        return redirect(url_for("main.blog_tags"))
+    tag.name = name
+    explicit_slug = _normalize_slug(request.form.get("slug"))
+    base = explicit_slug or _normalize_slug(name)
+    tag.slug = _unique_blog_taxonomy_slug(BlogTag, base,
+                                           exclude_id=tag.id if not creating else None)
+    if creating:
+        db.session.add(tag)
+    db.session.commit()
+    flash("Tag saved", "success")
+    return redirect(url_for("main.blog_tags"))
+
+
+@bp.route("/blog/tags/<int:tid>/delete", methods=["POST"])
+@login_required
+def blog_tag_delete(tid):
+    _require_blog_enabled()
+    tag = db.session.get(BlogTag, tid) or abort(404)
+    db.session.delete(tag)
+    db.session.commit()
+    flash("Tag deleted", "success")
+    return redirect(url_for("main.blog_tags"))
+
+
+@public_bp.route("/blog-image/<int:bid>")
+def blog_post_featured_image(bid):
+    """Serve a blog post's featured image. Public so the frontend can
+    render the image without auth. Same ``?thumb=<size>`` semantics as
+    ``story_featured_image`` for postage-stamp tiles in lists."""
+    post = db.session.get(BlogPost, bid)
+    if not post or not post.featured_image_filename:
+        abort(404)
+    upload_dir = current_app.config["UPLOAD_FOLDER"]
+    thumb_arg = (request.args.get("thumb") or "").strip()
+    if thumb_arg:
+        from . import thumbnails
+        try:
+            size = int(thumb_arg)
+        except ValueError:
+            size = None
+        if size and size in thumbnails.ALLOWED_SIZES:
+            thumb_name = thumbnails.ensure_thumb(post.featured_image_filename, size,
+                                                  upload_dir=upload_dir)
+            if thumb_name:
+                resp = send_from_directory(upload_dir, thumb_name)
+                resp.headers["Cache-Control"] = "public, max-age=86400"
+                return resp
+    return send_from_directory(upload_dir, post.featured_image_filename)
 
 

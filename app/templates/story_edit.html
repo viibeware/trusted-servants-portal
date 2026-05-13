@@ -145,6 +145,10 @@
                value="{% if _s and _s.sobriety_date %}{{ _s.sobriety_date.strftime('%Y-%m-%d') }}{% endif %}">
       </label>
     </div>
+    <label>Posted on <span class="muted small">(timestamp the admin Stories list sorts by; defaults to now on a new story and is preserved as-is on WordPress imports)</span>
+      <input type="datetime-local" name="published_at"
+             value="{% if _s and _s.published_at %}{{ _s.published_at.strftime('%Y-%m-%dT%H:%M') }}{% endif %}">
+    </label>
     <label class="check" style="margin-top:.75rem;">
       <input type="checkbox" name="is_featured" value="1"
              {% if _s and _s.is_featured %}checked{% endif %}>

@@ -1,0 +1,214 @@
+{# Gazette layout — newspaper broadsheet aesthetic on aged newsprint.
+   Big serif headlines, hairline column rules, masthead at top with the
+   publication date band. Hero spans the top, three remaining columns
+   below. Image-light, text-forward, distinctive. #}
+{%- set _hero = all_posts[0] if all_posts else None -%}
+{%- set _rest = all_posts[1:] if all_posts and all_posts|length > 1 else [] -%}
+<section class="fe-blog fe-blog-gazette fe-blog-list--w-{{ list_width_mode }}">
+  <div class="{% if list_width_mode == 'boxed' %}fe-container{% else %}fe-blog-fullwrap{% endif %}"
+       {% if list_width_mode == 'boxed' %}style="max-width: {{ list_max_width }}px;"
+       {%- elif list_padding_pct %}style="padding-left: {{ list_padding_pct }}vw; padding-right: {{ list_padding_pct }}vw;"{% endif %}>
+
+    <header class="fe-blog-gaz-masthead">
+      <div class="fe-blog-gaz-mast-rule"></div>
+      <h1 class="fe-blog-gaz-mast-title">{{ list_heading or 'The Gazette' }}</h1>
+      <div class="fe-blog-gaz-mast-byline">
+        <span>VOL. {{ all_posts|length }}</span>
+        <span>· {{ list_subheading or 'A periodical of the fellowship' }} ·</span>
+        <span>EST. {{ all_posts[-1].display_date.strftime('%Y') if all_posts and all_posts[-1].display_date else 'NOW' }}</span>
+      </div>
+      <div class="fe-blog-gaz-mast-rule"></div>
+    </header>
+
+    {% if all_categories %}
+    <nav class="fe-blog-gaz-cats" aria-label="Sections">
+      <span class="fe-blog-gaz-cats-label">Sections</span>
+      <a class="fe-blog-gaz-cat{% if not active_category %} is-active{% endif %}"
+         href="{{ url_for('frontend.blog_list') }}">All</a>
+      {% for c in all_categories %}
+      <a class="fe-blog-gaz-cat{% if active_category and active_category.id == c.id %} is-active{% endif %}"
+         href="{{ url_for('frontend.blog_list', category=c.slug) }}">{{ c.name }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+
+    {% if not all_posts %}
+    <p class="fe-blog-gaz-empty">— No issues filed —</p>
+    {% else %}
+
+    {% if _hero %}
+    <article class="fe-blog-gaz-lede">
+      <a class="fe-blog-gaz-lede-link" href="{{ url_for('frontend.blog_post_detail', slug=_hero.public_slug) }}">
+        {% if _hero.featured_image_filename %}
+        <div class="fe-blog-gaz-lede-art">
+          <img src="{{ url_for('public.blog_post_featured_image', bid=_hero.id, thumb=1024) }}" alt="" loading="lazy">
+        </div>
+        {% endif %}
+        <div class="fe-blog-gaz-lede-body">
+          {% if _hero.categories %}
+          <span class="fe-blog-gaz-lede-section">{{ _hero.categories[0].name }}</span>
+          {% endif %}
+          <h2 class="fe-blog-gaz-lede-headline">{{ _hero.title }}</h2>
+          {% if _hero.summary %}
+          <p class="fe-blog-gaz-lede-deck">{{ _hero.summary }}</p>
+          {% endif %}
+          <p class="fe-blog-gaz-lede-byline">
+            {% if _hero.author_name %}<span>BY {{ _hero.author_name|upper }}</span>{% endif %}
+            {% if _hero.display_date %}<span>· {{ _hero.display_date.strftime('%B %-d, %Y')|upper }}</span>{% endif %}
+          </p>
+        </div>
+      </a>
+    </article>
+    {% endif %}
+
+    {% if _rest %}
+    <div class="fe-blog-gaz-cols">
+      {% for p in _rest %}
+      <article class="fe-blog-gaz-col-item">
+        <a class="fe-blog-gaz-col-link" href="{{ url_for('frontend.blog_post_detail', slug=p.public_slug) }}">
+          {% if p.categories %}
+          <span class="fe-blog-gaz-col-section">{{ p.categories[0].name }}</span>
+          {% endif %}
+          <h3 class="fe-blog-gaz-col-headline">{{ p.title }}</h3>
+          {% if p.summary %}
+          <p class="fe-blog-gaz-col-deck">{{ p.summary[:200] }}{% if p.summary|length > 200 %}…{% endif %}</p>
+          {% endif %}
+          <p class="fe-blog-gaz-col-byline">
+            {% if p.author_name %}<span>BY {{ p.author_name|upper }}</span>{% endif %}
+            {% if p.display_date %}<span>· {{ p.display_date.strftime('%b %-d, %Y')|upper }}</span>{% endif %}
+          </p>
+        </a>
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% endif %}
+  </div>
+</section>
+
+<style>
+  .fe-blog-gazette {
+    --gaz-paper: #f7f1e3;
+    --gaz-paper-edge: #ece2c7;
+    --gaz-ink: #1d1a13;
+    --gaz-ink-soft: #5b5240;
+    --gaz-rule: #2b2418;
+    --gaz-accent: #8a2110;
+    background:
+      repeating-linear-gradient(0deg, rgba(120,80,30,.018) 0 1px, transparent 1px 4px),
+      radial-gradient(900px 400px at 0% 0%, rgba(140,100,40,.05), transparent 60%),
+      radial-gradient(900px 400px at 100% 100%, rgba(140,100,40,.05), transparent 60%),
+      var(--gaz-paper);
+    color: var(--gaz-ink);
+    padding: clamp(2.5rem, 5vw, 4.5rem) 0;
+    font-family: var(--tpl-body-font, 'Iowan Old Style', 'Times New Roman', Times, serif);
+  }
+  [data-theme="dark"] .fe-blog-gazette {
+    --gaz-paper: #1a1610;
+    --gaz-paper-edge: #14110b;
+    --gaz-ink: #e9dcc0;
+    --gaz-ink-soft: #a89878;
+    --gaz-rule: #c8b48a;
+  }
+  .fe-blog-gaz-masthead { text-align: center; margin-bottom: clamp(1.5rem, 3vw, 2.5rem); }
+  .fe-blog-gaz-mast-rule { height: 4px; border-top: 1px solid var(--gaz-rule); border-bottom: 1px solid var(--gaz-rule); margin: 1px 0; }
+  .fe-blog-gaz-mast-title {
+    font-family: 'UnifrakturMaguntia', 'IM Fell DW Pica', 'Times New Roman', serif;
+    font-size: clamp(3rem, 7vw, 5.5rem); line-height: 1; margin: .65rem 0 .5rem;
+    letter-spacing: .01em; font-weight: 400;
+  }
+  .fe-blog-gaz-mast-byline {
+    display: flex; gap: .9rem; justify-content: center; flex-wrap: wrap;
+    text-transform: uppercase; letter-spacing: .25em; font-size: .68rem;
+    color: var(--gaz-ink-soft); margin-bottom: .65rem;
+  }
+  .fe-blog-gaz-cats {
+    display: flex; flex-wrap: wrap; gap: .85rem; align-items: center;
+    border-top: 1px solid var(--gaz-rule);
+    border-bottom: 1px solid var(--gaz-rule);
+    padding: .55rem 0; margin-bottom: clamp(1.5rem, 3vw, 2.4rem);
+    text-transform: uppercase; letter-spacing: .14em; font-size: .72rem;
+  }
+  .fe-blog-gaz-cats-label { color: var(--gaz-ink-soft); font-weight: 700; }
+  .fe-blog-gaz-cat {
+    color: var(--gaz-ink); text-decoration: none; padding: 2px 4px;
+  }
+  .fe-blog-gaz-cat:hover { color: var(--gaz-accent); }
+  .fe-blog-gaz-cat.is-active { color: var(--gaz-accent); border-bottom: 2px solid var(--gaz-accent); font-weight: 700; }
+  .fe-blog-gaz-empty {
+    text-align: center; font-style: italic; color: var(--gaz-ink-soft);
+    padding: 3rem 0; font-size: 1.1rem;
+  }
+  /* ── Lede article ──────────────────────────────────────────── */
+  .fe-blog-gaz-lede {
+    border-bottom: 4px double var(--gaz-rule);
+    padding-bottom: clamp(1.5rem, 3vw, 2.4rem);
+    margin-bottom: clamp(1.5rem, 3vw, 2.4rem);
+  }
+  .fe-blog-gaz-lede-link {
+    display: grid; grid-template-columns: 1fr 1fr; gap: clamp(1rem, 3vw, 2.5rem);
+    color: inherit; text-decoration: none; align-items: center;
+  }
+  @media (max-width: 760px) { .fe-blog-gaz-lede-link { grid-template-columns: 1fr; } }
+  .fe-blog-gaz-lede-art {
+    aspect-ratio: 4 / 3; overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.1), 0 6px 12px -6px rgba(0,0,0,.3);
+  }
+  .fe-blog-gaz-lede-art img {
+    width: 100%; height: 100%; object-fit: cover;
+    filter: contrast(1.05) saturate(.7) sepia(.07);
+  }
+  .fe-blog-gaz-lede-section {
+    display: inline-block; text-transform: uppercase; letter-spacing: .25em;
+    font-size: .68rem; color: var(--gaz-accent); font-weight: 700;
+    margin-bottom: .75rem;
+  }
+  .fe-blog-gaz-lede-headline {
+    font-family: var(--tpl-heading-font, 'Playfair Display', 'Iowan Old Style', Georgia, serif);
+    font-weight: 700; font-size: clamp(2rem, 4.5vw, 3.4rem);
+    line-height: 1.05; margin: 0 0 .8rem; letter-spacing: -.005em;
+  }
+  .fe-blog-gaz-lede-deck {
+    font-style: italic; line-height: 1.55;
+    color: var(--gaz-ink-soft); margin: 0 0 1rem;
+    font-size: 1.1rem;
+  }
+  .fe-blog-gaz-lede-byline {
+    text-transform: uppercase; letter-spacing: .18em; font-size: .7rem;
+    color: var(--gaz-ink-soft); margin: 0; font-family: 'Inter', system-ui, sans-serif;
+  }
+  .fe-blog-gaz-lede-byline span + span { margin-left: .25rem; }
+  /* ── Columns ──────────────────────────────────────────────── */
+  .fe-blog-gaz-cols {
+    column-count: 3; column-gap: 2.5rem; column-rule: 1px solid var(--gaz-rule);
+  }
+  @media (max-width: 980px) { .fe-blog-gaz-cols { column-count: 2; } }
+  @media (max-width: 600px) { .fe-blog-gaz-cols { column-count: 1; column-rule: none; } }
+  .fe-blog-gaz-col-item {
+    break-inside: avoid; margin-bottom: 1.6rem;
+    padding-bottom: 1.6rem; border-bottom: 1px dashed color-mix(in srgb, var(--gaz-rule) 50%, transparent);
+  }
+  .fe-blog-gaz-col-item:last-child { border-bottom: 0; }
+  .fe-blog-gaz-col-link { color: inherit; text-decoration: none; display: block; }
+  .fe-blog-gaz-col-section {
+    display: inline-block; text-transform: uppercase; letter-spacing: .22em;
+    font-size: .62rem; color: var(--gaz-accent); font-weight: 700;
+    margin-bottom: .55rem;
+  }
+  .fe-blog-gaz-col-headline {
+    font-family: var(--tpl-heading-font, 'Playfair Display', Georgia, serif);
+    font-weight: 700; font-size: 1.4rem; line-height: 1.18;
+    margin: 0 0 .55rem;
+  }
+  .fe-blog-gaz-col-link:hover .fe-blog-gaz-col-headline { color: var(--gaz-accent); }
+  .fe-blog-gaz-col-deck {
+    line-height: 1.5; margin: 0 0 .65rem;
+    font-size: .95rem;
+  }
+  .fe-blog-gaz-col-byline {
+    text-transform: uppercase; letter-spacing: .16em; font-size: .62rem;
+    color: var(--gaz-ink-soft); margin: 0;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+</style>

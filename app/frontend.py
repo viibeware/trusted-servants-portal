@@ -9,9 +9,47 @@ Admin pages remain at /tspro/* and the authenticated dashboard is at /tspro/.
 """
 from flask import Blueprint, render_template, redirect, url_for, abort, request, current_app
 from flask_login import current_user
-from .models import SiteSetting, Meeting, FrontendNavItem, Post, Story
+from .models import SiteSetting, Meeting, FrontendNavItem, Post, Story, BlogPost, BlogCategory, BlogTag
 
 bp = Blueprint("frontend", __name__)
+
+
+# ---------------------------------------------------------------------------
+# Public-section registry.
+#
+# Every top-level template page on the public site (Home, Meetings,
+# Hyperlist, Events, Archive, Announcements, Stories, Blog, Library,
+# Print list, Submit form, Contact) registers itself here via the
+# ``@public_section`` decorator below. /siteindex's Sections group
+# iterates over this registry instead of a hardcoded list — so adding
+# a new top-level page is just a matter of adding the decorator to the
+# new route, and the sitemap picks it up automatically.
+#
+# Each entry pairs the route's endpoint with the same gate predicate
+# the route itself uses for its 404, so the index never advertises a
+# page that would 404.
+# ---------------------------------------------------------------------------
+_PUBLIC_SECTIONS = []
+
+
+def public_section(title, gate=None):
+    """Mark a frontend route as a top-level public section page.
+
+    The route is auto-included in /siteindex's Sections group. ``gate``
+    is a callable ``(site) -> bool`` mirroring the route's own enable
+    check (so the index hides pages the route would 404 on). Defaults
+    to always-on. Decorate BELOW ``@bp.route`` so the endpoint name
+    is already bound by the time we record it.
+    """
+    def deco(fn):
+        _PUBLIC_SECTIONS.append({
+            "title": title,
+            "endpoint": "frontend." + fn.__name__,
+            "gate": gate or (lambda _site: True),
+        })
+        return fn
+    return deco
+
 
 # ---------------------------------------------------------------------------
 # Template library — ships layout presets for the major public-site regions.
@@ -406,6 +444,42 @@ ANNOUNCEMENTS_LIST_TEMPLATES = [
 ]
 
 
+# Layouts for the public /archive page (unified past events + archived
+# announcements). Each partial reads the same `archive_items` /
+# `year_buckets` / `search_blobs` / `archive_counts` set the route
+# emits, and each lays down the same data-attribute hooks
+# (data-archive-rail, data-archive-search, data-archive-kind-toggle,
+# data-archive-filter, data-archive-results, data-archive-year-section,
+# data-archive-load-sentinel, data-archive-pagination) so the shared
+# filter + pagination JS in archive.html works across every variant.
+ARCHIVE_TEMPLATES = [
+    {
+        "key": "year-sidebar",
+        "name": "Year Sidebar",
+        "description": "Sticky filter rail on the left — live search, type checkboxes, year pills — paired with a card stack on the right grouped under year headings. Matches the sidebar chrome of the /meetings list. Best when visitors want to drill in by year.",
+        "partial": "frontend/archive/year_sidebar.html",
+    },
+    {
+        "key": "timeline",
+        "name": "Timeline",
+        "description": "Vertical timeline with a central spine; cards alternate left/right, with each year stamped as a marker along the spine. Compact filter strip at the top instead of a rail. Editorial, chronological feel.",
+        "partial": "frontend/archive/timeline.html",
+    },
+    {
+        "key": "compact-list",
+        "name": "Compact List",
+        "description": "Dense single-column list — one row per item with a date block, type chip, title and short summary inline. No thumbnails. Top filter strip with search + type chips + year pills. Best for fellowships with many archived items.",
+        "partial": "frontend/archive/compact_list.html",
+    },
+    {
+        "key": "magazine",
+        "name": "Magazine",
+        "description": "Newest item as a hero card with cover image, then remaining items as a 3-up grid of editorial cards. Top filter strip with search + type chips + year pills. Pulls the eye to the latest archived item.",
+        "partial": "frontend/archive/magazine.html",
+    },
+]
+
+
 # Layouts for the public /printlist page. Single entry today, but the
 # catalog shape mirrors the other pickers so a second printable layout
 # can be added without restructuring the admin form.
@@ -429,6 +503,27 @@ LITERATURE_LIBRARY_TEMPLATES = [
         "name": "Classic",
         "description": "Sticky sidebar rail with live search and per-library filter pills, over a stack of library sections — each one listing its public-marked items as compact cards. Mirrors the Archive page's chrome and palette.",
         "partial": "frontend/literature_library.html",
+    },
+]
+
+
+# Layouts for the public /fellowships page (the curated peer-fellowship
+# index admins manage from Settings → Global). Each layout shares the
+# same `fellowships` payload + `sort_options` + `country_buckets` set,
+# so a new layout can be added by dropping a partial into
+# frontend/fellowships/ and appending an entry here.
+FELLOWSHIPS_LIST_TEMPLATES = [
+    {
+        "key": "sidebar",
+        "name": "Sidebar",
+        "description": "Sticky filter rail on the left (live search + Virtual/Regional toggle + per-country pills + sort selector) over a grouped card stack on the right. Default layout — mirrors the chrome of the Archive + Library pages.",
+        "partial": "frontend/fellowships/sidebar.html",
+    },
+    {
+        "key": "compact",
+        "name": "Compact list",
+        "description": "Top filter strip (search + chips + sort) over a dense single-column list — one row per fellowship with the country/region inline and the website link at the right edge. Best for sites with a long roster.",
+        "partial": "frontend/fellowships/compact.html",
     },
 ]
 
@@ -521,6 +616,80 @@ STORIES_LIST_TEMPLATES = [
         "name": "Magazine",
         "description": "Featured story as a hero with cover image; remaining stories as a 3-up grid of illustrated cards. Serif headlines, sans-serif bylines, modern editorial polish.",
         "partial": "frontend/stories_list/magazine.html",
+    },
+]
+
+
+# Layouts for the public /blog index page. Selected via
+# SiteSetting.frontend_blog_list_template; each maps to a partial in
+# frontend/blog_list/<key>.html. Every layout receives the same set
+# of variables so admins can switch between them freely.
+BLOG_LIST_TEMPLATES = [
+    {
+        "key": "magazine",
+        "name": "Magazine",
+        "description": "Featured/newest post as a hero with cover image; remaining posts as a 3-up grid of editorial cards. Modern, polished, well-suited as a default editorial homepage.",
+        "partial": "frontend/blog_list/magazine.html",
+    },
+    {
+        "key": "cards",
+        "name": "Cards",
+        "description": "Uniform 3-up grid of editorial cards. No hero — every post gets equal visual weight. Modern, balanced, easy to skim.",
+        "partial": "frontend/blog_list/cards.html",
+    },
+    {
+        "key": "minimal",
+        "name": "Minimal",
+        "description": "Single-column, generous white space, image-light. Title + summary + meta line per entry. Reads like a personal journal index.",
+        "partial": "frontend/blog_list/minimal.html",
+    },
+    {
+        "key": "gazette",
+        "name": "Gazette",
+        "description": "Newspaper broadsheet aesthetic on aged newsprint. Big serif headlines, hairline column rules, masthead at top. Hero spans the top, three columns below. Image-light, text-forward.",
+        "partial": "frontend/blog_list/gazette.html",
+    },
+    {
+        "key": "mosaic",
+        "name": "Mosaic",
+        "description": "Masonry-style CSS-columns grid with mixed card heights, dense and image-forward. Tags surfaced as chips, gradient title. Modern, dynamic, lots of personality.",
+        "partial": "frontend/blog_list/mosaic.html",
+    },
+    {
+        "key": "sidebar",
+        "name": "Sidebar",
+        "description": "Main column of post cards on the left, sticky right-hand sidebar with categories + tag cloud. Classic blog architecture — best when you want filters always visible.",
+        "partial": "frontend/blog_list/sidebar.html",
+    },
+]
+
+
+# Layouts for the public /blog/<slug> DETAIL page. Each renders the
+# same `post` row but emphasises a different reading experience.
+BLOG_POST_TEMPLATES = [
+    {
+        "key": "modern",
+        "name": "Modern",
+        "description": "Centered post with a hero image, sans-serif title, drop-cap-free body, and an author card at the bottom. Modern editorial polish suitable for most posts.",
+        "partial": "frontend/blog/modern.html",
+    },
+    {
+        "key": "longform",
+        "name": "Longform",
+        "description": "Medium / Substack-style essay treatment. Centered serif body, narrow column, drop-cap on the opening paragraph, italicised dropped header. Designed for reading, not skimming.",
+        "partial": "frontend/blog/longform.html",
+    },
+    {
+        "key": "classic",
+        "name": "Classic",
+        "description": "Main content + sticky right-hand sidebar with related posts, categories. Resembles WordPress / Ghost defaults — familiar, navigation-heavy.",
+        "partial": "frontend/blog/classic.html",
+    },
+    {
+        "key": "cover",
+        "name": "Cover",
+        "description": "Full-bleed featured image with the title overlaid in a parallax-style hero. Below the fold: two-column body + sticky author card. Editorial flagship treatment for marquee posts.",
+        "partial": "frontend/blog/cover.html",
     },
 ]
 
@@ -860,21 +1029,79 @@ def _post_url(post):
 
 
 @bp.route("/")
+@public_section("Home")
 def index():
+    """Public `/` — renders whichever Page the admin designated as the
+    homepage (`SiteSetting.homepage_page_id`). The auto-seed in
+    `app/__init__.py::_seed_homepage_page` guarantees this column is
+    populated on every install, so the legacy fallback (placeholder
+    page when no homepage is set) should never fire in practice — it
+    exists only to keep `/` 200-OK during the brief window before the
+    seed runs on a fresh install.
+
+    Reuses the same render pipeline as `page_detail` so the homepage
+    is just a Page like any other (toolbar, blocks_json, layout
+    presets, design-token vars, dynamic-bg picker, etc.). The Pages
+    admin's "Make Homepage" action repoints this column to any other
+    Page row.
+    """
+    import json as _json
+    from .models import Page
     site = _site()
     gate = _frontend_gate(site)
     if gate is not None:
         return gate
-    # Preview a handful of the soonest-starting meetings for the homepage.
-    meetings = (Meeting.query
-                .filter(Meeting.archived_at.is_(None))
-                .order_by(Meeting.name)
-                .limit(6).all())
-    from .models import FrontendHeroButton
-    hero_buttons = FrontendHeroButton.query.order_by(FrontendHeroButton.position).all()
-    ctx = _frontend_context(site)
-    return render_template("frontend/index.html", meetings=meetings,
-                           hero_buttons=hero_buttons, **ctx)
+    page_id = site.homepage_page_id if site else None
+    page = Page.query.get(page_id) if page_id else None
+    if page is None:
+        # No homepage configured (the seed hasn't run yet, the admin
+        # cleared the column, or the page got hard-deleted before the
+        # SET NULL FK could engage). Render a minimal placeholder so
+        # the public root still serves something — the admin sees a
+        # "no homepage" banner and is directed at the Pages admin.
+        return render_template("frontend/page.html",
+                               page=None, sections=[],
+                               toc_items=[], has_lottie=False,
+                               pp_meetings_groups_by_id={},
+                               pp_events_list_by_id={},
+                               homepage_missing=True,
+                               **_frontend_context(site))
+    sections = []
+    if page.blocks_json:
+        try:
+            sections = _json.loads(page.blocks_json)
+        except (ValueError, TypeError):
+            sections = []
+    toc_items = _collect_page_headings(sections)
+    has_lottie = _sections_have_block_type(sections, "lottie")
+    # Same per-block data hydration as `page_detail` — keeps the meetings
+    # / events / library blocks fully functional on the homepage.
+    from .blocks import filtered_meetings, filtered_events
+    pp_meetings_groups_by_id = {}
+    pp_events_list_by_id = {}
+
+    def _hydrate(blocks):
+        for b in (blocks or []):
+            if not isinstance(b, dict):
+                continue
+            bid = b.get("id") or ""
+            t = b.get("type")
+            d = b.get("data") or {}
+            if t == "meetings" and bid:
+                pp_meetings_groups_by_id[bid] = filtered_meetings(d)
+            elif t == "events" and bid:
+                pp_events_list_by_id[bid] = filtered_events(d, site=site)
+            elif t == "container":
+                _hydrate((d or {}).get("blocks") or [])
+    for _sec in (sections or []):
+        if isinstance(_sec, dict):
+            _hydrate(_sec.get("blocks") or [])
+    return render_template("frontend/page.html", page=page,
+                           sections=sections, toc_items=toc_items,
+                           has_lottie=has_lottie,
+                           pp_meetings_groups_by_id=pp_meetings_groups_by_id,
+                           pp_events_list_by_id=pp_events_list_by_id,
+                           **_frontend_context(site))
 
 
 @bp.route("/meetings/<slug>")
@@ -1087,6 +1314,7 @@ def meeting_resource(slug, resource):
 
 
 @bp.route("/meetings")
+@public_section("Meetings")
 def meetings_list():
     """Public list of every active meeting, all info inline. The chosen
     layout (sidebar / directory / weekboard, picked on the admin's
@@ -1245,6 +1473,7 @@ def meetings_list():
 
 
 @bp.route("/hyperlist")
+@public_section("Hyperlist")
 def hyperlist():
     """Accessibility-first plain-HTML index of every active meeting.
 
@@ -1309,6 +1538,8 @@ def hyperlist():
 
 
 @bp.route("/submissionform")
+@public_section("Submit an event or announcement",
+                gate=lambda s: bool(getattr(s, "submission_form_enabled", True)))
 def submission_form():
     """Standalone submission form. Visitors fill out the form to submit
     an event or announcement for admin review. Same form body the
@@ -1587,6 +1818,7 @@ def submission_submit():
 
 @bp.route("/printlist")
 @bp.route("/printlist.pdf", endpoint="printlist_pdf")
+@public_section("Print list")
 def printlist():
     """Branded, print-optimized meeting schedule.
 
@@ -1676,6 +1908,7 @@ def printlist():
 
 
 @bp.route("/library")
+@public_section("Library")
 def literature_library():
     """Public Literature Library page.
 
@@ -1769,7 +2002,171 @@ def literature_library():
                            **ctx)
 
 
+@bp.route("/fellowships")
+@public_section("Fellowships",
+                gate=lambda s: bool(getattr(s, "frontend_fellowships_enabled", False)))
+def fellowships_list():
+    """Public Fellowships Index page.
+
+    Renders the admin-curated list of peer recovery fellowships (Crystal
+    Meth Anonymous, AA, NA, OA, etc.) the admin manages from Settings →
+    Global. Each row carries a name, a Virtual / Regional flag, an
+    optional country + state/region, and the fellowship's website URL.
+    Page chrome mirrors /archive + /library: a sticky sidebar rail with
+    live search, virtual/regional toggle checkboxes, per-country filter
+    pills, and a sort selector; the main column groups cards under
+    country headings (Virtual gets its own bucket) and renders each
+    fellowship as a card with the website CTA.
+
+    The 404 gate honours ``frontend_fellowships_enabled`` so the page
+    behaves like every other admin-controlled public surface — toggling
+    it off in the admin Templates panel hides the route, /siteindex
+    entry, and search index entries in lockstep.
+    """
+    site = _site()
+    gate = _frontend_gate(site)
+    if gate is not None:
+        return gate
+    if not site or not getattr(site, "frontend_fellowships_enabled", False):
+        abort(404)
+    ctx = _frontend_context(site)
+
+    from datetime import datetime
+    from .models import Fellowship
+    rows = (Fellowship.query
+            .order_by(Fellowship.sort_order, Fellowship.id)
+            .all())
+
+    # Pre-compute the country buckets (one bucket per country observed
+    # in the data, plus a "Virtual" bucket for is_virtual rows). The
+    # default sort order chosen by the admin decides which bucket
+    # heading reads first; the sidebar's sort selector lets visitors
+    # re-order on the fly via JS without re-querying the server.
+    sort_mode = (site.frontend_fellowships_list_sort_mode if site else None) or "name-asc"
+    if sort_mode not in ("name-asc", "name-desc", "country-asc",
+                         "newest", "oldest"):
+        sort_mode = "name-asc"
+
+    # Map each fellowship to a {country -> bucket} structure for the
+    # initial server-rendered layout. Virtual fellowships go under a
+    # synthetic "Virtual" bucket so the sidebar's country pills and
+    # the main column's section headings stay in sync.
+    from collections import OrderedDict
+    country_buckets_map = OrderedDict()
+
+    def _country_label(f):
+        if f.is_virtual:
+            return "Virtual"
+        return (f.country or "").strip() or "Other"
+
+    # First-pass: collect rows sorted by initial sort.
+    if sort_mode == "name-asc":
+        rows.sort(key=lambda f: (f.name or "").lower())
+    elif sort_mode == "name-desc":
+        rows.sort(key=lambda f: (f.name or "").lower(), reverse=True)
+    elif sort_mode == "country-asc":
+        rows.sort(key=lambda f: (
+            1 if f.is_virtual else 0,  # virtual to the end of country sort
+            ((f.country or "").lower()),
+            ((f.state_region or "").lower()),
+            (f.name or "").lower(),
+        ))
+    elif sort_mode == "newest":
+        rows.sort(key=lambda f: (f.created_at or datetime.min), reverse=True)
+    elif sort_mode == "oldest":
+        rows.sort(key=lambda f: (f.created_at or datetime.min))
+
+    for f in rows:
+        label = _country_label(f)
+        country_buckets_map.setdefault(label, []).append(f)
+
+    country_buckets = [{"country": k, "items": v}
+                       for k, v in country_buckets_map.items()]
+
+    # Per-row search blob — punctuation-stripped lowercase fragments
+    # covering name, country, state/region, and URL host so a query
+    # for "ireland" hits any Irish fellowship row and a query for
+    # "anonymous" matches every Anonymous fellowship's name. Same
+    # regex shape as every other client-side search blob on the site.
+    import re as _re_search
+    _PUNCT_STRIP_RE = _re_search.compile(r"[‘’'?!.,;\"“”()\[\]{}]")
+
+    def _row_blob(f):
+        bits = [
+            (f.name or "").lower(),
+            (f.country or "").lower(),
+            (f.state_region or "").lower(),
+            "virtual online" if f.is_virtual else "regional",
+        ]
+        if f.url:
+            bits.append(f.url.lower())
+        return _PUNCT_STRIP_RE.sub("", " ".join(b for b in bits if b))
+
+    search_blobs = {f.id: _row_blob(f) for f in rows}
+
+    tpl = _template_meta(FELLOWSHIPS_LIST_TEMPLATES,
+                         (site.frontend_fellowships_list_template if site else None) or "sidebar")
+    _tpl_settings = template_settings(site, "fellowships_list", tpl["key"])
+    tpl_style = template_css_vars(_tpl_settings)
+    tpl_dynbg_key = _tpl_settings.get("bg_dynamic_key") \
+        or (site.frontend_fellowships_list_bg_dynamic_key if site else None)
+    tpl_dynbg_config = {
+        "overlay": _tpl_settings.get("bg_dynbg_overlay"),
+        "colors": _tpl_settings.get("bg_dynbg_colors") or [],
+        "overlay_scope": _tpl_settings.get("bg_dynbg_overlay_scope"),
+        "overlay_size": _tpl_settings.get("bg_dynbg_overlay_size"),
+        "overlay_intensity": _tpl_settings.get("bg_dynbg_overlay_intensity"),
+        "randomize_colors": _tpl_settings.get("bg_dynbg_randomize_colors", False),
+        "randomize_positions": _tpl_settings.get("bg_dynbg_randomize_positions", False),
+        "animate": _tpl_settings.get("bg_dynbg_animate", True),
+    }
+
+    width_mode = (site.frontend_fellowships_list_width_mode if site else None) or "boxed"
+    if width_mode not in ("boxed", "full"):
+        width_mode = "boxed"
+    try:
+        max_width = int(site.frontend_fellowships_list_max_width) if site else 1160
+    except (TypeError, ValueError):
+        max_width = 1160
+    max_width = max(640, min(2400, max_width))
+    try:
+        pad_pct = int(site.frontend_fellowships_list_padding_pct) if site else 5
+    except (TypeError, ValueError):
+        pad_pct = 5
+    pad_pct = max(0, min(20, pad_pct))
+
+    heading = (site.frontend_fellowships_list_heading if site else None) or "Fellowships"
+    subheading = (site.frontend_fellowships_list_subheading if site else None) \
+        or "Sister recovery fellowships, with links to their own pages."
+
+    # Total counts for the rail (per-pill counts come straight off the
+    # bucket lists). `virtual_count` and `regional_count` drive the
+    # type-toggle checkbox labels in the rail.
+    virtual_count = sum(1 for f in rows if f.is_virtual)
+    regional_count = len(rows) - virtual_count
+
+    return render_template("frontend/fellowships_list.html",
+                           fellowships=rows,
+                           country_buckets=country_buckets,
+                           search_blobs=search_blobs,
+                           sort_mode=sort_mode,
+                           heading=heading,
+                           subheading=subheading,
+                           list_partial=tpl["partial"],
+                           list_template_key=tpl["key"],
+                           list_width_mode=width_mode,
+                           list_max_width=max_width,
+                           list_padding_pct=pad_pct,
+                           tpl_style=tpl_style,
+                           tpl_dynbg_key=tpl_dynbg_key,
+                           tpl_dynbg_config=tpl_dynbg_config,
+                           virtual_count=virtual_count,
+                           regional_count=regional_count,
+                           **ctx)
+
+
 @bp.route("/events")
+@public_section("Events", gate=lambda s: bool(getattr(s, "posts_enabled", True)))
 def events_list():
     """Public list of every upcoming event. Linked from the homepage
     Upcoming Events block via the "See all events" CTA. Uses the same
@@ -1814,6 +2211,7 @@ def events_list():
 
 
 @bp.route("/archive")
+@public_section("Archive", gate=lambda s: bool(getattr(s, "posts_enabled", True)))
 def archive():
     """Unified public archive of past announcements + events. The rail
     has a search input, type checkboxes (Events / Announcements), and
@@ -1871,13 +2269,19 @@ def archive():
             "year": p.event_starts_at.year,
         })
     for p in ann_rows:
-        if not p.created_at:
+        # Prefer the admin-set / WP-imported publish timestamp so
+        # backdated + bulk-imported posts bucket under the year they
+        # were originally published, not the year the row was inserted.
+        # Falls back to created_at when published_at is NULL so legacy
+        # rows still surface a date.
+        ts = p.published_at or p.created_at
+        if not ts:
             continue
         items.append({
             "kind": "announcement",
             "post": p,
-            "sort_at": p.created_at,
-            "year": p.created_at.year,
+            "sort_at": ts,
+            "year": ts.year,
         })
     items.sort(key=lambda x: x["sort_at"], reverse=True)
 
@@ -1944,7 +2348,31 @@ def archive():
         pad_pct = 5
     pad_pct = max(0, min(20, pad_pct))
 
+    # Pagination strategy + initial page size. Two modes:
+    #   - 'infinite' (default): reveal page_size cards on load, JS shows
+    #     another page_size each time the visitor scrolls to the end.
+    #   - 'numbered': page_size at a time with numbered page links at
+    #     the bottom of the results column.
+    # The work happens client-side so the existing search / year /
+    # type filters can keep adjusting the visible set live without a
+    # round-trip.
+    pagination_mode = (site.frontend_archive_pagination_mode if site else None) or "infinite"
+    if pagination_mode not in ("infinite", "numbered"):
+        pagination_mode = "infinite"
+    try:
+        page_size = int(site.frontend_archive_page_size) if site else 20
+    except (TypeError, ValueError):
+        page_size = 20
+    page_size = max(1, min(200, page_size))
+
+    # Pick the layout partial. Falls back to the catalog's first entry
+    # (year-sidebar) when a stored key was removed from ARCHIVE_TEMPLATES.
+    tpl = _template_meta(ARCHIVE_TEMPLATES,
+                         (site.frontend_archive_template if site else None) or "year-sidebar")
+
     return render_template("frontend/archive.html",
+                           list_partial=tpl["partial"],
+                           list_template_key=tpl["key"],
                            list_width_mode=width_mode,
                            list_max_width=max_width,
                            list_padding_pct=pad_pct,
@@ -1952,6 +2380,8 @@ def archive():
                            year_buckets=year_buckets,
                            search_blobs=blobs,
                            archive_counts=counts,
+                           archive_pagination_mode=pagination_mode,
+                           archive_page_size=page_size,
                            **ctx)
 
 
@@ -2027,6 +2457,7 @@ def archive_detail(slug):
 
 
 @bp.route("/announcements")
+@public_section("Announcements", gate=lambda s: bool(getattr(s, "posts_enabled", True)))
 def announcements_list():
     """Public list of every active announcement. Layout is picked from
     ANNOUNCEMENTS_LIST_TEMPLATES via the admin Templates panel — currently
@@ -2087,6 +2518,7 @@ def announcements_archive():
 
 
 @bp.route("/stories")
+@public_section("Stories", gate=lambda s: bool(getattr(s, "stories_enabled", False)))
 def stories_list():
     """Public list of every published recovery story. Layout selected
     via SiteSetting.frontend_stories_list_template; defaults to the
@@ -2185,22 +2617,253 @@ def story_detail(slug):
                          or _tpl_settings.get("bg_dynbg_overlay"))
     tpl_dynbg_colors = (_story_cfg["colors"]
                         or _tpl_settings.get("bg_dynbg_colors") or [])
+    # Full per-template dynbg config — carries every dimension the
+    # apply-partial / story templates read (overlay scope + size +
+    # intensity, randomize flags, animate state) so the noise / motion
+    # knobs the admin saved on the flat picker actually take effect on
+    # the public render. Flat SiteSetting JSON wins; falls through to
+    # the per-template-settings leaf keys for anything not set.
+    tpl_dynbg_config = {
+        "overlay": tpl_dynbg_overlay,
+        "colors": tpl_dynbg_colors,
+        "overlay_scope": (_story_cfg["overlay_scope"]
+                          or _tpl_settings.get("bg_dynbg_overlay_scope")),
+        "overlay_size": (_story_cfg["overlay_size"]
+                         if _story_cfg["overlay_size"] is not None
+                         else _tpl_settings.get("bg_dynbg_overlay_size")),
+        "overlay_intensity": (_story_cfg["overlay_intensity"]
+                              if _story_cfg["overlay_intensity"] is not None
+                              else _tpl_settings.get("bg_dynbg_overlay_intensity")),
+        "randomize_colors": (_story_cfg["randomize_colors"]
+                             or _tpl_settings.get("bg_dynbg_randomize_colors", False)),
+        "randomize_positions": (_story_cfg["randomize_positions"]
+                                or _tpl_settings.get("bg_dynbg_randomize_positions", False)),
+        "animate": (_tpl_settings.get("bg_dynbg_animate", True)
+                    if _story_cfg["animate"] is True
+                    else _story_cfg["animate"]),
+    }
     return render_template(tpl["partial"], story=story, tpl_style=tpl_style, tpl_dynbg_key=tpl_dynbg_key, tpl_dynbg_overlay=tpl_dynbg_overlay, tpl_dynbg_colors=tpl_dynbg_colors, tpl_dynbg_config=tpl_dynbg_config, **ctx)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Blog — long-form editorial posts. The same data table can serve many
+# distinct frontend "blogs" by filtering on category or tag (driven by
+# the page-block when embedded in a custom Page; via ?category=<slug>
+# or ?tag=<slug> on /blog itself for the canonical list view).
+# ─────────────────────────────────────────────────────────────────────
+def _blog_visible_query():
+    """Base BlogPost query for public consumption — drafts and archived
+    rows are filtered out, pinned posts surface first, then by
+    published_at descending."""
+    return (BlogPost.query
+            .filter(BlogPost.is_archived.is_(False),
+                    BlogPost.is_draft.is_(False))
+            .order_by(BlogPost.is_pinned.desc(),
+                      BlogPost.published_at.desc().nulls_last(),
+                      BlogPost.created_at.desc()))
+
+
+@bp.route("/blog")
+@public_section("Blog", gate=lambda s: bool(getattr(s, "blog_enabled", False)))
+def blog_list():
+    """Public list of every published blog post. Layout selected via
+    SiteSetting.frontend_blog_list_template; defaults to magazine.
+    Optional ?category=<slug> / ?tag=<slug> scopes the list — the
+    matching category / tag is also passed in so the active-filter UI
+    can reflect the choice."""
+    site = _site()
+    gate = _frontend_gate(site)
+    if gate is not None:
+        return gate
+    if not site or not getattr(site, "blog_enabled", False):
+        abort(404)
+    ctx = _frontend_context(site)
+
+    cat_slug = (request.args.get("category") or "").strip()
+    tag_slug = (request.args.get("tag") or "").strip()
+    active_category = BlogCategory.query.filter_by(slug=cat_slug).first() if cat_slug else None
+    active_tag = BlogTag.query.filter_by(slug=tag_slug).first() if tag_slug else None
+
+    q = _blog_visible_query()
+    if active_category:
+        q = q.filter(BlogPost.categories.any(BlogCategory.id == active_category.id))
+    if active_tag:
+        q = q.filter(BlogPost.tags.any(BlogTag.id == active_tag.id))
+    rows = q.all()
+
+    all_categories = (BlogCategory.query
+                      .order_by(BlogCategory.position, BlogCategory.name).all())
+    all_tags = BlogTag.query.order_by(BlogTag.name).all()
+
+    tpl = _template_meta(BLOG_LIST_TEMPLATES,
+                         (site.frontend_blog_list_template if site else None) or "magazine")
+    width_mode = (site.frontend_blog_list_width_mode if site else None) or "boxed"
+    if width_mode not in ("boxed", "full"):
+        width_mode = "boxed"
+    try:
+        max_width = int(site.frontend_blog_list_max_width) if site else 1160
+    except (TypeError, ValueError):
+        max_width = 1160
+    max_width = max(640, min(2400, max_width))
+    try:
+        pad_pct = int(site.frontend_blog_list_padding_pct) if site else 5
+    except (TypeError, ValueError):
+        pad_pct = 5
+    pad_pct = max(0, min(20, pad_pct))
+    list_heading = (site.frontend_blog_list_heading if site else None) or ""
+    list_subheading = (site.frontend_blog_list_subheading if site else None) or ""
+    return render_template("frontend/blog_list.html",
+                           list_partial=tpl["partial"],
+                           list_template_key=tpl["key"],
+                           list_width_mode=width_mode,
+                           list_max_width=max_width,
+                           list_padding_pct=pad_pct,
+                           list_heading=list_heading,
+                           list_subheading=list_subheading,
+                           all_posts=rows,
+                           all_categories=all_categories,
+                           all_tags=all_tags,
+                           active_category=active_category,
+                           active_tag=active_tag,
+                           **ctx)
+
+
+@bp.route("/blog/<slug>")
+def blog_post_detail(slug):
+    """Public blog post detail. The slug is the post title with non-
+    alphanumerics collapsed to hyphens (or the explicit slug an editor
+    set on the admin form). Drafts + archives are not viewable. Old
+    slugs 301-redirect to the current one via EntitySlugHistory.
+
+    Reserves the slugs ``category`` and ``tag`` so /blog/category/<slug>
+    and /blog/tag/<slug> can serve filtered list views without
+    colliding with a post that happened to be slugged "category"."""
+    if slug in ("category", "tag"):
+        abort(404)
+    site = _site()
+    gate = _frontend_gate(site)
+    if gate is not None:
+        return gate
+    if not site or not getattr(site, "blog_enabled", False):
+        abort(404)
+    candidates = _blog_visible_query().all()
+    post = next((p for p in candidates if p.public_slug == slug), None)
+    if post is None:
+        from .models import EntitySlugHistory
+        hist = (EntitySlugHistory.query
+                .filter_by(entity_type="blog", old_slug=slug)
+                .order_by(EntitySlugHistory.changed_at.desc())
+                .first())
+        if hist:
+            target = next((p for p in candidates if p.id == hist.entity_id), None)
+            if target:
+                return redirect(url_for("frontend.blog_post_detail", slug=target.public_slug), code=301)
+        abort(404)
+    ctx = _frontend_context(site)
+    tpl = _template_meta(BLOG_POST_TEMPLATES,
+                         (site.frontend_blog_post_template if site else None) or "modern")
+    _tpl_settings = template_settings(site, "blog_post", tpl["key"])
+    tpl_style = template_css_vars(_tpl_settings)
+    tpl_dynbg_key = (getattr(site, "frontend_blog_post_bg_dynamic_key", None)
+                     or _tpl_settings.get("bg_dynamic_key"))
+    from . import dynbg as _dynbg
+    _post_cfg = _dynbg.decode_config(
+        getattr(site, "frontend_blog_post_bg_dynbg_config_json", None))
+    tpl_dynbg_overlay = (_post_cfg["overlay"]
+                         or _tpl_settings.get("bg_dynbg_overlay"))
+    tpl_dynbg_colors = (_post_cfg["colors"]
+                        or _tpl_settings.get("bg_dynbg_colors") or [])
+    tpl_dynbg_config = {
+        "overlay": tpl_dynbg_overlay,
+        "colors": tpl_dynbg_colors,
+        "overlay_scope": _tpl_settings.get("bg_dynbg_overlay_scope"),
+        "overlay_size": _tpl_settings.get("bg_dynbg_overlay_size"),
+        "overlay_intensity": _tpl_settings.get("bg_dynbg_overlay_intensity"),
+        "randomize_colors": _tpl_settings.get("bg_dynbg_randomize_colors", False),
+        "randomize_positions": _tpl_settings.get("bg_dynbg_randomize_positions", False),
+        "animate": _tpl_settings.get("bg_dynbg_animate", True),
+    }
+
+    # Up to four related posts: prefer ones sharing a category, then
+    # any other recent posts. Excludes the post itself + drafts +
+    # archives; pinned posts can show up in related too.
+    related = []
+    if post.categories:
+        cat_ids = [c.id for c in post.categories]
+        related = (_blog_visible_query()
+                   .filter(BlogPost.id != post.id)
+                   .filter(BlogPost.categories.any(BlogCategory.id.in_(cat_ids)))
+                   .limit(4).all())
+    if len(related) < 4:
+        existing_ids = {r.id for r in related} | {post.id}
+        more = (_blog_visible_query()
+                .filter(~BlogPost.id.in_(existing_ids))
+                .limit(4 - len(related)).all())
+        related = related + more
+    all_categories = (BlogCategory.query
+                      .order_by(BlogCategory.position, BlogCategory.name).all())
+    return render_template(tpl["partial"], post=post,
+                           tpl_style=tpl_style,
+                           tpl_dynbg_key=tpl_dynbg_key,
+                           tpl_dynbg_overlay=tpl_dynbg_overlay,
+                           tpl_dynbg_colors=tpl_dynbg_colors,
+                           tpl_dynbg_config=tpl_dynbg_config,
+                           related=related,
+                           all_categories=all_categories,
+                           **ctx)
+
+
+@bp.route("/blog/category/<slug>")
+def blog_category_view(slug):
+    """Pretty-URL alternative to /blog?category=<slug>. 302s into the
+    canonical list view so existing list templates don't have to
+    duplicate logic — the active filter, header, and meta all flow
+    through one route."""
+    return redirect(url_for("frontend.blog_list", category=slug))
+
+
+@bp.route("/blog/tag/<slug>")
+def blog_tag_view(slug):
+    """Pretty-URL alternative to /blog?tag=<slug>."""
+    return redirect(url_for("frontend.blog_list", tag=slug))
 
 
 @bp.route("/api/search-index")
 def api_search_index():
-    """JSON feed for the frontend-wide search modal: every active
-    meeting + upcoming event flattened into search-blob form. Cached
-    one-shot per page load on the client (modal fetches once on first
-    open)."""
-    from flask import jsonify
+    """JSON feed for the frontend-wide search modal: every public
+    surface the site exposes (meetings, events, announcements, archive,
+    stories, blog posts, libraries, pages, sections) flattened into
+    search-blob form by the registered sources in ``app/search.py``.
+    Cached one-shot per page load on the client (modal fetches once on
+    first open).
+
+    Response is gzip-compressed when the client's ``Accept-Encoding``
+    advertises gzip — every modern browser does, so the payload lands
+    at roughly a fifth of its raw size on the wire. The handler
+    short-circuits to plain JSON when gzip isn't accepted so curl /
+    older clients still work.
+    """
+    from flask import jsonify, make_response
+    import gzip
     from .search import build_search_index
     site = _site()
     gate = _frontend_gate(site)
     if gate is not None:
         return gate
-    return jsonify({"items": build_search_index(site)})
+    payload = jsonify({"items": build_search_index(site)})
+    accept_enc = (request.headers.get("Accept-Encoding") or "").lower()
+    if "gzip" not in accept_enc:
+        return payload
+    body = gzip.compress(payload.get_data(), compresslevel=6)
+    resp = make_response(body)
+    resp.headers["Content-Encoding"] = "gzip"
+    resp.headers["Content-Type"] = "application/json"
+    resp.headers["Content-Length"] = str(len(body))
+    # Tell caches (browser, future CDN) that the response varies by
+    # Accept-Encoding so an identity-cached copy is never served to a
+    # gzip-asking client (and vice versa).
+    resp.headers["Vary"] = "Accept-Encoding"
+    return resp
 
 
 @bp.route("/event/<slug>")
@@ -2374,6 +3037,7 @@ def announcement_detail(slug):
 
 
 @bp.route("/contact")
+@public_section("Contact us", gate=lambda s: bool(getattr(s, "contact_form_enabled", False)))
 def contact():
     """Public contact-us page. Honors the ``contact_form_enabled``
     SiteSetting toggle: when off the page returns 404 (matches every
@@ -2641,27 +3305,33 @@ def _site_index_groups(site):
     from .models import Page, Meeting, Post, Story, Library, LibraryItem
     groups = []
 
-    # Sections — top-level template pages that index a content type
-    # (e.g. /meetings, /events, /library). These read as the public
-    # site's primary navigation, so they sit ahead of every other
-    # group. Each surface is gated by the same feature toggle the
-    # public route uses, so the index never advertises a 404.
+    # Sections — top-level template pages that make up the public
+    # site's primary navigation (Home, Meetings, Hyperlist, Events,
+    # Archive, Announcements, Stories, Blog, Library, Print list,
+    # Submit, Contact). Discovered automatically from the
+    # ``@public_section`` decorator on each route, so any new top-level
+    # page registers here just by carrying the decorator. Each entry
+    # is gated by the same predicate the route enforces, so the index
+    # never advertises a page that would 404.
     if getattr(site, "frontend_site_index_show_pages", True):
-        sections = [
-            ("Home", url_for("frontend.index"), "/", True),
-            ("Meetings", url_for("frontend.meetings_list"), "/meetings", True),
-            ("Events", url_for("frontend.events_list"), "/events",
-             getattr(site, "posts_enabled", True)),
-            ("Announcements", url_for("frontend.announcements_list"),
-             "/announcements", getattr(site, "posts_enabled", True)),
-            ("Stories", url_for("frontend.stories_list"), "/stories",
-             getattr(site, "stories_enabled", False)),
-            ("Library", url_for("frontend.literature_library"), "/library", True),
-            ("Print list", url_for("frontend.printlist"), "/printlist", True),
-        ]
-        items = [{"title": title, "url": url_, "kind": "section",
-                  "subtitle": sub, "date": None}
-                 for title, url_, sub, on in sections if on]
+        items = []
+        seen_endpoints = set()
+        for entry in _PUBLIC_SECTIONS:
+            if entry["endpoint"] in seen_endpoints:
+                continue
+            seen_endpoints.add(entry["endpoint"])
+            try:
+                if not entry["gate"](site):
+                    continue
+                url_ = url_for(entry["endpoint"])
+            except Exception:
+                # A registered endpoint that can't currently build
+                # (missing args, removed route) is silently skipped
+                # rather than 500ing the whole index.
+                continue
+            items.append({"title": entry["title"], "url": url_,
+                          "kind": "section", "subtitle": url_,
+                          "date": None})
         items.sort(key=lambda i: (i["title"] or "").lower())
         if items:
             groups.append({"kind": "section", "label": "Sections", "items": items})
@@ -2679,18 +3349,6 @@ def _site_index_groups(site):
                 "subtitle": "/" + p.slug,
                 "date": p.updated_at,
             })
-        # Plus the well-known special pages that are part of the public
-        # site when their feature toggles are on. These render through
-        # dedicated routes (not /<slug>) but still belong in a sitemap.
-        specials = []
-        if getattr(site, "submission_form_enabled", True):
-            specials.append(("Submit an event or announcement",
-                              url_for("frontend.submission_form"), "/submissionform"))
-        if getattr(site, "contact_form_enabled", False):
-            specials.append(("Contact us", url_for("frontend.contact"), "/contact"))
-        for title, url_, sub in specials:
-            items.append({"title": title, "url": url_, "kind": "page",
-                          "subtitle": sub, "date": None})
         items.sort(key=lambda i: (i["title"] or "").lower())
         if items:
             groups.append({"kind": "page", "label": "Pages", "items": items})
@@ -2825,10 +3483,40 @@ def page_detail(slug):
             sections = []
     toc_items = _collect_page_headings(sections)
     has_lottie = _sections_have_block_type(sections, "lottie")
+
+    # Pre-fetch data-driven block payloads per instance. Same shape the
+    # homepage uses (block id → groups / rows), so `frontend/page.html`
+    # can include the homepage section partials directly. Computed
+    # once per request, even when the same block type appears multiple
+    # times on the page — each instance gets its own filter applied.
+    from .blocks import filtered_meetings, filtered_events
+    pp_meetings_groups_by_id = {}
+    pp_events_list_by_id = {}
+
+    def _hydrate(blocks):
+        for b in (blocks or []):
+            if not isinstance(b, dict):
+                continue
+            bid = b.get("id") or ""
+            t = b.get("type")
+            d = b.get("data") or {}
+            if t == "meetings" and bid:
+                pp_meetings_groups_by_id[bid] = filtered_meetings(d)
+            elif t == "events" and bid:
+                pp_events_list_by_id[bid] = filtered_events(d, site=site)
+            elif t == "container":
+                _hydrate((d or {}).get("blocks") or [])
+    for _sec in (sections or []):
+        if isinstance(_sec, dict):
+            _hydrate(_sec.get("blocks") or [])
+
     ctx = _frontend_context(site)
     return render_template("frontend/page.html", page=page,
                            sections=sections, toc_items=toc_items,
-                           has_lottie=has_lottie, **ctx)
+                           has_lottie=has_lottie,
+                           pp_meetings_groups_by_id=pp_meetings_groups_by_id,
+                           pp_events_list_by_id=pp_events_list_by_id,
+                           **ctx)
 
 
 def _sections_have_block_type(sections, block_type):

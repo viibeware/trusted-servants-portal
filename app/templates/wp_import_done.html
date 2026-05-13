@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Import complete · WordPress Importer{% endblock %}
 {% block heading %}Import complete{% endblock %}
-{% block heading_help %}{{ result.counts.stories + result.counts.announcements + result.counts.events }} row{% if (result.counts.stories + result.counts.announcements + result.counts.events) != 1 %}s{% endif %} created from your {{ 'WordPress site' if source == 'rest' else 'CSV upload' }}.{% endblock %}
+{% set _total = result.counts.stories + result.counts.announcements + result.counts.events + result.counts.blog %}
+{% block heading_help %}{{ _total }} row{% if _total != 1 %}s{% endif %} created from your {{ 'WordPress site' if source == 'rest' else 'CSV upload' }}.{% endblock %}
 {% block content %}
 <div class="wp-wizard-header">
   <div class="wp-actionbar">
@@ -45,6 +46,12 @@
       <div class="wp-count-label">Event{% if c.events != 1 %}s{% endif %}</div>
     </a>
     {% endif %}
+    {% if c.blog %}
+    <a class="wp-count wp-count-blog" href="{{ url_for('main.blog_index') }}">
+      <div class="wp-count-num">{{ c.blog }}</div>
+      <div class="wp-count-label">Blog post{% if c.blog != 1 %}s{% endif %}</div>
+    </a>
+    {% endif %}
     {% if c.skipped %}
     <div class="wp-count wp-count-skipped">
       <div class="wp-count-num">{{ c.skipped }}</div>
@@ -57,13 +64,68 @@
       <div class="wp-count-label">Slug renamed</div>
     </div>
     {% endif %}
+    {% if c.archived %}
+    <div class="wp-count wp-count-archived">
+      <div class="wp-count-num">{{ c.archived }}</div>
+      <div class="wp-count-label">Archived</div>
+    </div>
+    {% endif %}
+    {% if c.drafts %}
+    <div class="wp-count wp-count-drafts">
+      <div class="wp-count-num">{{ c.drafts }}</div>
+      <div class="wp-count-label">Draft{% if c.drafts != 1 %}s{% endif %}</div>
+    </div>
+    {% endif %}
     {% if c.image_failed %}
     <div class="wp-count wp-count-warning">
       <div class="wp-count-num">{{ c.image_failed }}</div>
       <div class="wp-count-label">Image failed</div>
     </div>
     {% endif %}
+    {% if c.inline_images_downloaded %}
+    <div class="wp-count wp-count-images">
+      <div class="wp-count-num">{{ c.inline_images_downloaded }}</div>
+      <div class="wp-count-label">Inline image{% if c.inline_images_downloaded != 1 %}s{% endif %}</div>
+    </div>
+    {% endif %}
+    {% if c.inline_images_failed %}
+    <div class="wp-count wp-count-warning">
+      <div class="wp-count-num">{{ c.inline_images_failed }}</div>
+      <div class="wp-count-label">Inline failed</div>
+    </div>
+    {% endif %}
+    {% if c.acf_fields_applied %}
+    <div class="wp-count wp-count-acf"
+         title="ACF custom fields auto-mapped onto event/announcement columns">
+      <div class="wp-count-num">{{ c.acf_fields_applied }}</div>
+      <div class="wp-count-label">ACF field{% if c.acf_fields_applied != 1 %}s{% endif %}
+        {% if c.acf_rows_enriched %}<small style="display:block; opacity:.7;">across {{ c.acf_rows_enriched }} post{% if c.acf_rows_enriched != 1 %}s{% endif %}</small>{% endif %}
+      </div>
+    </div>
+    {% endif %}
   </div>
+  {% if c.blog %}
+  <div class="wp-blog-tax-summary">
+    <div class="wp-blog-tax-row">
+      <span class="wp-blog-tax-label">Categories</span>
+      <span class="wp-blog-tax-value">
+        <b>{{ c.blog_categories_matched }}</b> matched · <b>{{ c.blog_categories_created }}</b> created
+        {% if c.blog_categories_created %}
+        — <a href="{{ url_for('main.blog_categories') }}">manage categories →</a>
+        {% endif %}
+      </span>
+    </div>
+    <div class="wp-blog-tax-row">
+      <span class="wp-blog-tax-label">Tags</span>
+      <span class="wp-blog-tax-value">
+        <b>{{ c.blog_tags_matched }}</b> matched · <b>{{ c.blog_tags_created }}</b> created
+        {% if c.blog_tags_created %}
+        — <a href="{{ url_for('main.blog_tags') }}">manage tags →</a>
+        {% endif %}
+      </span>
+    </div>
+  </div>
+  {% endif %}
 </section>
 
 {% if result.warnings %}
@@ -102,6 +164,8 @@
               <a class="btn btn-sm" href="{{ url_for('main.story_edit', sid=r.id) }}">Edit →</a>
             {% elif r.target in ('announcements', 'events') and r.id %}
               <a class="btn btn-sm" href="{{ url_for('main.post_edit', pid=r.id) }}">Edit →</a>
+            {% elif r.target == 'blog' and r.id %}
+              <a class="btn btn-sm" href="{{ url_for('main.blog_edit', bid=r.id) }}">Edit →</a>
             {% endif %}
           </td>
         </tr>
@@ -122,7 +186,7 @@
   .wp-count {
     border-radius: 12px;
     padding: 1rem 1.1rem;
-    background: var(--surface-alt, rgba(0,0,0,.04));
+    background: var(--panel-2, rgba(0,0,0,.04));
     border: 1px solid var(--border, rgba(0,0,0,.08));
     text-align: center;
     color: inherit;
@@ -138,18 +202,41 @@
   }
   .wp-count-label {
     font-size: .85rem; margin-top: .35rem;
-    color: var(--text-soft, rgba(0,0,0,.6)); letter-spacing: .04em;
+    color: var(--muted, rgba(0,0,0,.6)); letter-spacing: .04em;
   }
   .wp-count-stories       { background: #fef3c7; border-color: #fcd34d; color: #78350f; }
   .wp-count-announcements { background: #dbeafe; border-color: #93c5fd; color: #1e3a8a; }
   .wp-count-events        { background: #dcfce7; border-color: #86efac; color: #166534; }
+  .wp-count-blog          { background: #fce7f3; border-color: #f9a8d4; color: #9d174d; }
   .wp-count-skipped       { background: #f3f4f6; border-color: #d1d5db; color: #4b5563; }
+  .wp-count-archived      { background: #f1f5f9; border-color: #94a3b8; color: #334155; }
+  .wp-count-drafts        { background: #fef3c7; border-color: #fcd34d; color: #78350f; }
+  .wp-count-images        { background: #ecfeff; border-color: #67e8f9; color: #155e75; }
   .wp-count-warning       { background: #fef3c7; border-color: #f59e0b; color: #78350f; }
+  .wp-count-acf           { background: #ede9fe; border-color: #c4b5fd; color: #5b21b6; }
   [data-theme="dark"] .wp-count-stories       { background: #4a3008; border-color: #b45309; color: #fde68a; }
   [data-theme="dark"] .wp-count-announcements { background: #14264e; border-color: #2563eb; color: #bfdbfe; }
   [data-theme="dark"] .wp-count-events        { background: #14391f; border-color: #15803d; color: #bbf7d0; }
+  [data-theme="dark"] .wp-count-blog          { background: #4a1e3a; border-color: #be185d; color: #fbcfe8; }
   [data-theme="dark"] .wp-count-skipped       { background: #2a2d34; border-color: #4b5563; color: #d1d5db; }
+  [data-theme="dark"] .wp-count-archived      { background: #1e293b; border-color: #475569; color: #cbd5e1; }
+  [data-theme="dark"] .wp-count-drafts        { background: #4a3008; border-color: #b45309; color: #fde68a; }
+  [data-theme="dark"] .wp-count-images        { background: #083344; border-color: #0e7490; color: #a5f3fc; }
   [data-theme="dark"] .wp-count-warning       { background: #4a3008; border-color: #b45309; color: #fde68a; }
+  [data-theme="dark"] .wp-count-acf           { background: #2e1065; border-color: #7c3aed; color: #ddd6fe; }
+
+  .wp-blog-tax-summary {
+    margin-top: 1rem; padding: .75rem 1rem;
+    background: var(--panel-2, rgba(0,0,0,.04));
+    border-radius: 8px; display: grid; gap: .35rem;
+  }
+  .wp-blog-tax-row { display: flex; flex-wrap: wrap; gap: .9rem; font-size: .9rem; }
+  .wp-blog-tax-label {
+    text-transform: uppercase; letter-spacing: .14em;
+    font-size: .68rem; font-weight: 700;
+    color: var(--muted, rgba(0,0,0,.6));
+    min-width: 88px;
+  }
 
   .wp-warn-card .card-head h2 { color: #b45309; }
   .wp-warn-list { margin: 0; padding-left: 1.25rem; line-height: 1.65; }
@@ -165,9 +252,11 @@
   .wp-target-pill--stories.is-active       { background: #fef3c7; color: #78350f; }
   .wp-target-pill--announcements.is-active { background: #dbeafe; color: #1e3a8a; }
   .wp-target-pill--events.is-active        { background: #dcfce7; color: #166534; }
+  .wp-target-pill--blog.is-active          { background: #fce7f3; color: #9d174d; }
   [data-theme="dark"] .wp-target-pill--stories.is-active       { background: #4a3008; color: #fde68a; }
   [data-theme="dark"] .wp-target-pill--announcements.is-active { background: #14264e; color: #bfdbfe; }
   [data-theme="dark"] .wp-target-pill--events.is-active        { background: #14391f; color: #bbf7d0; }
+  [data-theme="dark"] .wp-target-pill--blog.is-active          { background: #4a1e3a; color: #fbcfe8; }
 
 </style>
 {% if embed %}

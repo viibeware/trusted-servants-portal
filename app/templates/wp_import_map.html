@@ -2,12 +2,13 @@
 {% block title %}Map posts · WordPress Importer{% endblock %}
 {% block heading %}Review &amp; map{% endblock %}
 {% block heading_help %}
+{%- set _tag_count = (stash.tags|length) if stash.tags else 0 -%}
 {%- if stash.source == 'rest' -%}
-  Connected to <code>{{ stash.site_url }}</code>. Found {{ stash.posts|length }} post{% if stash.posts|length != 1 %}s{% endif %} across {{ stash.categories|length }} categor{% if stash.categories|length == 1 %}y{% else %}ies{% endif %}.
+  Connected to <code>{{ stash.site_url }}</code>. Found {{ stash.posts|length }} post{% if stash.posts|length != 1 %}s{% endif %} across {{ stash.categories|length }} categor{% if stash.categories|length == 1 %}y{% else %}ies{% endif %}{% if _tag_count %} and {{ _tag_count }} tag{% if _tag_count != 1 %}s{% endif %}{% endif %}.
 {%- else -%}
-  Parsed <code>{{ stash.filename }}</code> — {{ stash.posts|length }} row{% if stash.posts|length != 1 %}s{% endif %} across {{ stash.categories|length }} categor{% if stash.categories|length == 1 %}y{% else %}ies{% endif %}.
+  Parsed <code>{{ stash.filename }}</code> — {{ stash.posts|length }} row{% if stash.posts|length != 1 %}s{% endif %} across {{ stash.categories|length }} categor{% if stash.categories|length == 1 %}y{% else %}ies{% endif %}{% if _tag_count %} and {{ _tag_count }} tag{% if _tag_count != 1 %}s{% endif %}{% endif %}.
 {%- endif -%}
- Choose where each post lands. Skip anything you don't want.
+ Choose where each post lands. Skip anything you don't want. Posts routed to <b>Blog</b> bring their categories and tags along — matching ones are reused, new ones are created on import. WordPress <b>draft</b>/<b>private</b>/<b>pending</b> posts come in as drafts; flip the per-row <b>Archive</b> toggle on the next screen for any posts that should land in the Archived tab instead of going live.
 {% endblock %}
 {% block content %}
 <div class="wp-wizard-header">
@@ -31,6 +32,36 @@
     </ol>
   </div>
 </div>
+
+{% if stale_acf_stash %}
+<section class="card wp-stale-card" role="alert">
+  <div class="card-head">
+    <h2>{{ icon('alert-triangle') }} Stale wizard — ACF data not captured</h2>
+  </div>
+  <p>
+    This wizard token was created before the ACF auto-mapping was added,
+    so the posts in this stash are missing their custom-field payload.
+    Continuing here will import the rows <b>without</b> event start/end
+    times, location, Zoom credentials, or contact info.
+  </p>
+  <p class="data-card-actions">
+    <a class="btn btn-primary" href="{{ url_for('main.wp_import_start', embed=1 if embed else None) }}">
+      {{ icon('refresh-cw') }} Reconnect to WordPress (recommended)
+    </a>
+  </p>
+</section>
+{% endif %}
+
+{% if not blog_enabled %}
+<section class="card wp-blog-hint">
+  <p class="muted small">
+    {{ icon('info') }} The <b>Blog</b> module is currently off, so it's
+    not offered as a target below. Enable it under
+    <b>Settings → Modules → Blog</b> to import these WordPress posts
+    into the Blog (with categories and tags carried over).
+  </p>
+</section>
+{% endif %}
 
 <form id="wp-map-form" method="post" action="{{ url_for('main.wp_import_map', token=token) }}"
       class="form" data-wp-fetch-form data-wp-fetch-mode="map">
@@ -124,6 +155,9 @@
         <div class="wp-post-body">
           <div class="wp-post-title-row">
             <span class="wp-post-title">{{ p.title }}</span>
+            {% if p.wp_status and p.wp_status|lower != 'publish' %}
+            <span class="post-chip wp-status-chip" title="WordPress status — flip the Archive toggle on the dry-run screen if you want this post in the Archived tab">WP: {{ p.wp_status }}</span>
+            {% endif %}
             {% if p.is_draft %}<span class="post-chip post-chip-draft">Draft</span>{% endif %}
           </div>
           <div class="wp-post-meta muted smaller">
@@ -137,9 +171,10 @@
           {% if p.summary %}
           <p class="wp-post-summary">{{ p.summary[:240] }}{% if p.summary|length > 240 %}…{% endif %}</p>
           {% endif %}
-          {% if p.categories %}
+          {% if p.categories or p.tags %}
           <div class="wp-post-cats">
             {% for c in p.categories %}<span class="wp-cat-chip">{{ c }}</span>{% endfor %}
+            {% for t in (p.tags or []) %}<span class="wp-tag-chip">#{{ t }}</span>{% endfor %}
           </div>
           {% endif %}
         </div>
@@ -287,7 +322,7 @@
     padding: .65rem .75rem;
     border: 1px solid var(--border, rgba(0,0,0,.08));
     border-radius: 10px;
-    background: var(--surface, #fff);
+    background: var(--panel, #fff);
   }
   @media (max-width: 720px) { .wp-cat-row { grid-template-columns: 1fr; } }
   .wp-cat-info { display: flex; flex-direction: column; gap: 2px; }
@@ -297,7 +332,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
-    background: var(--surface-alt, rgba(0,0,0,.05));
+    background: var(--panel-2, rgba(0,0,0,.05));
     padding: 3px;
     border-radius: 999px;
   }
@@ -312,7 +347,7 @@
     padding: 6px 12px;
     border-radius: 999px;
     font-size: .85rem;
-    color: var(--text-soft, rgba(0,0,0,.6));
+    color: var(--muted, rgba(0,0,0,.6));
     display: inline-flex;
     align-items: center;
     gap: .35rem;
@@ -332,7 +367,7 @@
   }
   .wp-target-pill:hover { color: var(--text, #111); }
   .wp-target-pill.is-active {
-    background: var(--surface, #fff);
+    background: var(--panel, #fff);
     box-shadow: 0 1px 3px rgba(0,0,0,.08);
     color: var(--text, #111);
     font-weight: 600;
@@ -340,6 +375,9 @@
   .wp-target-pill--stories.is-active       { background: #fef3c7; color: #78350f; }
   .wp-target-pill--announcements.is-active { background: #dbeafe; color: #1e3a8a; }
   .wp-target-pill--events.is-active        { background: #dcfce7; color: #166534; }
+  /* Blog uses a distinct rose tint so it doesn't read as either a
+     muted Skip or a richly-coloured story / event. */
+  .wp-target-pill--blog.is-active          { background: #fce7f3; color: #9d174d; }
   /* Skip uses sky-blue (distinct from the deep blue announcements
      palette) so an active skip selection reads as a deliberate
      decision, not a muted/disabled state. */
@@ -348,6 +386,7 @@
   [data-theme="dark"] .wp-target-pill--stories.is-active       { background: #4a3008; color: #fde68a; }
   [data-theme="dark"] .wp-target-pill--announcements.is-active { background: #14264e; color: #bfdbfe; }
   [data-theme="dark"] .wp-target-pill--events.is-active        { background: #14391f; color: #bbf7d0; }
+  [data-theme="dark"] .wp-target-pill--blog.is-active          { background: #4a1e3a; color: #fbcfe8; }
   [data-theme="dark"] .wp-target-pill--skip.is-active          { background: #0c2a45; color: #bae6fd; }
   [data-theme="dark"] .wp-target-pill--inherit.is-active       { background: #2e1d59; color: #ddd6fe; }
   .wp-target-resolved { font-style: italic; }
@@ -384,7 +423,7 @@
     padding: .9rem;
     border: 1px solid var(--border, rgba(0,0,0,.08));
     border-radius: 12px;
-    background: var(--surface, #fff);
+    background: var(--panel, #fff);
     align-items: start;
   }
   @media (max-width: 880px) {
@@ -395,13 +434,13 @@
     width: 96px; height: 96px;
     overflow: hidden;
     border-radius: 8px;
-    background: var(--surface-alt, rgba(0,0,0,.04));
+    background: var(--panel-2, rgba(0,0,0,.04));
   }
   .wp-post-thumb img { width: 100%; height: 100%; object-fit: cover; }
   .wp-post-thumb-empty {
     width: 100%; height: 100%;
     display: grid; place-items: center;
-    color: var(--text-soft, rgba(0,0,0,.45));
+    color: var(--muted, rgba(0,0,0,.45));
   }
   .wp-post-title-row {
     display: flex;
@@ -430,14 +469,54 @@
   }
   .wp-post-cats { display: flex; flex-wrap: wrap; gap: 4px; margin-top: .25rem; }
   .wp-cat-chip {
-    background: var(--surface-alt, rgba(0,0,0,.05));
+    background: var(--panel-2, rgba(0,0,0,.05));
     border: 1px solid var(--border, rgba(0,0,0,.08));
-    color: var(--text-soft, rgba(0,0,0,.7));
+    color: var(--muted, rgba(0,0,0,.7));
     border-radius: 999px;
     padding: 2px 9px;
     font-size: .72rem;
   }
+  /* Tag chip — slightly different colour cue (italicised, leading #)
+     so admins can tell categories from tags at a glance even without
+     reading the chip text. */
+  .wp-tag-chip {
+    background: #fce7f3;
+    border: 1px solid #f9a8d4;
+    color: #9d174d;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: .7rem;
+    font-style: italic;
+  }
+  [data-theme="dark"] .wp-tag-chip {
+    background: #4a1e3a; border-color: #be185d; color: #fbcfe8;
+  }
+  .wp-blog-hint {
+    background: var(--panel-2, rgba(0,0,0,.04));
+    border: 1px dashed var(--border, rgba(0,0,0,.12));
+  }
+  .wp-blog-hint p { margin: 0; }
+  .wp-status-chip {
+    background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: .68rem;
+  }
+  [data-theme="dark"] .wp-status-chip {
+    background: #1e293b; border-color: #475569; color: #94a3b8;
+  }
   .wp-bulk-btn { font-weight: 500; }
+  /* Stale-stash banner — surfaces when a wizard URL is reopened
+     against a stash created before the ACF capture path existed. */
+  .wp-stale-card {
+    background: #fef3c7; border: 1px solid #f59e0b; color: #78350f;
+  }
+  .wp-stale-card .card-head h2 { color: #b45309; }
+  .wp-stale-card p { margin: 0 0 .75rem; line-height: 1.5; }
+  .wp-stale-card .data-card-actions { margin: 0; }
+  [data-theme="dark"] .wp-stale-card {
+    background: #4a3008; border-color: #b45309; color: #fde68a;
+  }
+  [data-theme="dark"] .wp-stale-card .card-head h2 { color: #fbbf24; }
 </style>
 
 {% include "_wp_fetch_overlay.html" %}

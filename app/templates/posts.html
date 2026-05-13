@@ -1,48 +1,129 @@
 {% extends "base.html" %}
 {% block heading %}Announcements &amp; Events{% endblock %}
-{% block heading_help %}Tag a post as announcement, event, or both. Events auto-archive the day after they end; manual archive is also supported.{% endblock %}
+{% block heading_help %}Tag a post as announcement, event, or both. Events auto-archive the day after they end; manual archive is also supported. Tick the checkboxes to bulk archive, restore, draft, publish, or delete.{% endblock %}
 {% block top_actions %}
   <div class="view-controls">
     <div class="view-toggle">
       <a class="btn btn-sm {% if kind == 'all' %}active{% endif %}"
-         href="{{ url_for('main.posts', show=show, kind='all') }}">All</a>
+         href="{{ url_for('main.posts', show=show, kind='all', sort=sort) }}">All</a>
       <a class="btn btn-sm {% if kind == 'announcements' %}active{% endif %}"
-         href="{{ url_for('main.posts', show=show, kind='announcements') }}">Announcements</a>
+         href="{{ url_for('main.posts', show=show, kind='announcements', sort=sort) }}">Announcements</a>
       <a class="btn btn-sm {% if kind == 'events' %}active{% endif %}"
-         href="{{ url_for('main.posts', show=show, kind='events') }}">Events</a>
+         href="{{ url_for('main.posts', show=show, kind='events', sort=sort) }}">Events</a>
     </div>
     <div class="view-toggle">
-      <a class="btn btn-sm {% if show == 'active' or show not in ('archived', 'drafts', 'pending') %}active{% endif %}"
-         href="{{ url_for('main.posts', show='active', kind=kind) }}">Active</a>
+      <a class="btn btn-sm {% if show == 'active' %}active{% endif %}"
+         href="{{ url_for('main.posts', show='active', kind=kind, sort=sort) }}">Active</a>
       <a class="btn btn-sm {% if show == 'drafts' %}active{% endif %}"
-         href="{{ url_for('main.posts', show='drafts', kind=kind) }}">Drafts</a>
+         href="{{ url_for('main.posts', show='drafts', kind=kind, sort=sort) }}">Drafts</a>
       <a class="btn btn-sm {% if show == 'pending' %}active{% endif %}"
-         href="{{ url_for('main.posts', show='pending', kind=kind) }}">
+         href="{{ url_for('main.posts', show='pending', kind=kind, sort=sort) }}">
         Pending review{% if pending_count %} <span class="badge badge-warning">{{ pending_count }}</span>{% endif %}
       </a>
       <a class="btn btn-sm {% if show == 'archived' %}active{% endif %}"
-         href="{{ url_for('main.posts', show='archived', kind=kind) }}">Archived</a>
+         href="{{ url_for('main.posts', show='archived', kind=kind, sort=sort) }}">Archived</a>
     </div>
   </div>
   <a class="btn btn-primary" href="{{ url_for('main.post_new') }}">+ New</a>
 {% endblock %}
 {% block content %}
+{# Sort-header helpers — each clickable column header toggles between
+   asc/desc when clicked twice. The query string preserves show/kind
+   so the admin's tab choice doesn't reset on sort. The first sort
+   key per column is the default direction (so first click on Title
+   sorts A→Z, first click on Date sorts newest-first). #}
+{%- set _sortmap = {
+    'title': ('title_asc', 'title_desc'),
+    'event': ('event_desc', 'event_asc'),
+    'updated': ('updated_desc', 'updated_asc'),
+    'submitted': ('submitted_desc', 'submitted_asc'),
+    'posted': ('posted_desc', 'posted_asc'),
+    'type': ('type_desc', 'type_asc'),
+} -%}
+{%- macro sort_link(col, label) -%}
+  {%- set primary, secondary = _sortmap[col] -%}
+  {%- set is_active = sort in (primary, secondary) -%}
+  {%- set next_sort = secondary if sort == primary else primary -%}
+  <a class="posts-sort{% if is_active %} is-active{% endif %}"
+     href="{{ url_for('main.posts', show=show, kind=kind, sort=next_sort, page=1) }}">
+    {{ label }}
+    {% if sort == primary %}<span class="posts-sort-arrow" aria-hidden="true">{{ '↑' if 'asc' in primary else '↓' }}</span>
+    {% elif sort == secondary %}<span class="posts-sort-arrow" aria-hidden="true">{{ '↑' if 'asc' in secondary else '↓' }}</span>
+    {% endif %}
+  </a>
+{%- endmacro -%}
+
 {% if posts %}
+<form id="posts-bulk-form" method="post" action="{{ url_for('main.post_bulk') }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" name="action" id="posts-bulk-action" value="">
+
+<div class="posts-toolbar">
+  <div class="posts-meta muted small">
+    Showing <b>{{ ((page - 1) * per_page) + 1 }}</b>–<b>{{ ((page - 1) * per_page) + posts|length }}</b>
+    of <b>{{ total }}</b>
+    {% if sort %}<span class="posts-meta-dot">·</span>sorted by <b>{{
+      {'event_asc': 'event date (oldest)',
+       'event_desc': 'event date (newest)',
+       'title_asc': 'title (A→Z)',
+       'title_desc': 'title (Z→A)',
+       'updated_asc': 'last edit (oldest)',
+       'updated_desc': 'last edit (newest)',
+       'submitted_asc': 'submission (oldest)',
+       'submitted_desc': 'submission (newest)',
+       'posted_asc': 'posted (oldest)',
+       'posted_desc': 'posted (newest)',
+       'type_asc': 'type',
+       'type_desc': 'type'}.get(sort, sort)
+    }}</b>{% endif %}
+  </div>
+  <div class="posts-bulkbar" data-posts-bulkbar hidden>
+    <span class="posts-bulkbar-count" data-bulk-count>0 selected</span>
+    {% if show != 'archived' %}
+    <button type="button" class="btn btn-sm" data-bulk="archive">Archive</button>
+    {% endif %}
+    {% if show == 'archived' %}
+    <button type="button" class="btn btn-sm" data-bulk="unarchive">Restore</button>
+    {% endif %}
+    {% if show != 'drafts' %}
+    <button type="button" class="btn btn-sm" data-bulk="draft">Move to drafts</button>
+    {% endif %}
+    {% if show != 'active' %}
+    <button type="button" class="btn btn-sm btn-primary" data-bulk="publish">Publish</button>
+    {% endif %}
+    <button type="button" class="btn btn-sm btn-danger" data-bulk="delete"
+            data-bulk-confirm="Delete the selected posts permanently? Featured images will be cleaned up. This cannot be undone.">Delete</button>
+    <button type="button" class="btn btn-sm posts-bulk-clear" data-bulk-clear>Clear</button>
+  </div>
+</div>
+
 <section class="card posts-card">
   <table class="tbl posts-tbl">
     <thead>
       <tr>
+        <th class="posts-th-check">
+          <label class="posts-check-wrap" title="Select all on this page">
+            <input type="checkbox" data-posts-selectall>
+          </label>
+        </th>
         <th class="posts-th-thumb"></th>
-        <th>Title</th>
-        <th class="hide-sm">Type</th>
-        <th class="hide-sm">When</th>
+        <th>{{ sort_link('title', 'Title') }}</th>
+        <th class="hide-sm">{{ sort_link('type', 'Type') }}</th>
+        <th class="hide-sm">{{ sort_link('posted', 'Posted') }}</th>
+        <th class="hide-sm">{% if show == 'pending' %}{{ sort_link('submitted', 'Submitted') }}{% else %}{{ sort_link('event', 'When') }}{% endif %}</th>
         <th class="hide-sm">Where</th>
+        <th class="hide-sm">{{ sort_link('updated', 'Edited') }}</th>
         <th class="posts-th-actions"></th>
       </tr>
     </thead>
     <tbody>
     {% for p in posts %}
-      <tr>
+      <tr data-post-row>
+        <td class="posts-td-check">
+          <label class="posts-check-wrap">
+            <input type="checkbox" name="ids" value="{{ p.id }}" data-posts-row-check>
+          </label>
+        </td>
         <td class="posts-td-thumb">
           {% if p.featured_image_filename %}
           <img class="posts-thumb" src="{{ url_for('public.post_featured_image', pid=p.id) }}" alt="">
@@ -60,7 +141,18 @@
           {% if p.is_event %}<span class="post-chip post-chip-event">Event</span>{% endif %}
         </td>
         <td class="hide-sm">
-          {% if p.event_starts_at %}
+          {% if p.display_posted %}
+            <div class="muted small">{{ p.display_posted.strftime('%b %d, %Y') }}</div>
+            <div class="muted smaller">{{ p.display_posted.strftime('%-I:%M %p') }}</div>
+          {% else %}
+            <span class="muted smaller">—</span>
+          {% endif %}
+        </td>
+        <td class="hide-sm">
+          {% if show == 'pending' and p.submitted_at %}
+            <div class="muted small">{{ p.submitted_at.strftime('%b %d, %Y') }}</div>
+            <div class="muted smaller">{{ p.submitted_at.strftime('%-I:%M %p') }} UTC</div>
+          {% elif p.event_starts_at %}
             <div class="muted small">{{ p.event_starts_at.strftime('%b %d, %Y') }}</div>
             <div class="muted smaller">{{ p.event_starts_at.strftime('%-I:%M %p') }}{% if p.event_ends_at %} – {{ p.event_ends_at.strftime('%-I:%M %p') }}{% endif %}</div>
           {% else %}
@@ -72,40 +164,28 @@
           {% if p.location_name %}<div class="muted small">{{ p.location_name }}</div>{% endif %}
           {% if not p.is_online and not p.location_name %}<span class="muted smaller">—</span>{% endif %}
         </td>
+        <td class="hide-sm">
+          {% if p.updated_at %}
+            <div class="muted small">{{ p.updated_at.strftime('%b %d, %Y') }}</div>
+          {% else %}
+            <span class="muted smaller">—</span>
+          {% endif %}
+        </td>
         <td class="posts-td-actions">
           <div class="row-actions">
             <a class="btn btn-sm" href="{{ url_for('main.post_edit', pid=p.id) }}">Edit</a>
             {% if p.is_draft %}
-            <form method="post" action="{{ url_for('main.post_publish', pid=p.id) }}" style="display:inline">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-sm btn-primary" title="Publish this draft">Publish</button>
-            </form>
+            <button type="submit" form="single-publish-{{ p.id }}-form" class="btn btn-sm btn-primary" title="Publish this draft">Publish</button>
             {% elif not p.is_archived %}
-            <form method="post" action="{{ url_for('main.post_unpublish', pid=p.id) }}" style="display:inline">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-sm" title="Move to Drafts">Move to Drafts</button>
-            </form>
+            <button type="submit" form="single-unpublish-{{ p.id }}-form" class="btn btn-sm" title="Move to Drafts">Drafts</button>
             {% endif %}
-            <form method="post" action="{{ url_for('main.post_duplicate', pid=p.id) }}" style="display:inline">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-sm" title="Make a copy">Duplicate</button>
-            </form>
             {% if p.is_archived %}
-              <form method="post" action="{{ url_for('main.post_unarchive', pid=p.id) }}" style="display:inline">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-sm" title="Restore">Restore</button>
-              </form>
+              <button type="submit" form="single-unarchive-{{ p.id }}-form" class="btn btn-sm" title="Restore">Restore</button>
             {% else %}
-              <form method="post" action="{{ url_for('main.post_archive', pid=p.id) }}" style="display:inline">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-sm" title="Archive">Archive</button>
-              </form>
+              <button type="submit" form="single-archive-{{ p.id }}-form" class="btn btn-sm" title="Archive">Archive</button>
             {% endif %}
-            <form method="post" action="{{ url_for('main.post_delete', pid=p.id) }}" style="display:inline"
-                  onsubmit="return confirm('Delete this post permanently? Featured image will be cleaned up.');">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-            </form>
+            <button type="submit" form="single-delete-{{ p.id }}-form" class="btn btn-sm btn-danger"
+                    onclick="return confirm('Delete this post permanently? Featured image will be cleaned up.');">Delete</button>
           </div>
         </td>
       </tr>
@@ -113,13 +193,174 @@
     </tbody>
   </table>
 </section>
+
+{% if total_pages > 1 %}
+<nav class="posts-pagination" aria-label="Posts pagination">
+  {% set _prev = page - 1 if page > 1 else none %}
+  {% set _next = page + 1 if page < total_pages else none %}
+  <a class="btn btn-sm{% if not _prev %} is-disabled{% endif %}"
+     {% if _prev %}href="{{ url_for('main.posts', show=show, kind=kind, sort=sort, page=_prev) }}"{% endif %}>← Prev</a>
+  <span class="posts-pagination-info muted">
+    Page <b>{{ page }}</b> of <b>{{ total_pages }}</b>
+    <span class="posts-meta-dot">·</span>
+    <b>{{ per_page }}</b> per page
+  </span>
+  <a class="btn btn-sm{% if not _next %} is-disabled{% endif %}"
+     {% if _next %}href="{{ url_for('main.posts', show=show, kind=kind, sort=sort, page=_next) }}"{% endif %}>Next →</a>
+</nav>
+{% endif %}
+
+</form>
+
+{# Per-row action stubs — separate forms (referenced by `form=` on the
+   button so the row-action buttons can sit inside the bulk form
+   without nesting). Each one POSTs to a single-row endpoint. #}
+{% for p in posts %}
+{% if p.is_draft %}
+<form id="single-publish-{{ p.id }}-form" method="post" action="{{ url_for('main.post_publish', pid=p.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% elif not p.is_archived %}
+<form id="single-unpublish-{{ p.id }}-form" method="post" action="{{ url_for('main.post_unpublish', pid=p.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endif %}
+{% if p.is_archived %}
+<form id="single-unarchive-{{ p.id }}-form" method="post" action="{{ url_for('main.post_unarchive', pid=p.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% else %}
+<form id="single-archive-{{ p.id }}-form" method="post" action="{{ url_for('main.post_archive', pid=p.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endif %}
+<form id="single-delete-{{ p.id }}-form" method="post" action="{{ url_for('main.post_delete', pid=p.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endfor %}
+
 {% else %}
 <section class="card">
   <p class="muted">
     {% if show == 'archived' %}Nothing archived.
     {% elif show == 'drafts' %}No drafts. Duplicate an active post to start one.
+    {% elif show == 'pending' %}Nothing pending review right now.
     {% else %}Nothing here yet — click <b>+ New</b> above to create an announcement or event.{% endif %}
   </p>
 </section>
 {% endif %}
+
+<style>
+  .posts-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 1rem; margin-bottom: .85rem;
+  }
+  .posts-meta { font-size: .88rem; }
+  .posts-meta-dot { opacity: .55; margin: 0 .35rem; }
+  .posts-bulkbar {
+    display: flex; align-items: center; gap: .4rem; flex-wrap: wrap;
+    background: var(--panel-2, var(--panel));
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: .35rem .55rem .35rem 1rem;
+  }
+  .posts-bulkbar[hidden] { display: none; }
+  .posts-bulkbar-count {
+    font-weight: 600; font-size: .88rem;
+    color: var(--text);
+  }
+  .posts-bulk-clear { margin-left: .25rem; }
+
+  /* Sort-header link — looks like a normal column heading until the
+     mouse hovers, then picks up the underline + arrow indicator. The
+     active sort column gets the arrow + a slight color bump. */
+  .posts-sort {
+    display: inline-flex; align-items: center; gap: 4px;
+    color: inherit; text-decoration: none;
+    font: inherit;
+  }
+  .posts-sort:hover { color: var(--brand); text-decoration: underline; text-underline-offset: 3px; }
+  .posts-sort.is-active { color: var(--text); }
+  .posts-sort-arrow { font-size: .82em; opacity: .85; }
+
+  .posts-th-check, .posts-td-check { width: 2.4rem; text-align: center; }
+  .posts-check-wrap {
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; padding: 4px;
+  }
+  .posts-check-wrap input { margin: 0; cursor: pointer; }
+
+  /* Visual emphasis on selected rows so it's obvious what's about to
+     get bulk-actioned. Background tint flips per theme. */
+  tr[data-post-row]:has(input[data-posts-row-check]:checked) {
+    background: color-mix(in srgb, var(--brand) 8%, transparent);
+  }
+
+  .posts-pagination {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; margin: 1.25rem 0; flex-wrap: wrap;
+  }
+  .posts-pagination-info { font-size: .9rem; }
+  .btn.is-disabled { opacity: .4; pointer-events: none; }
+</style>
+
+<script>
+(function () {
+  // Bulk action wiring. The host form (`#posts-bulk-form`) owns the
+  // hidden `action` field and the `ids` checkboxes. Clicking a bulk
+  // button writes the action name into the hidden field and submits.
+  // Selectall covers visible rows; per-row click syncs the visible
+  // selection counter and reveals the bar.
+  var form = document.getElementById('posts-bulk-form');
+  if (!form) return;
+  var bar = form.querySelector('[data-posts-bulkbar]');
+  var counter = form.querySelector('[data-bulk-count]');
+  var actionField = document.getElementById('posts-bulk-action');
+  var checkboxes = form.querySelectorAll('[data-posts-row-check]');
+  var selectAll = form.querySelector('[data-posts-selectall]');
+
+  function refresh() {
+    var n = 0;
+    checkboxes.forEach(function (c) { if (c.checked) n++; });
+    if (counter) counter.textContent = n + ' selected';
+    if (bar) bar.hidden = n === 0;
+    if (selectAll) {
+      selectAll.checked = n === checkboxes.length && n > 0;
+      selectAll.indeterminate = n > 0 && n < checkboxes.length;
+    }
+  }
+  checkboxes.forEach(function (c) {
+    c.addEventListener('change', refresh);
+  });
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      checkboxes.forEach(function (c) { c.checked = selectAll.checked; });
+      refresh();
+    });
+  }
+  form.querySelectorAll('[data-bulk]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var action = btn.dataset.bulk;
+      var n = 0;
+      checkboxes.forEach(function (c) { if (c.checked) n++; });
+      if (n === 0) return;
+      var confirmMsg = btn.dataset.bulkConfirm;
+      if (confirmMsg) {
+        if (!confirm(confirmMsg.replace('the selected posts', n + ' selected post' + (n === 1 ? '' : 's')))) return;
+      }
+      actionField.value = action;
+      form.submit();
+    });
+  });
+  var clearBtn = form.querySelector('[data-bulk-clear]');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function () {
+      checkboxes.forEach(function (c) { c.checked = false; });
+      if (selectAll) { selectAll.checked = false; selectAll.indeterminate = false; }
+      refresh();
+    });
+  }
+  refresh();
+})();
+</script>
 {% endblock %}

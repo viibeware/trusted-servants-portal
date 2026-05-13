@@ -1,0 +1,120 @@
+{# Compact list layout — top filter strip (search + Virtual/Regional
+   chips + country pills + sort selector) over a dense single-column
+   list of fellowship rows. Best for sites with a long roster who'd
+   prefer scanning to grouping. Shares the same data-* hooks as the
+   sidebar layout so the dispatcher's filter / sort JS works without
+   modification. #}
+<section class="fe-section fe-mlist fe-fellowships fe-fellowships--compact fe-mlist--w-{{ list_width_mode }}" id="fellowships"
+         {% if tpl_style %}style="{{ tpl_style }}"{% endif %}>
+  <div class="{% if list_width_mode == 'boxed' %}fe-container{% else %}fe-mlist-fullwrap{% endif %} fe-mlist-shell"
+       {% if list_width_mode == 'boxed' %}style="max-width: {{ list_max_width }}px;"
+       {%- elif list_padding_pct %}style="padding-left: {{ list_padding_pct }}vw; padding-right: {{ list_padding_pct }}vw;"{% endif %}>
+    <header class="fe-mlist-head fe-fellowships-compact-head">
+      <h1>{{ heading }}</h1>
+      <p class="muted">{{ subheading }}</p>
+    </header>
+
+    <div class="fe-fellowships-compact-filters">
+      <label class="fe-mlist-search">
+        <span class="fe-mlist-search-icon" aria-hidden="true">{{ icon('search') }}</span>
+        <input type="search" data-fellowships-search
+               placeholder="Search fellowships…" autocomplete="off"
+               aria-label="Search fellowships">
+        <kbd class="fe-mlist-search-kbd" aria-hidden="true">/</kbd>
+      </label>
+
+      <fieldset class="fe-archive-types fe-fellowships-compact-types">
+        <legend class="fe-archive-types-legend">Show</legend>
+        <label class="fe-archive-type-check">
+          <input type="checkbox" data-fellowships-type-toggle="regional" checked>
+          <span class="fe-archive-type-check-label">Regional</span>
+          <span class="fe-mlist-day-count">{{ regional_count }}</span>
+        </label>
+        <label class="fe-archive-type-check">
+          <input type="checkbox" data-fellowships-type-toggle="virtual" checked>
+          <span class="fe-archive-type-check-label">Virtual</span>
+          <span class="fe-mlist-day-count">{{ virtual_count }}</span>
+        </label>
+      </fieldset>
+
+      <label class="fe-mlist-sort">
+        <span class="fe-mlist-sort-label">Sort</span>
+        <select data-fellowships-sort>
+          <option value="name-asc"    {% if sort_mode == 'name-asc' %}selected{% endif %}>Name (A–Z)</option>
+          <option value="name-desc"   {% if sort_mode == 'name-desc' %}selected{% endif %}>Name (Z–A)</option>
+          <option value="country-asc" {% if sort_mode == 'country-asc' %}selected{% endif %}>Country (A–Z)</option>
+          <option value="newest"      {% if sort_mode == 'newest' %}selected{% endif %}>Newest first</option>
+          <option value="oldest"      {% if sort_mode == 'oldest' %}selected{% endif %}>Oldest first</option>
+        </select>
+      </label>
+    </div>
+
+    <ul class="fe-mlist-day-list fe-fellowships-compact-pills" role="tablist">
+      <li>
+        <button type="button" class="fe-mlist-day-pill is-active"
+                data-fellowships-country-toggle="all" role="tab" aria-selected="true">
+          <span>All countries</span>
+          <span class="fe-mlist-day-count">{{ fellowships|length }}</span>
+        </button>
+      </li>
+      {% for bucket in country_buckets %}
+      <li>
+        <button type="button" class="fe-mlist-day-pill"
+                data-fellowships-country-toggle="{{ bucket.country }}" role="tab" aria-selected="false">
+          <span>{{ bucket.country }}</span>
+          <span class="fe-mlist-day-count">{{ bucket['items']|length }}</span>
+        </button>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <div class="fe-mlist-main fe-fellowships-compact-main" data-fellowships-results>
+      {% if not fellowships %}
+      <p class="fe-mlist-empty muted">No fellowships listed yet. Add one in Settings → Global → Fellowships Index.</p>
+      {% else %}
+      {% for bucket in country_buckets %}
+      <section class="fe-fellowships-compact-section"
+               data-fellowships-section="{{ bucket.country }}">
+        <h2 class="fe-fellowships-compact-section-heading">
+          <span>{{ bucket.country }}</span>
+          <span class="fe-mlist-day-section-count">{{ bucket['items']|length }}</span>
+        </h2>
+        <ul class="fe-fellowships-compact-rows">
+          {% for f in bucket['items'] %}
+            {%- set _ts = ((f.created_at.timestamp() * 1000)|int) if f.created_at else 0 -%}
+            <li class="fe-fellowships-compact-row"
+                id="fellowship-{{ f.id }}"
+                data-fellowships-card
+                data-fellowships-name="{{ f.name }}"
+                data-fellowships-country="{{ f.country or '' }}"
+                data-fellowships-country-label="{{ bucket.country }}"
+                data-fellowships-is-virtual="{{ '1' if f.is_virtual else '0' }}"
+                data-fellowships-created-ms="{{ _ts }}"
+                data-fellowships-search="{{ search_blobs.get(f.id, '') }}">
+              <div class="fe-fellowships-compact-row-info">
+                <span class="fe-fellowships-compact-row-name">{{ f.name }}</span>
+                {% if not f.is_virtual and (f.country or f.state_region) %}
+                <span class="fe-fellowships-compact-row-where muted">
+                  {% if f.state_region %}{{ f.state_region }}{% if f.country %}, {% endif %}{% endif %}
+                  {%- if f.country %}{{ f.country }}{% endif %}
+                </span>
+                {% endif %}
+              </div>
+              <span class="fe-fellowships-card-chip{% if f.is_virtual %} fe-fellowships-card-chip--virtual{% endif %}">
+                {% if f.is_virtual %}Virtual{% else %}Regional{% endif %}
+              </span>
+              {% if f.url %}
+              <a class="fe-fellowships-compact-row-link" href="{{ f.url }}" target="_blank" rel="noopener nofollow">
+                Visit {{ icon('external-link') }}
+              </a>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endfor %}
+      <p class="fe-mlist-empty muted" data-fellowships-no-match hidden>No fellowships match your filters.</p>
+      {% endif %}
+    </div>
+  </div>
+</section>

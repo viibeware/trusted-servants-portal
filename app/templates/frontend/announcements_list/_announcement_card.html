@@ -7,7 +7,7 @@
      ann — Post model with is_announcement=True
 #}
 {%- set _has_image = ann.featured_image_filename -%}
-{%- set _posted = ann.created_at -%}
+{%- set _posted = ann.display_posted -%}
 {%- set _detail_url = post_url(ann) -%}
 <article class="fe-announcements-card{% if _has_image %} has-cover{% endif %}">
   {% if _has_image %}

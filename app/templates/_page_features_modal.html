@@ -1,0 +1,155 @@
+{# Per-page features block edit modal — verbatim copy of the
+   homepage's `editor_features()` + `_feature_card_row()` macros
+   (lines 629-735 of frontend_homepage.html), wrapped in modal-panel
+   chrome with a sticky Done footer.
+
+   Differences from homepage:
+   - No `<form>` wrapper — values flow through JS into the active
+     features block's `data` and save with the parent page-edit form
+     via `blocks_json`.
+   - Each top-level field carries `data-features-field="<key>"` for
+     two-way binding; per-card fields carry `data-features-card-field`
+     with the same key names (page_features_modal.js walks the DOM
+     cards in order to rebuild block.data.items[] on every change).
+   - The cards list is rendered EMPTY server-side — JS clones the
+     `<template>` once per saved item on pill click. Otherwise the
+     proxy's empty defaults would briefly flash before being
+     overwritten.
+   - Sticky Done footer at the bottom of the scrolling panel.
+
+   Caller passes:
+     vals — dict with `heading`, `subheading`, `items` (proxy always
+            returns `items: []`; JS populates from the active block).
+#}
+{% macro _feature_card_row(idx, item) %}
+{# One editable card. `idx` is unique-within-the-form (used to scope
+   hidden field IDs and `name`s); the JS reuses the same indexing
+   scheme when cloning new cards from the empty template below.
+
+   Field bindings: each card carries `data-features-card` so the JS
+   can iterate them in DOM order. Inputs use `data-features-card-field="<key>"`
+   for two-way binding (the homepage version's `name="feature_card_<idx>_*"`
+   posts directly to /frontend/save; per-page features save through
+   blocks_json instead). Hidden icon-target inputs keep their
+   `name="..."` and `id="..."` so the shared icon picker
+   (`data-open-icon-picker`) can still write into them by selector. #}
+<div class="fe-feat-card" data-features-card data-card-index="{{ idx }}">
+  <input type="hidden" name="feature_card_present" value="{{ idx }}" data-feat-present>
+  <div class="fe-feat-card-handle" aria-hidden="true">{{ icon('grip-vertical') }}</div>
+  <div class="fe-feat-card-icon{% if item and item.icon %} has-icon{% endif %}" data-icon-field>
+    <button type="button" class="icon-picker-trigger fe-feat-icon-trigger"
+            data-open-icon-picker
+            data-icon-target="#feat-card-{{ idx }}-icon"
+            data-color-target="#feat-card-{{ idx }}-icon-color"
+            data-size-target="#feat-card-{{ idx }}-icon-size"
+            title="Choose icon">
+      <span class="icon-picker-preview" data-icon-preview
+            {% if item and item.icon_size %}style="--icon-size: {{ item.icon_size }}px;"{% endif %}>
+        {% if item and item.icon %}{{ icon(item.icon) }}{% endif %}
+      </span>
+      <span class="icon-picker-trigger-empty" data-icon-empty>{{ icon('image') }}<span>Icon</span></span>
+    </button>
+    <input type="hidden" id="feat-card-{{ idx }}-icon"
+           name="feature_card_{{ idx }}_icon"
+           data-features-card-field="icon"
+           value="{{ (item.icon if item else '') or '' }}">
+    <input type="hidden" id="feat-card-{{ idx }}-icon-color"
+           name="feature_card_{{ idx }}_icon_color"
+           data-features-card-field="icon_color"
+           value="{{ (item.icon_color if item else '') or '' }}">
+    <input type="hidden" id="feat-card-{{ idx }}-icon-size"
+           name="feature_card_{{ idx }}_icon_size"
+           data-features-card-field="icon_size"
+           value="{{ (item.icon_size if item else '') or '' }}">
+  </div>
+  <div class="fe-feat-card-fields">
+    <input class="fe-feat-card-title" type="text"
+           data-features-card-field="title"
+           value="{{ (item.title if item else '') or '' }}"
+           placeholder="Card title">
+    <div class="md-editor md-editor-live fe-feat-card-md"
+         data-md-editor data-md-live="1" data-md-mode="block">
+      <div class="md-editor-pane md-editor-pane-write active">
+        <textarea class="fe-feat-card-body" rows="3"
+                  data-features-card-field="body"
+                  placeholder="Short description — Markdown supported.">{{ (item.body if item else '') or '' }}</textarea>
+      </div>
+      <div class="md-editor-pane md-editor-pane-preview active">
+        <div class="md-editor-preview"><p class="muted smaller">Preview appears here.</p></div>
+      </div>
+    </div>
+    <div class="fe-feat-card-link-row">
+      <span class="fe-feat-card-link-icon" aria-hidden="true">{{ icon('link') }}</span>
+      <input class="fe-feat-card-href" type="text"
+             data-features-card-field="href"
+             value="{{ (item.href if item else '') or '' }}"
+             placeholder="Link URL (optional) — e.g. /meetings or https://…">
+      <label class="fe-feat-card-newtab" title="Open in new tab">
+        <input type="checkbox"
+               data-features-card-field="open_in_new_tab"
+               value="1"
+               {% if item and item.open_in_new_tab %}checked{% endif %}>
+        <span>New tab</span>
+      </label>
+    </div>
+  </div>
+  <button type="button" class="fe-feat-card-remove" data-features-remove
+          title="Remove card" aria-label="Remove card">{{ icon('trash-2') }}</button>
+</div>
+{% endmacro %}
+
+<div class="modal fe-page-edit-modal fe-page-edit-modal--wide" id="page-features-edit-modal" aria-hidden="true" data-page-features-modal>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel fe-page-edit-modal-panel" role="dialog" aria-modal="true">
+    <button type="button" class="icon-btn fe-page-edit-modal-close" data-close
+            aria-label="Close">{{ icon('x') }}</button>
+<section class="card fe-feat-editor"
+         data-features-editor
+         data-features-max="6">
+  <div class="card-head">
+    <h2>Features</h2>
+    <span class="muted smaller">Up to six clickable cards. Drag to reorder. <b>Markdown</b> in card bodies (live preview on the right); inline HTML in headings &amp; titles.</span>
+  </div>
+
+  <div class="fe-feat-head-grid">
+    <label>Heading
+      <input type="text"
+             data-features-field="heading"
+             value="{{ vals.heading or '' }}"
+             placeholder="What we offer">
+    </label>
+    <label>Subheading
+      <textarea data-features-field="subheading" rows="2"
+                placeholder="A short line that frames the cards below.">{{ vals.subheading or '' }}</textarea>
+    </label>
+  </div>
+
+  <div class="fe-feat-cards" data-features-list>
+    {# Server-rendered cards intentionally omitted — page_features_modal.js
+       clones the <template> below once per saved item on pill click,
+       so the modal stays in sync with the active block's data without
+       a flash of placeholder content. #}
+  </div>
+
+  <div class="fe-feat-actions">
+    <button type="button" class="btn btn-sm" data-features-add>
+      {{ icon('plus') }} <span>Add card</span>
+    </button>
+    <span class="muted smaller fe-feat-count" data-features-count></span>
+  </div>
+
+  {# Empty-card template — page_features_modal.js clones this when
+     "Add card" is clicked (and when populating the list from a saved
+     block on pill open). The `__IDX__` placeholder is rewritten to a
+     unique counter value so the cloned card's id="…" / for="…" fields
+     don't collide with existing ones in the modal. #}
+  <template data-features-card-template>
+    {{ _feature_card_row('__IDX__', None) }}
+  </template>
+
+  <div class="form-actions hero-unified-actions">
+    <button type="button" class="btn btn-primary" data-close>Done</button>
+  </div>
+</section>
+  </div>{# /modal-panel #}
+</div>{# /page-features-edit-modal #}

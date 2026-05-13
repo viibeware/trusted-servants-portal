@@ -93,30 +93,60 @@
   var STORE_KEY = 'fe-announcements-view';
   var VALID = { cards: 1, gsr: 1 };
 
-  function show(name) {
+  // Mirrors the meetings-list entrance animation — when the visitor
+  // flips between tabs the new panel's cards slide in with a per-card
+  // stagger so the change reads as a transition rather than a swap.
+  // Stripping the class on animationend leaves the cards in their rest
+  // state and lets the next tab click replay the effect.
+  function animateIn(panel) {
+    if (!panel) return;
+    var cards = panel.querySelectorAll('.fe-announcements-card');
+    cards.forEach(function (c) { c.classList.remove('is-entering'); });
+    if (cards[0]) void panel.offsetWidth;
+    cards.forEach(function (c, i) {
+      c.style.setProperty('--fe-card-stagger', Math.min(i * 60, 1800) + 'ms');
+      c.classList.add('is-entering');
+    });
+  }
+  document.addEventListener('animationend', function (e) {
+    if (e.target.classList && e.target.classList.contains('is-entering') &&
+        e.target.closest('[data-announcements-panel]')) {
+      e.target.classList.remove('is-entering');
+      e.target.style.removeProperty('--fe-card-stagger');
+    }
+  });
+
+  function show(name, animate) {
     if (!VALID[name]) name = 'cards';
     tabs.forEach(function (t) {
       var active = t.getAttribute('data-announcements-tab') === name;
       t.classList.toggle('is-active', active);
       t.setAttribute('aria-selected', active ? 'true' : 'false');
     });
+    var newPanel = null;
     panels.forEach(function (p) {
-      p.hidden = p.getAttribute('data-announcements-panel') !== name;
+      var active = p.getAttribute('data-announcements-panel') === name;
+      p.hidden = !active;
+      if (active) newPanel = p;
     });
     try { localStorage.setItem(STORE_KEY, name); } catch (_) {}
+    if (animate !== false) animateIn(newPanel);
   }
 
   // Hash wins over localStorage so an inbound link like
   // /announcements#gsr (the utility bar's GSR pill) lands on the
   // intended tab regardless of what the visitor saved last time.
   // Falls through to the saved value when no usable hash is set.
+  // Initial restore (hash > localStorage) skips the animation — it's
+  // reserved for user-driven tab clicks so the page doesn't pop on
+  // every load.
   var hash = (window.location.hash || '').replace(/^#/, '');
   if (hash && VALID[hash]) {
-    show(hash);
+    show(hash, false);
   } else {
     var saved = null;
     try { saved = localStorage.getItem(STORE_KEY); } catch (_) {}
-    if (saved && VALID[saved]) show(saved);
+    if (saved && VALID[saved]) show(saved, false);
   }
 
   tabs.forEach(function (t) {

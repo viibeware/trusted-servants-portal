@@ -1,0 +1,95 @@
+{# Per-page upcoming-events block edit modal — verbatim copy of the
+   homepage's `editor_events()` macro markup (lines 992-1058 of
+   frontend_homepage.html), adapted to read from a `vals` dict shim
+   instead of `block_content._events`. The shim mirrors the
+   homepage's `_es` dict shape (EVENTS_DEFAULTS merged with the
+   block's data), so the markup is character-for-character identical.
+
+   Differences from homepage:
+   - No `<form>` wrapper — values flow through JS into the active
+     events block's `data` and save with the parent page-edit form
+     via `blocks_json`.
+   - Each input carries `data-events-field="<key>"` for two-way
+     binding (the homepage version's `name="events_<key>"` would
+     post to `/frontend/save`, which is wrong for the per-page path).
+   - Sticky Done footer at the bottom of the scrolling panel.
+
+   Caller passes:
+     vals — dict with keys mirroring EVENTS_DEFAULTS
+#}
+<div class="modal fe-page-edit-modal fe-page-edit-modal--wide" id="page-events-edit-modal" aria-hidden="true" data-page-events-modal>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel fe-page-edit-modal-panel" role="dialog" aria-modal="true">
+    <button type="button" class="icon-btn fe-page-edit-modal-close" data-close
+            aria-label="Close">{{ icon('x') }}</button>
+<section class="card">
+  <div class="card-head">
+    <h2>Upcoming Events</h2>
+    <span class="muted smaller">Cards built from the Announcements &amp; Events module. Past events drop off automatically.</span>
+  </div>
+  <label>Section heading
+    <input type="text" data-events-field="heading" value="{{ vals.heading or '' }}" placeholder="Upcoming Events">
+  </label>
+  <label>Intro line
+    <input type="text" data-events-field="intro" value="{{ vals.intro or '' }}" placeholder="A look at what's coming up.">
+  </label>
+  <div class="hero-bg-grid">
+    <div class="nav-megalink-field hero-slider-field">
+      <span class="nav-megalink-field-lbl">Max events <output data-slider-out>{{ vals.max_count or 6 }}</output></span>
+      <input type="range" data-events-field="max_count" min="1" max="24" step="1"
+             value="{{ vals.max_count or 6 }}" data-slider-input>
+    </div>
+    <div class="nav-megalink-field">
+      <span class="nav-megalink-field-lbl">Animation</span>
+      <select data-events-field="animation">
+        {% for _v, _lbl in [('fade','Fade in'), ('slide','Slide up + fade'), ('none','None')] %}
+        <option value="{{ _v }}" {% if (vals.animation or 'fade') == _v %}selected{% endif %}>{{ _lbl }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="nav-megalink-field hero-slider-field">
+      <span class="nav-megalink-field-lbl">Stagger <output data-slider-out>{{ vals.stagger_ms or 60 }}</output>ms</span>
+      <input type="range" data-events-field="stagger_ms" min="0" max="200" step="10"
+             value="{{ vals.stagger_ms or 60 }}" data-slider-input>
+    </div>
+  </div>
+  <li class="special-page-row" style="list-style:none; margin: 1rem 0 0;">
+    <div class="special-page-info">
+      <div class="u-name">Show featured image</div>
+      <p class="muted small">Display the post's featured image on each event card.</p>
+    </div>
+    <label class="mode-toggle">
+      <input type="checkbox" data-events-field="show_image" value="1" {% if vals.show_image is not defined or vals.show_image %}checked{% endif %}>
+      <span class="mode-track"><span class="mode-thumb"></span></span>
+    </label>
+  </li>
+  <li class="special-page-row" style="list-style:none; margin: 0;">
+    <div class="special-page-info">
+      <div class="u-name">Show summary text</div>
+      <p class="muted small">Show the short blurb under each event title (truncated to ~3 lines).</p>
+    </div>
+    <label class="mode-toggle">
+      <input type="checkbox" data-events-field="show_summary" value="1" {% if vals.show_summary is not defined or vals.show_summary %}checked{% endif %}>
+      <span class="mode-track"><span class="mode-thumb"></span></span>
+    </label>
+  </li>
+  <li class="special-page-row" style="list-style:none; margin: 0 0 1rem;">
+    <div class="special-page-info">
+      <div class="u-name">Show location / online tag</div>
+      <p class="muted small">Display the venue name (or "Online event" tag) under the event time.</p>
+    </div>
+    <label class="mode-toggle">
+      <input type="checkbox" data-events-field="show_location" value="1" {% if vals.show_location is not defined or vals.show_location %}checked{% endif %}>
+      <span class="mode-track"><span class="mode-thumb"></span></span>
+    </label>
+  </li>
+  <label>Empty-state message
+    <input type="text" data-events-field="empty_message" value="{{ vals.empty_message or '' }}" placeholder="No upcoming events — check back soon.">
+  </label>
+
+  <div class="form-actions hero-unified-actions">
+    <button type="button" class="btn btn-primary" data-close>Done</button>
+  </div>
+</section>
+  </div>{# /modal-panel #}
+</div>{# /page-events-edit-modal #}

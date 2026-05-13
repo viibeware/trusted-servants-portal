@@ -1,0 +1,192 @@
+{# Per-page hero block — sibling of frontend/_hero.html (the homepage's
+   site-hero) but driven by per-block data instead of SiteSetting.
+   Every visual primitive (.fe-hero, .fe-hero-blob, .fe-hero-particles,
+   sinewave/dynbg shells, .fe-btn) is reused so the rendered block
+   matches the design system without any new stylesheet.
+
+   Caller (frontend/page.html::pp_block) sets `d` to the block's
+   `data` dict before including. #}
+
+{%- set _bg_style = (d.get('bg_style') or 'solid') | lower -%}
+{%- if _bg_style not in ('frosty','solid','gradient','image','sinewave','video','dynamic') -%}
+  {%- set _bg_style = 'solid' -%}
+{%- endif -%}
+
+{%- set _h_font = (d.get('heading_font') or 'fraunces') | lower -%}
+{%- set _h_size_pct = (d.get('heading_size_pct') or 100) | int -%}
+{%- set _h_grad_s = (d.get('heading_grad_start') or '').strip() -%}
+{%- set _h_grad_e = (d.get('heading_grad_end') or '').strip() -%}
+{# Dark-mode gradient stops. Empty = use the dark CSS rule's fallback
+   (`#fff → #94a3b8`), preserving the historic visual for unedited blocks. #}
+{%- set _h_grad_s_dark = (d.get('heading_grad_start_dark') or '').strip() -%}
+{%- set _h_grad_e_dark = (d.get('heading_grad_end_dark') or '').strip() -%}
+{%- set _s_font = (d.get('subheading_font') or 'inter') | lower -%}
+{%- set _s_size_pct = (d.get('subheading_size_pct') or 100) | int -%}
+{%- set _s_color = (d.get('subheading_color') or '').strip() -%}
+{%- set _s_color_dark = (d.get('subheading_color_dark') or '').strip() -%}
+{%- set _tagline_on = d.get('tagline_enabled') is not sameas false -%}
+{%- set _dyn_on = d.get('text_dynamic') -%}
+
+{# Dynamic text-color class — mirrors `_hero.html`. Resolve a coarse
+   bg lightness so the renderer can pick light-or-dark text without
+   running the JS lightness computer. #}
+{%- set _bg_lightness = 0.95 -%}
+{%- if _dyn_on -%}
+  {%- if _bg_style == 'solid' and d.get('bg_color') -%}
+    {%- set _bg_lightness = (d.get('bg_color') | hex_lightness) or 0.95 -%}
+  {%- elif _bg_style == 'gradient' -%}
+    {%- set _bg_lightness = ([(d.get('bg_color') or '#ffffff'),
+                              (d.get('bg_color_2') or '#e0e7ff')] | avg_lightness) or 0.95 -%}
+  {%- elif _bg_style == 'sinewave' and d.get('bg_sinewave_colors') -%}
+    {%- set _bg_lightness = ((d.get('bg_sinewave_colors') or []) | avg_lightness) or 0.55 -%}
+  {%- endif -%}
+{%- endif -%}
+{%- set _dyn_class = ' fe-hero-text-light' if _dyn_on and _bg_lightness < 0.55
+                     else (' fe-hero-text-dark' if _dyn_on else '') -%}
+
+{%- set _heading_style = '' -%}
+{%- if _h_size_pct and _h_size_pct != 100 -%}
+  {%- set _heading_style = _heading_style ~ '--fe-hero-h-size: ' ~ (_h_size_pct / 100) ~ '; ' -%}
+{%- endif -%}
+{%- if _h_grad_s -%}{%- set _heading_style = _heading_style ~ '--fe-hero-h-grad-s: ' ~ _h_grad_s ~ '; ' -%}{%- endif -%}
+{%- if _h_grad_e -%}{%- set _heading_style = _heading_style ~ '--fe-hero-h-grad-e: ' ~ _h_grad_e ~ '; ' -%}{%- endif -%}
+{%- if _h_grad_s_dark -%}{%- set _heading_style = _heading_style ~ '--fe-hero-h-grad-s-dark: ' ~ _h_grad_s_dark ~ '; ' -%}{%- endif -%}
+{%- if _h_grad_e_dark -%}{%- set _heading_style = _heading_style ~ '--fe-hero-h-grad-e-dark: ' ~ _h_grad_e_dark ~ '; ' -%}{%- endif -%}
+
+{%- set _sub_style = '' -%}
+{%- if _s_size_pct and _s_size_pct != 100 -%}
+  {%- set _sub_style = _sub_style ~ '--fe-hero-sub-size: ' ~ (_s_size_pct / 100) ~ '; ' -%}
+{%- endif -%}
+{%- if _s_color -%}{%- set _sub_style = _sub_style ~ '--fe-hero-sub-color: ' ~ _s_color ~ '; ' -%}{%- endif -%}
+{%- if _s_color_dark -%}{%- set _sub_style = _sub_style ~ '--fe-hero-sub-color-dark: ' ~ _s_color_dark ~ '; ' -%}{%- endif -%}
+
+{# Background CSS — same recipe per style as `_hero.html`. #}
+{%- set _hero_style = '' -%}
+{%- if _bg_style == 'solid' and d.get('bg_color') -%}
+  {%- set _hero_style = 'background: ' ~ (d.get('bg_color') | css_color) ~ ';' -%}
+{%- elif _bg_style == 'gradient' -%}
+  {%- set _g1 = (d.get('bg_color') | css_color) if d.get('bg_color') else '#ffffff' -%}
+  {%- set _g2 = (d.get('bg_color_2') | css_color) if d.get('bg_color_2') else '#e0e7ff' -%}
+  {%- set _gang = (d.get('bg_gradient_angle') or 180) | int -%}
+  {%- set _hero_style = 'background: linear-gradient(' ~ _gang ~ 'deg, ' ~ _g1 ~ ', ' ~ _g2 ~ ');' -%}
+{%- elif _bg_style == 'image' and d.get('bg_image_src') -%}
+  {%- set _im_mode = (d.get('bg_image_mode') or 'cover') | lower -%}
+  {%- set _im_scale = (d.get('bg_image_scale') or 100) | int -%}
+  {%- if _im_mode == 'tile' -%}
+    {%- set _hero_style = 'background: url(' ~ d.get('bg_image_src') ~ ') repeat; background-size: ' ~ _im_scale ~ 'px ' ~ _im_scale ~ 'px;' -%}
+  {%- else -%}
+    {%- set _hero_style = 'background: url(' ~ d.get('bg_image_src') ~ ') center/cover no-repeat;' -%}
+  {%- endif -%}
+{%- endif -%}
+
+{# Height vars — same shape as `_hero.html` so the existing
+   `.fe-hero` CSS consumes them without a fresh selector. #}
+{%- set _hero_header_fallback = 92 -%}
+{%- set _hh_d = (d.get('height_vh_desktop') or 0) | int -%}
+{%- set _hh_m = (d.get('height_vh_mobile') or 0) | int -%}
+{%- set _hero_h_vars = '' -%}
+{%- if _hh_d -%}
+  {%- set _hero_h_vars = _hero_h_vars ~ ' --fe-hero-min-h: max(0px, calc(' ~ _hh_d ~ 'vh - var(--fe-header-full-h, ' ~ _hero_header_fallback ~ 'px)));' -%}
+{%- endif -%}
+{%- if _hh_m -%}
+  {%- set _hero_h_vars = _hero_h_vars ~ ' --fe-hero-min-h-mobile: max(0px, calc(' ~ _hh_m ~ 'vh - var(--fe-header-full-h, ' ~ _hero_header_fallback ~ 'px)));' -%}
+{%- endif -%}
+
+{# Dynbg colour + position resolution. Without these inline CSS
+   vars, the dynbg preset paints with its hard-coded fallback
+   colours and fallback positions — so `randomize_colors` and
+   `randomize_positions` would have no effect on render. Mirrors
+   the homepage `_hero.html` recipe (lines 62-65) so per-block
+   dynbgs honour the picker's overlay / colour / position knobs
+   identically to the site-wide hero. #}
+{%- set _dynbg_cfg = dynbg_decode(d.get('bg_dynbg_config_json')) -%}
+{%- set _dynbg_color_vars = dynbg_colors_css(dynbg_resolve_colors(_dynbg_cfg)) -%}
+{%- set _dynbg_pos_vars = dynbg_resolve_positions(_dynbg_cfg, d.get('bg_dynamic_key') or '') -%}
+{%- set _dynbg_inline = (_dynbg_color_vars ~ " " ~ _dynbg_pos_vars) | trim -%}
+
+{# Dynbg presence — same gate `_hero.html` uses. Counts an overlay
+   alone as "active" so admins can pick e.g. just a noise-grain
+   texture without a base preset. #}
+{%- set _hero_dynbg_active = (_bg_style == 'dynamic') and (d.get('bg_dynamic_key') or _dynbg_cfg.overlay) -%}
+
+<section class="fe-hero fe-hero-bg-{{ _bg_style }}{{ _dyn_class }}{% if _hero_dynbg_active %} fe-dynbg-host{% endif %}"
+         {% if _hero_style or _hero_h_vars or (_hero_dynbg_active and _dynbg_inline) %}style="{{ _hero_style }}{% if _hero_dynbg_active and _dynbg_inline %} {{ _dynbg_inline }}{% endif %}{{ _hero_h_vars }}"{% endif %}
+         {% if _bg_style == 'sinewave' and d.get('bg_sinewave_colors') %}data-sinewave-colors='{{ d.get('bg_sinewave_colors') | tojson }}'{% endif %}>
+
+  {%- if _hero_dynbg_active -%}
+    {%- with dynbg_key=d.get('bg_dynamic_key'),
+             dynbg_config=d.get('bg_dynbg_config_json') -%}
+      {% include "frontend/_dynbg_apply.html" %}
+    {%- endwith -%}
+  {%- endif -%}
+
+  {%- if _bg_style == 'frosty' -%}
+    {%- set _hue_a = d.get('bg_hue') or 225 -%}
+    {%- set _hue_b = d.get('bg_hue_2') or 170 -%}
+    {%- set _blur = d.get('bg_blur') or 80 -%}
+    {%- set _op = (d.get('bg_opacity') or 45) / 100 -%}
+    {%- set _rand = d.get('bg_randomize') -%}
+    <div class="fe-hero-bg" aria-hidden="true" data-hero-blobs
+         {% if _rand %}data-randomize="1"{% endif %}
+         style="--fe-blob-hue-a: {{ _hue_a }}; --fe-blob-hue-b: {{ _hue_b }}; --fe-blob-blur: {{ _blur }}px; --fe-blob-op: {{ _op }};">
+      <div class="fe-hero-blob fe-hero-blob-a" data-hero-blob></div>
+      <div class="fe-hero-blob fe-hero-blob-b" data-hero-blob></div>
+      <div class="fe-hero-blob fe-hero-blob-c" data-hero-blob></div>
+    </div>
+  {%- endif -%}
+
+  {%- if _bg_style == 'video' and d.get('bg_video_src') -%}
+    {%- set _vspeed = d.get('bg_video_speed') or 100 -%}
+    <video class="fe-hero-video" muted playsinline autoplay loop
+           data-hero-video data-speed="{{ _vspeed }}"
+           preload="auto">
+      <source src="{{ d.get('bg_video_src') }}">
+    </video>
+  {%- endif -%}
+
+  {%- if d.get('particle_enabled') -%}
+  <canvas class="fe-hero-particles" aria-hidden="true"
+          data-hero-particles
+          data-effect="{{ d.get('particle_effect') or 'stars' }}"
+          data-speed="{{ d.get('particle_speed') or 100 }}"
+          data-size="{{ d.get('particle_size') or 100 }}"></canvas>
+  {%- endif -%}
+
+  <div class="fe-container fe-hero-inner">
+    {%- if _tagline_on and d.get('eyebrow') -%}
+    <p class="fe-hero-eyebrow">{{ d.get('eyebrow') }}</p>
+    {%- endif -%}
+    <h1 class="fe-hero-heading fe-hero-heading-{{ _h_font }}"
+        {% if _heading_style %}style="{{ _heading_style }}"{% endif %}>{{ d.get('heading') or '' }}</h1>
+    <p class="fe-hero-sub fe-hero-sub-{{ _s_font }}"
+       {% if _sub_style %}style="{{ _sub_style }}"{% endif %}>{{ d.get('subheading') or '' }}</p>
+    <div class="fe-hero-cta">
+      {%- for b in (d.get('buttons') or []) -%}
+        {%- set _tgt = ' target="_blank" rel="noopener"' if b.open_in_new_tab else '' -%}
+        {%- set _bstyle = b.style if b.style in ('ghost', 'yellow') else 'primary' -%}
+        {%- set _cls = 'fe-btn fe-btn-' ~ _bstyle -%}
+        {%- set _vars = [] -%}
+        {%- if _bstyle == 'primary' -%}
+          {%- if b.custom_bg_color -%}{%- set _ = _vars.append('--fe-btn-bg: ' ~ b.custom_bg_color) -%}{%- endif -%}
+          {%- if b.custom_text_color -%}{%- set _ = _vars.append('--fe-btn-text: ' ~ b.custom_text_color) -%}{%- endif -%}
+        {%- endif -%}
+        <a href="{{ b.url or '#' }}"{{ _tgt|safe }} class="{{ _cls }}"
+           {% if _vars %}style="{{ _vars | join('; ') }};"{% endif %}>
+          {%- if b.icon_before -%}
+            {%- set _ivars = [] -%}
+            {%- if b.icon_before_color -%}{%- set _ = _ivars.append('--fe-btn-icon-color: ' ~ b.icon_before_color) -%}{%- endif -%}
+            {%- if b.icon_before_size -%}{%- set _ = _ivars.append('--icon-size: ' ~ b.icon_before_size ~ 'px') -%}{%- endif -%}
+            <span class="fe-btn-icon"{% if _ivars %} style="{{ _ivars | join('; ') }};"{% endif %}>{{ icon(b.icon_before) }}</span>
+          {%- endif -%}
+          <span>{{ b.label or '' }}</span>
+          {%- if b.icon_after -%}
+            {%- set _ivars = [] -%}
+            {%- if b.icon_after_color -%}{%- set _ = _ivars.append('--fe-btn-icon-color: ' ~ b.icon_after_color) -%}{%- endif -%}
+            {%- if b.icon_after_size -%}{%- set _ = _ivars.append('--icon-size: ' ~ b.icon_after_size ~ 'px') -%}{%- endif -%}
+            <span class="fe-btn-icon"{% if _ivars %} style="{{ _ivars | join('; ') }};"{% endif %}>{{ icon(b.icon_after) }}</span>
+          {%- endif -%}
+        </a>
+      {%- endfor -%}
+    </div>
+  </div>
+</section>

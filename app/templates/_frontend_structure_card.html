@@ -194,8 +194,26 @@
   {%- set _meta = labels.get(pill.t, (pill.t, 'square')) -%}
   {%- set _pv = previews.get(pill.block_id) if previews else None -%}
   {%- set _pl = payloads.get(pill.block_id) if payloads else None -%}
+  {# Hero, Meetings, Events, Features, and FAQ blocks open dedicated
+     modals (verbatim copies of the homepage versions) instead of the
+     generic BlockEditor modal, because their controls are too rich
+     for the BlockEditor's inline form. Other block types fall back to
+     `modal_id`. #}
+  {%- if pill.t == 'hero' -%}
+    {%- set _open_modal = 'page-hero-edit-modal' -%}
+  {%- elif pill.t == 'meetings' -%}
+    {%- set _open_modal = 'page-meetings-edit-modal' -%}
+  {%- elif pill.t == 'events' -%}
+    {%- set _open_modal = 'page-events-edit-modal' -%}
+  {%- elif pill.t == 'features' -%}
+    {%- set _open_modal = 'page-features-edit-modal' -%}
+  {%- elif pill.t == 'faq' -%}
+    {%- set _open_modal = 'page-faq-edit-modal' -%}
+  {%- else -%}
+    {%- set _open_modal = modal_id -%}
+  {%- endif -%}
   <div class="fe-page-structure-block fe-page-structure-block--{{ pill.t }} is-clickable is-draggable"
-       data-open-modal="{{ modal_id }}"
+       data-open-modal="{{ _open_modal }}"
        data-page-block-id="{{ pill.block_id }}"
        data-block-type="{{ pill.t }}"
        {% if _pv %}data-preview='{{ _pv|tojson|forceescape }}'{% endif %}

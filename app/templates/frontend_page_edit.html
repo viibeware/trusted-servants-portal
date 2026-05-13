@@ -25,6 +25,16 @@
 {% endblock %}
 
 {% block content %}
+{# Load the public frontend.css alongside app.css so the per-page
+   hero edit modal's live preview pane gets the same `.fe-hero-*`
+   styles the public site uses — heading font classes
+   (.fe-hero-heading-fraunces / -inter), dynamic-text colour
+   overrides (.fe-hero-text-light / -dark), and crucially
+   `.fe-hero-particles { position: absolute; inset: 0 }` so the
+   particle canvas overlays the preview instead of becoming a
+   flex item that shoves content sideways when enabled. The
+   homepage admin already does this for the same reason. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/frontend.css', v=app_build_id) }}">
 <div class="fe-admin-layout">
   {% include "_frontend_subnav.html" %}
   <div class="fe-admin-main">
@@ -34,14 +44,33 @@
        is gated on `page`. #}
     {% if page %}
     {%- set _page_status = 'draft' if not page.is_published else ('private' if page.is_private else 'published') -%}
+    {%- set _is_homepage = (site and site.homepage_page_id == page.id) -%}
     <div class="fe-page-edit-title-banner">
-      <div class="fe-page-edit-title-banner-eyebrow muted smaller">Editing page</div>
+      <div class="fe-page-edit-title-banner-eyebrow muted smaller">
+        {% if _is_homepage %}Editing homepage{% else %}Editing page{% endif %}
+      </div>
       <h1 class="fe-page-edit-title-banner-title">{{ page.title }}</h1>
       <div class="fe-page-edit-title-banner-meta muted smaller">
-        <code>/{{ page.slug }}</code>
+        {% if _is_homepage %}<code>/</code>{% else %}<code>/{{ page.slug }}</code>{% endif %}
+        {% if _is_homepage %}
+          · <span class="chip chip-homepage" title="This page renders at the public `/` root">
+              {{ icon('home') }} Homepage
+            </span>
+        {% endif %}
         {% if _page_status == 'draft' %} · <span class="post-chip post-chip-draft">Draft</span>{% endif %}
         {% if _page_status == 'private' %} · <span class="post-chip post-chip-private">Private</span>{% endif %}
         {% if _page_status == 'published' %} · <span class="post-chip post-chip-online">Published</span>{% endif %}
+        {% if not _is_homepage %}
+          · <form method="post"
+                  action="{{ url_for('main.frontend_page_set_homepage', page_id=page.id) }}"
+                  class="fe-page-edit-make-homepage"
+                  onsubmit="return confirm('Make “{{ page.title|e }}” the homepage? It will render at the public `/` root, and the previous homepage becomes a regular page.');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm" title="Designate this page as the public homepage">
+                {{ icon('home') }} Make homepage
+              </button>
+            </form>
+        {% endif %}
       </div>
       {# Quick-action pills — clicking a pill selects the matching
          visibility radio in the page-settings form below and triggers
@@ -85,9 +114,13 @@
       'list':        ('List',         'list'),
       'separator':   ('Divider',      'minus'),
       'toc_sidebar': ('Wiki sidebar', 'panel-left'),
+      'hero':        ('Hero',         'image'),
+      'meetings':    ('Meetings',     'calendar-clock'),
+      'events':      ('Events',       'calendar'),
     } %}
     {% set _editable = ['paragraph','heading','image','icon','button','container',
-                        'video','code','callout','list','toc_sidebar'] %}
+                        'video','code','callout','list','toc_sidebar',
+                        'hero','meetings','events'] %}
     {% call structure_card('Active layout', active_layout=active_layout,
                             builder_modal_id='page-layout-builder-modal',
                             picker_modal_id='page-layout-modal',
@@ -184,6 +217,50 @@
                      min="0" max="20" step="1"
                      value="{{ page.full_padding_pct if page and page.full_padding_pct is not none else 4 }}">
               <small class="muted">Full-width mode: % of viewport width reserved as left/right gutter.</small>
+            </label>
+          </div>
+        </div>
+
+        <div class="fe-page-settings-section">
+          <h3 class="fe-page-settings-sub">Page spacing
+            <span class="muted smaller">Top / bottom / side padding on the page article + gap between sections. Set any to 0 for a flush layout (e.g. a hero pinned to the header). Reset to 80 / 96 / 16 / 32 restores the defaults.</span>
+            <button type="button" class="btn btn-sm" id="page-spacing-flush" style="margin-left: auto;">Flush (all 0)</button>
+          </h3>
+          {%- set _pt = page.pad_top if page and page.pad_top is not none else 80 -%}
+          {%- set _pb = page.pad_bottom if page and page.pad_bottom is not none else 96 -%}
+          {%- set _px = page.pad_x if page and page.pad_x is not none else 16 -%}
+          {%- set _sg = page.section_gap if page and page.section_gap is not none else 32 -%}
+          <div class="form-grid page-width-grid">
+            <label class="page-width-num">
+              <span>Top padding <output id="page-pad-top-out">{{ _pt }}px</output></span>
+              <input type="range" name="pad_top" id="page-pad-top"
+                     min="0" max="400" step="4" value="{{ _pt }}">
+              <small class="muted">Space above the first section. 0 = first block sits flush against the header.</small>
+            </label>
+            <label class="page-width-num">
+              <span>Bottom padding <output id="page-pad-bottom-out">{{ _pb }}px</output></span>
+              <input type="range" name="pad_bottom" id="page-pad-bottom"
+                     min="0" max="400" step="4" value="{{ _pb }}">
+              <small class="muted">Space below the last section. 0 = last block sits flush against the footer.</small>
+            </label>
+            <label class="page-width-num">
+              <span>Side gutter <output id="page-pad-x-out">{{ _px }}px</output></span>
+              <input type="range" name="pad_x" id="page-pad-x"
+                     min="0" max="200" step="2" value="{{ _px }}">
+              <small class="muted">Horizontal padding inside the page shell. 0 = blocks bleed edge-to-edge in boxed mode.</small>
+            </label>
+            <label class="page-width-num">
+              <span>Section gap <output id="page-section-gap-out">{{ _sg }}px</output></span>
+              <input type="range" name="section_gap" id="page-section-gap"
+                     min="0" max="200" step="2" value="{{ _sg }}">
+              <small class="muted">Vertical gap between sections. 0 = sections stack flush.</small>
+            </label>
+            {%- set _bm = page.block_margin_y if page and page.block_margin_y is not none else 12 -%}
+            <label class="page-width-num">
+              <span>Block margin <output id="page-block-margin-out">{{ _bm }}px</output></span>
+              <input type="range" name="block_margin_y" id="page-block-margin"
+                     min="0" max="80" step="1" value="{{ _bm }}">
+              <small class="muted">Vertical margin around every <code>.block</code> element (containers, blog cards, …). 0 = blocks sit truly flush.</small>
             </label>
           </div>
         </div>
@@ -430,10 +507,46 @@ window.tspLibraries = [
     ] }{% if not loop.last %},{% endif %}
   {%- endfor %}
 ];
+
+// Blog categories + tags surfaced for the `blog_list` block's settings
+// panel — admin picks one (or neither) to scope the block. Each blog
+// can host its own embed by selecting a different category/tag here.
+window.tspBlogCategories = [
+  {%- for c in all_blog_categories() %}
+  { id: {{ c.id|tojson }},
+    name: {{ c.name|tojson }},
+    slug: {{ (c.slug or '')|tojson }},
+    color: {{ (c.color or '')|tojson }} }{% if not loop.last %},{% endif %}
+  {%- endfor %}
+];
+window.tspBlogTags = [
+  {%- for t in all_blog_tags() %}
+  { id: {{ t.id|tojson }},
+    name: {{ t.name|tojson }},
+    slug: {{ (t.slug or '')|tojson }} }{% if not loop.last %},{% endif %}
+  {%- endfor %}
+];
 </script>
 <script src="{{ url_for('static', filename='js/vendor/Sortable.min.js', v=app_build_id) }}"></script>
 <script src="{{ url_for('static', filename='js/block_editor.js', v=app_build_id) }}"></script>
 <script src="{{ url_for('static', filename='js/page_structure.js', v=app_build_id) }}"></script>
+{# Login-FX particle / sinewave engine — also powers the hero block's
+   live preview pane in the BlockEditor modal. Same script the homepage
+   admin loads; safe to include here because it self-initialises on
+   explicit calls (no auto-mount). #}
+<script src="{{ url_for('static', filename='js/login_fx.js', v=app_build_id) }}"></script>
+{# Two-way binding for the per-page hero edit modal — captures Hero
+   pill clicks, populates the modal from the block's data, and writes
+   every input change back into the page form's blocks_json. #}
+<script src="{{ url_for('static', filename='js/page_hero_modal.js', v=app_build_id) }}"></script>
+{# Same two-way binding for the per-page meetings-list edit modal. #}
+<script src="{{ url_for('static', filename='js/page_meetings_modal.js', v=app_build_id) }}"></script>
+{# Same two-way binding for the per-page upcoming-events edit modal. #}
+<script src="{{ url_for('static', filename='js/page_events_modal.js', v=app_build_id) }}"></script>
+{# Same two-way binding for the per-page features edit modal. #}
+<script src="{{ url_for('static', filename='js/page_features_modal.js', v=app_build_id) }}"></script>
+{# Same two-way binding for the per-page FAQ edit modal. #}
+<script src="{{ url_for('static', filename='js/page_faq_modal.js', v=app_build_id) }}"></script>
 <script>
 (function () {
   const root = document.getElementById('page-editor-root');
@@ -670,6 +783,39 @@ window.tspLibraries = [
   });
   syncWidthVis();
 
+  // ── Page spacing (pad_top / pad_bottom / pad_x / section_gap) ──
+  // Live readout on every range input + a "Flush (all 0)" shortcut
+  // that zeroes the four for a true edge-to-edge layout.
+  const spacingPairs = [
+    ['page-pad-top',      'page-pad-top-out',      'px'],
+    ['page-pad-bottom',   'page-pad-bottom-out',   'px'],
+    ['page-pad-x',        'page-pad-x-out',        'px'],
+    ['page-section-gap',  'page-section-gap-out',  'px'],
+    ['page-block-margin', 'page-block-margin-out', 'px'],
+  ];
+  spacingPairs.forEach(([inpId, outId, suffix]) => {
+    const inp = document.getElementById(inpId);
+    const out = document.getElementById(outId);
+    if (!inp || !out) return;
+    inp.addEventListener('input', () => {
+      out.textContent = inp.value + suffix;
+    });
+  });
+  const flushBtn = document.getElementById('page-spacing-flush');
+  if (flushBtn) flushBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    spacingPairs.forEach(([inpId, outId, suffix]) => {
+      const inp = document.getElementById(inpId);
+      const out = document.getElementById(outId);
+      if (!inp || !out) return;
+      inp.value = '0';
+      out.textContent = '0' + suffix;
+      // Bubble an input event so the global save-bar IIFE registers
+      // the change and lights up "Unsaved changes".
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  });
+
   // ── Background colour ────────────────────────────────────────────
   // Each value can be a hex (`#fef3c7`) OR a token reference
   // (`token:color_brand`). Tokens stay live: the public renderer
@@ -878,7 +1024,14 @@ window.tspLibraries = [
   const form = document.getElementById('page-edit-form');
   if (!form) return;
   const pills = wrap.querySelectorAll('[data-fe-page-status]');
-  const radios = form.querySelectorAll('input[type="radio"][name="status"]');
+  // Visibility is round-tripped through a single hidden input named
+  // `status` in the page-settings fieldset (older revisions used a radio
+  // group — the pill UI is the only surface now, so the form just keeps
+  // a hidden value that the pills write into). Querying by name (no type
+  // filter) keeps this resilient if the field ever flips back to a
+  // visible control.
+  const statusInput = form.querySelector('[name="status"]');
+  if (!statusInput) return;
 
   function syncPills(activeKey) {
     pills.forEach(p => {
@@ -891,25 +1044,20 @@ window.tspLibraries = [
   pills.forEach(pill => {
     pill.addEventListener('click', () => {
       const next = pill.dataset.fePageStatus;
-      const target = form.querySelector(
-        `input[type="radio"][name="status"][value="${next}"]`);
-      if (!target) return;
-      if (!target.checked) {
-        target.checked = true;
-        // Bubbling change event so the save-bar IIFE registers the form
-        // as dirty.
-        target.dispatchEvent(new Event('change', { bubbles: true }));
+      if (!next || statusInput.value === next) {
+        // Already on this status — re-sync pill chrome but don't dirty
+        // the form (avoids an "Unsaved changes" bar for a no-op click).
+        syncPills(next || statusInput.value);
+        return;
       }
+      statusInput.value = next;
+      // The save-bar IIFE wires `input` + `change` listeners on every
+      // trackable form; fire both so it lights up regardless of which
+      // handler attached first. Bubbling is required since the IIFE
+      // listens at the form level, not on this input.
+      statusInput.dispatchEvent(new Event('input', { bubbles: true }));
+      statusInput.dispatchEvent(new Event('change', { bubbles: true }));
       syncPills(next);
-    });
-  });
-
-  // Keep pills in sync if the admin flips the radio directly.
-  radios.forEach(r => {
-    r.addEventListener('change', () => {
-      const checked = form.querySelector(
-        'input[type="radio"][name="status"]:checked');
-      if (checked) syncPills(checked.value);
     });
   });
 })();
@@ -956,4 +1104,78 @@ window.tspLibraries = [
     </div>
   </div>
 </div>
+
+{# ── Hero block edit modal — dedicated per-page hero editor that
+   mirrors the homepage hero modal's markup verbatim. The
+   structure card's Hero pill opens this directly instead of the
+   generic BlockEditor modal; JS handles two-way binding between
+   modal inputs and the block's data, and re-uses the homepage's
+   slider/panel/preview JS by sharing class + data-* hooks. #}
+{% with vals = hero_modal_vals,
+        buttons = hero_modal_buttons,
+        bg_image_url = hero_modal_bg_image_url,
+        bg_video_url = hero_modal_bg_video_url %}
+  {% include "_page_hero_modal.html" %}
+{% endwith %}
+
+{# Per-page meetings-list edit modal — same per-block pattern as the
+   hero modal. The structure card's Meetings pill opens this directly
+   instead of the generic BlockEditor modal; JS handles two-way binding
+   between modal inputs and the block's data. #}
+{% with vals = meetings_modal_vals %}
+  {% include "_page_meetings_modal.html" %}
+{% endwith %}
+
+{# Per-page upcoming-events edit modal — same per-block pattern. #}
+{% with vals = events_modal_vals %}
+  {% include "_page_events_modal.html" %}
+{% endwith %}
+
+{# Per-page features edit modal — same per-block pattern. #}
+{% with vals = features_modal_vals %}
+  {% include "_page_features_modal.html" %}
+{% endwith %}
+
+{# Per-page FAQ edit modal — same per-block pattern. #}
+{% with vals = faq_modal_vals %}
+  {% include "_page_faq_modal.html" %}
+{% endwith %}
+
+{# Slider readouts + bg-panel show/hide JS — copied verbatim from
+   the homepage admin (lines 1804–1834 of frontend_homepage.html)
+   so the modal's inputs feel identical here. The live-preview
+   wiring is the bigger chunk; we'll layer it on next pass. #}
+<script>
+  document.querySelectorAll('[data-page-hero-modal] [data-slider-input]').forEach(inp => {
+    const fieldLabel = inp.closest('.nav-megalink-field');
+    const out = fieldLabel && fieldLabel.querySelector('[data-slider-out]');
+    if (!out) return;
+    inp.addEventListener('input', () => { out.textContent = inp.value; });
+  });
+  document.querySelectorAll('[data-page-hero-modal] [data-hero-height-input]').forEach(inp => {
+    const fieldLabel = inp.closest('.nav-megalink-field');
+    const out = fieldLabel && fieldLabel.querySelector('[data-hero-height-out]');
+    if (!out) return;
+    const sync = () => {
+      const v = parseInt(inp.value, 10) || 0;
+      out.textContent = v ? (v + 'vh') : 'Auto';
+    };
+    inp.addEventListener('input', sync);
+  });
+  document.querySelectorAll('[data-page-hero-modal] [data-bg-style-radio]').forEach(r => {
+    r.addEventListener('change', () => {
+      // Gate on `r.checked` because `populateModalFromBlock` walks
+      // every bg-style radio and dispatches `change` on each one
+      // (to wake every slider readout). Without this gate the
+      // LAST radio in the loop (Dynamic) would always "win" and
+      // swap panels regardless of which radio was actually
+      // checked — Sinewave selected, Dynamic panel showing.
+      if (!r.checked) return;
+      const active = r.value;
+      document.querySelectorAll('[data-page-hero-modal] [data-bg-panel]').forEach(p => {
+        p.hidden = (p.dataset.bgPanel !== active);
+      });
+    });
+  });
+</script>
 {% endblock %}

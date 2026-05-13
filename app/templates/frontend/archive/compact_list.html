@@ -1,0 +1,67 @@
+{# Compact List layout — dense single-column rows. One row per item:
+   date block, type chip, title, short summary. No thumbnails. Top
+   filter strip with search + type chips + year pills. #}
+<section class="fe-section fe-archive fe-archive--compact fe-mlist--w-{{ list_width_mode }}" id="archive">
+  <div class="{% if list_width_mode == 'boxed' %}fe-container{% else %}fe-mlist-fullwrap{% endif %} fe-mlist-shell"
+       {% if list_width_mode == 'boxed' %}style="max-width: {{ list_max_width }}px;"
+       {%- elif list_padding_pct %}style="padding-left: {{ list_padding_pct }}vw; padding-right: {{ list_padding_pct }}vw;"{% endif %}>
+    {% include "frontend/archive/_top_filter_strip.html" %}
+
+    <div class="fe-archive-cl" data-archive-results
+         data-archive-pagination-mode="{{ archive_pagination_mode }}"
+         data-archive-page-size="{{ archive_page_size }}">
+      {% if not archive_items %}
+      <p class="fe-mlist-empty muted">Nothing in the archive yet.</p>
+      {% else %}
+      {% for bucket in year_buckets %}
+      <section class="fe-archive-cl-year" data-archive-year-section="{{ bucket.year }}">
+        <h2 class="fe-archive-cl-year-heading">
+          <span>{{ bucket.year }}</span>
+          <span class="fe-archive-cl-year-count">{{ bucket['items']|length }}</span>
+        </h2>
+        <ol class="fe-archive-cl-list">
+          {% for it in bucket['items'] %}
+          {%- set _p = it.post -%}
+          {%- set _date = it.sort_at -%}
+          {%- set _url = post_url(_p) -%}
+          <li class="fe-events-archive-card-wrap fe-archive-cl-row"
+              data-archive-search="{{ search_blobs.get(it.post.id, '') }}"
+              data-archive-year="{{ it.year }}"
+              data-archive-kind="{{ it.kind }}">
+            <a class="fe-archive-cl-link" href="{{ _url }}">
+              {% if _date %}
+              <span class="fe-archive-cl-date">
+                <span class="fe-archive-cl-date-month">{{ _date.strftime('%b') }}</span>
+                <span class="fe-archive-cl-date-day">{{ _date.strftime('%-d') }}</span>
+                <span class="fe-archive-cl-date-year">{{ _date.strftime('%Y') }}</span>
+              </span>
+              {% endif %}
+              <span class="fe-archive-cl-kind fe-archive-cl-kind--{{ it.kind }}">
+                {{ 'Event' if it.kind == 'event' else 'Announcement' }}
+              </span>
+              <span class="fe-archive-cl-body">
+                <span class="fe-archive-cl-title">{{ _p.title }}</span>
+                {% if _p.summary %}
+                <span class="fe-archive-cl-summary muted">{{ _p.summary|truncate(160, True, '…') }}</span>
+                {% endif %}
+                {% if it.kind == 'event' and _p.location_name %}
+                <span class="fe-archive-cl-meta muted">
+                  <span aria-hidden="true">{{ icon('map-pin') }}</span> {{ _p.location_name }}
+                </span>
+                {% endif %}
+              </span>
+              <span class="fe-archive-cl-arrow" aria-hidden="true">{{ icon('arrow-right') }}</span>
+            </a>
+          </li>
+          {% endfor %}
+        </ol>
+      </section>
+      {% endfor %}
+      <p class="fe-mlist-empty muted" data-archive-no-match hidden>No items match your filters.</p>
+      <div class="fe-archive-load-sentinel" data-archive-load-sentinel hidden aria-hidden="true"></div>
+      <nav class="fe-archive-pagination" data-archive-pagination
+           aria-label="Archive pages" hidden></nav>
+      {% endif %}
+    </div>
+  </div>
+</section>

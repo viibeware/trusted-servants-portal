@@ -35,6 +35,7 @@ _MAIN_CATALOG = [
     {"key": "zoom_tech",      "label": None,                   "endpoint": "main.zoom_tech",        "active_kind": "exact"},
     {"key": "posts",          "label": "Announcements & Events", "endpoint": "main.posts",          "active_kind": "prefix:main.post"},
     {"key": "stories",        "label": "Stories",              "endpoint": "main.stories",        "active_kind": "prefix:main.story"},
+    {"key": "blog",           "label": "Blog",                 "endpoint": "main.blog_index",     "active_kind": "prefix:main.blog_"},
     {"key": "web_frontend",   "label": "Web Frontend",         "endpoint": "main.frontend_dashboard", "active_kind": "prefix:main.frontend_"},
 ]
 
@@ -63,6 +64,7 @@ _DYNAMIC_SECTION_ITEMS = {
     "zoom_tech":     "zoom_tech_required_role",
     "posts":         "posts_required_role",
     "stories":       "stories_required_role",
+    "blog":          "blog_required_role",
     "web_frontend":  "frontend_module_required_role",
 }
 
@@ -110,6 +112,9 @@ def _is_visible(key, site, user):
     if key == "stories":
         return bool(site and getattr(site, "stories_enabled", False)
                     and user_meets_role(user, getattr(site, "stories_required_role", "admin")))
+    if key == "blog":
+        return bool(site and getattr(site, "blog_enabled", False)
+                    and user_meets_role(user, getattr(site, "blog_required_role", "admin")))
     if key == "access_requests": return bool(user.is_admin())
     if key == "contact_form":    return bool(user.is_admin())
     if key == "user_log":        return bool(user.is_admin())

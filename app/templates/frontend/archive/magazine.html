@@ -1,0 +1,70 @@
+{# Magazine layout — newest year's lead item as a feature tile spanning
+   the row, then a 3-up grid of remaining tiles. Each year section gets
+   its own grid block so the filter JS still has year sections to
+   collapse when needed. Top filter strip with search + type chips +
+   year pills. #}
+<section class="fe-section fe-archive fe-archive--magazine fe-mlist--w-{{ list_width_mode }}" id="archive">
+  <div class="{% if list_width_mode == 'boxed' %}fe-container{% else %}fe-mlist-fullwrap{% endif %} fe-mlist-shell"
+       {% if list_width_mode == 'boxed' %}style="max-width: {{ list_max_width }}px;"
+       {%- elif list_padding_pct %}style="padding-left: {{ list_padding_pct }}vw; padding-right: {{ list_padding_pct }}vw;"{% endif %}>
+    {% include "frontend/archive/_top_filter_strip.html" %}
+
+    <div class="fe-archive-mag" data-archive-results
+         data-archive-pagination-mode="{{ archive_pagination_mode }}"
+         data-archive-page-size="{{ archive_page_size }}">
+      {% if not archive_items %}
+      <p class="fe-mlist-empty muted">Nothing in the archive yet.</p>
+      {% else %}
+      {% for bucket in year_buckets %}
+      {%- set _outer = loop -%}
+      <section class="fe-archive-mag-year" data-archive-year-section="{{ bucket.year }}">
+        <h2 class="fe-archive-mag-year-heading">
+          <span class="fe-archive-mag-year-eyebrow">Year</span>
+          <span class="fe-archive-mag-year-num">{{ bucket.year }}</span>
+          <span class="fe-archive-mag-year-count">{{ bucket['items']|length }}</span>
+        </h2>
+        <div class="fe-archive-mag-grid">
+          {% for it in bucket['items'] %}
+          {%- set _p = it.post -%}
+          {%- set _date = it.sort_at -%}
+          {%- set _url = post_url(_p) -%}
+          {%- set _has_image = _p.featured_image_filename -%}
+          <article class="fe-events-archive-card-wrap fe-archive-mag-tile{% if loop.first and _outer.first %} fe-archive-mag-tile--feature{% endif %}{% if _has_image %} has-cover{% endif %}"
+                   data-archive-search="{{ search_blobs.get(it.post.id, '') }}"
+                   data-archive-year="{{ it.year }}"
+                   data-archive-kind="{{ it.kind }}">
+            <a class="fe-archive-mag-tile-link" href="{{ _url }}">
+              {% if _has_image %}
+              <span class="fe-archive-mag-tile-cover" aria-hidden="true">
+                <img src="{{ url_for('public.post_featured_image', pid=_p.id) }}"
+                     alt="" loading="lazy">
+              </span>
+              {% endif %}
+              <span class="fe-archive-mag-tile-body">
+                <span class="fe-archive-mag-tile-meta">
+                  <span class="fe-archive-mag-tile-kind fe-archive-mag-tile-kind--{{ it.kind }}">
+                    {{ 'Event' if it.kind == 'event' else 'Announcement' }}
+                  </span>
+                  {% if _date %}
+                  <span class="fe-archive-mag-tile-date">{{ _date.strftime('%b %-d, %Y') }}</span>
+                  {% endif %}
+                </span>
+                <span class="fe-archive-mag-tile-title">{{ _p.title }}</span>
+                {% if _p.summary %}
+                <span class="fe-archive-mag-tile-summary muted">{{ _p.summary|truncate(160, True, '…') }}</span>
+                {% endif %}
+              </span>
+            </a>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+      {% endfor %}
+      <p class="fe-mlist-empty muted" data-archive-no-match hidden>No items match your filters.</p>
+      <div class="fe-archive-load-sentinel" data-archive-load-sentinel hidden aria-hidden="true"></div>
+      <nav class="fe-archive-pagination" data-archive-pagination
+           aria-label="Archive pages" hidden></nav>
+      {% endif %}
+    </div>
+  </div>
+</section>

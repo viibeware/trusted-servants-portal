@@ -365,6 +365,10 @@ def create_app():
         _seed_custom_layouts(app)
         _seed_footer_layouts(app)
         _seed_page_layouts(app)
+        # Seed the public `/` homepage Page after page layouts so
+        # we can default to the 'page-blank' preset key on the new
+        # row without it dangling.
+        _seed_homepage_page(app)
         _backfill_media(app)
         _migrate_unique_post_slugs(app)
         # Boot-time recycle-bin sweep. The Delete Log page also runs
@@ -638,6 +642,79 @@ def create_app():
         return Library.query.order_by(Library.name).all()
     app.jinja_env.globals["library_block_data"] = _library_block_data
     app.jinja_env.globals["all_libraries"] = _all_libraries
+
+    # Blog block data — resolves the post list a page-embedded blog
+    # block should render, plus the matching category/tag for the
+    # block's header. Filters apply per-block: a single Blog table
+    # can power many distinct frontend "blogs" by scoping each
+    # embed to a different category or tag.
+    def _blog_block_data(category_id=0, tag_id=0, *, sort="newest",
+                         max_items=0, only_featured=False, only_pinned=False):
+        """Return ``(category, tag, posts)`` for a blog block. The
+        posts query filters out drafts + archives (so the public
+        view never sees them), then narrows by category / tag and
+        applies the requested sort. ``max_items`` of 0 = show every
+        match; a positive int caps the list."""
+        from .models import BlogPost, BlogCategory, BlogTag
+        from datetime import datetime
+        try:
+            cid = int(category_id or 0)
+        except (TypeError, ValueError):
+            cid = 0
+        try:
+            tid = int(tag_id or 0)
+        except (TypeError, ValueError):
+            tid = 0
+        category = db.session.get(BlogCategory, cid) if cid else None
+        tag = db.session.get(BlogTag, tid) if tid else None
+
+        q = (BlogPost.query
+             .filter(BlogPost.is_archived.is_(False),
+                     BlogPost.is_draft.is_(False)))
+        if category:
+            q = q.filter(BlogPost.categories.any(BlogCategory.id == category.id))
+        if tag:
+            q = q.filter(BlogPost.tags.any(BlogTag.id == tag.id))
+        if only_featured:
+            q = q.filter(BlogPost.is_featured.is_(True))
+        if only_pinned:
+            q = q.filter(BlogPost.is_pinned.is_(True))
+        s = (sort or "newest").lower()
+        if s == "oldest":
+            q = q.order_by(BlogPost.is_pinned.desc(),
+                           BlogPost.published_at.asc().nulls_last(),
+                           BlogPost.created_at.asc())
+        elif s == "title":
+            q = q.order_by(BlogPost.is_pinned.desc(), BlogPost.title.asc())
+        elif s == "random":
+            from sqlalchemy import func as _func
+            q = q.order_by(BlogPost.is_pinned.desc(), _func.random())
+        else:  # newest
+            q = q.order_by(BlogPost.is_pinned.desc(),
+                           BlogPost.published_at.desc().nulls_last(),
+                           BlogPost.created_at.desc())
+        try:
+            limit = int(max_items or 0)
+        except (TypeError, ValueError):
+            limit = 0
+        if limit > 0:
+            q = q.limit(limit)
+        posts = q.all()
+        return (category, tag, posts)
+
+    def _all_blog_categories():
+        from .models import BlogCategory
+        return (BlogCategory.query
+                .order_by(BlogCategory.position, BlogCategory.name)
+                .all())
+
+    def _all_blog_tags():
+        from .models import BlogTag
+        return BlogTag.query.order_by(BlogTag.name).all()
+
+    app.jinja_env.globals["blog_block_data"] = _blog_block_data
+    app.jinja_env.globals["all_blog_categories"] = _all_blog_categories
+    app.jinja_env.globals["all_blog_tags"] = _all_blog_tags
 
     # `css_color` Jinja filter — translate stored color values into
     # CSS-emitable strings. Accepts:
@@ -989,6 +1066,12 @@ def _migrate_sqlite(app):
                          ("frontend_404_image_filename", "VARCHAR(500)"),
                          ("frontend_module_enabled", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("frontend_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+                         # Which `Page` row renders at the public `/` root.
+                         # Nullable for the brief window between column add
+                         # and the auto-seed running; in normal operation
+                         # always points at a Page (the Pages admin guards
+                         # delete to keep the homepage from being orphaned).
+                         ("homepage_page_id", "INTEGER REFERENCES page(id) ON DELETE SET NULL"),
                          ("frontend_title", "VARCHAR(200)"),
                          ("frontend_tagline", "VARCHAR(500)"),
                          ("frontend_hero_heading", "VARCHAR(200)"),
@@ -1026,6 +1109,21 @@ def _migrate_sqlite(app):
                          ("frontend_announcements_list_padding_pct", "INTEGER NOT NULL DEFAULT 5"),
                          ("frontend_announcements_list_heading", "VARCHAR(200)"),
                          ("frontend_announcements_list_subheading", "VARCHAR(500)"),
+                         ("frontend_archive_template", "VARCHAR(64) NOT NULL DEFAULT 'year-sidebar'"),
+                         ("frontend_archive_pagination_mode", "VARCHAR(16) NOT NULL DEFAULT 'infinite'"),
+                         ("frontend_archive_page_size", "INTEGER NOT NULL DEFAULT 20"),
+                         ("frontend_archive_bg_dynamic_key", "VARCHAR(64)"),
+                         ("frontend_archive_bg_dynbg_config_json", "TEXT"),
+                         ("frontend_fellowships_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("frontend_fellowships_list_template", "VARCHAR(64) NOT NULL DEFAULT 'sidebar'"),
+                         ("frontend_fellowships_list_width_mode", "VARCHAR(16) NOT NULL DEFAULT 'boxed'"),
+                         ("frontend_fellowships_list_max_width", "INTEGER NOT NULL DEFAULT 1160"),
+                         ("frontend_fellowships_list_padding_pct", "INTEGER NOT NULL DEFAULT 5"),
+                         ("frontend_fellowships_list_heading", "VARCHAR(200)"),
+                         ("frontend_fellowships_list_subheading", "VARCHAR(500)"),
+                         ("frontend_fellowships_list_sort_mode", "VARCHAR(32) NOT NULL DEFAULT 'name-asc'"),
+                         ("frontend_fellowships_list_bg_dynamic_key", "VARCHAR(64)"),
+                         ("frontend_fellowships_list_bg_dynbg_config_json", "TEXT"),
                          ("stories_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
                          ("stories_required_role", "VARCHAR(32) NOT NULL DEFAULT 'admin'"),
                          ("frontend_stories_list_template", "VARCHAR(64) NOT NULL DEFAULT 'paper-stack'"),
@@ -1035,6 +1133,19 @@ def _migrate_sqlite(app):
                          ("frontend_stories_list_heading", "VARCHAR(200)"),
                          ("frontend_stories_list_subheading", "VARCHAR(500)"),
                          ("frontend_story_template", "VARCHAR(64) NOT NULL DEFAULT 'paper'"),
+                         ("blog_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("blog_required_role", "VARCHAR(32) NOT NULL DEFAULT 'admin'"),
+                         ("frontend_blog_list_template", "VARCHAR(64) NOT NULL DEFAULT 'magazine'"),
+                         ("frontend_blog_list_width_mode", "VARCHAR(16) NOT NULL DEFAULT 'boxed'"),
+                         ("frontend_blog_list_max_width", "INTEGER NOT NULL DEFAULT 1160"),
+                         ("frontend_blog_list_padding_pct", "INTEGER NOT NULL DEFAULT 5"),
+                         ("frontend_blog_list_heading", "VARCHAR(200)"),
+                         ("frontend_blog_list_subheading", "VARCHAR(500)"),
+                         ("frontend_blog_post_template", "VARCHAR(64) NOT NULL DEFAULT 'modern'"),
+                         ("frontend_blog_list_bg_dynamic_key", "VARCHAR(64)"),
+                         ("frontend_blog_list_bg_dynbg_config_json", "TEXT"),
+                         ("frontend_blog_post_bg_dynamic_key", "VARCHAR(64)"),
+                         ("frontend_blog_post_bg_dynbg_config_json", "TEXT"),
                          ("frontend_printlist_subheading", "VARCHAR(500)"),
                          ("frontend_printlist_website", "VARCHAR(200)"),
                          ("frontend_printlist_page_size", "VARCHAR(16) NOT NULL DEFAULT 'letter'"),
@@ -1066,6 +1177,9 @@ def _migrate_sqlite(app):
                          ("frontend_hero_heading_size", "INTEGER NOT NULL DEFAULT 100"),
                          ("frontend_hero_heading_grad_start", "VARCHAR(16)"),
                          ("frontend_hero_heading_grad_end", "VARCHAR(16)"),
+                         ("frontend_hero_subheading_font", "VARCHAR(32) NOT NULL DEFAULT 'inter'"),
+                         ("frontend_hero_subheading_size", "INTEGER NOT NULL DEFAULT 100"),
+                         ("frontend_hero_subheading_color", "VARCHAR(16)"),
                          ("frontend_hero_text_dynamic", "BOOLEAN NOT NULL DEFAULT 0"),
                          ("frontend_hero_bg_style", "VARCHAR(16) NOT NULL DEFAULT 'frosty'"),
                          ("frontend_hero_bg_color", "VARCHAR(16)"),
@@ -1088,6 +1202,8 @@ def _migrate_sqlite(app):
                          ("frontend_hero_particle_effect", "VARCHAR(32) NOT NULL DEFAULT 'stars'"),
                          ("frontend_hero_particle_speed", "INTEGER NOT NULL DEFAULT 100"),
                          ("frontend_hero_particle_size", "INTEGER NOT NULL DEFAULT 100"),
+                         ("frontend_hero_height_vh_desktop", "INTEGER NOT NULL DEFAULT 0"),
+                         ("frontend_hero_height_vh_mobile", "INTEGER NOT NULL DEFAULT 0"),
                          ("frontend_logo_filename", "VARCHAR(500)"),
                          ("frontend_logo_width", "INTEGER NOT NULL DEFAULT 40"),
                          ("top_alert_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
@@ -1151,8 +1267,11 @@ def _migrate_sqlite(app):
                          ("submitter_email", "VARCHAR(255)"),
                          ("submitter_phone", "VARCHAR(64)"),
                          ("submitter_notes", "TEXT"),
-                         ("submitted_at", "DATETIME")):
+                         ("submitted_at", "DATETIME"),
+                         ("published_at", "DATETIME")):
             add("post", col, ddl)
+        for col, ddl in (("published_at", "DATETIME"),):
+            add("story", col, ddl)
         for col, ddl in (("is_archived", "BOOLEAN NOT NULL DEFAULT 0"),
                          ("archived_at", "DATETIME")):
             add("access_request", col, ddl)
@@ -1168,6 +1287,9 @@ def _migrate_sqlite(app):
                          ("contact_form_show_pic_name", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("contact_form_show_pic_email","BOOLEAN NOT NULL DEFAULT 1"),
                          ("contact_form_show_pic_phone","BOOLEAN NOT NULL DEFAULT 1"),
+                         ("contact_form_width_mode",   "VARCHAR(16) NOT NULL DEFAULT 'boxed'"),
+                         ("contact_form_max_width",    "INTEGER NOT NULL DEFAULT 1160"),
+                         ("contact_form_padding_pct",  "INTEGER NOT NULL DEFAULT 5"),
                          ("frontend_meetings_list_bg_dynamic_key", "VARCHAR(64)"),
                          ("frontend_events_list_bg_dynamic_key", "VARCHAR(64)"),
                          ("frontend_announcements_list_bg_dynamic_key", "VARCHAR(64)"),
@@ -1222,6 +1344,11 @@ def _migrate_sqlite(app):
                          ("width_mode", "VARCHAR(16) NOT NULL DEFAULT 'boxed'"),
                          ("max_width", "INTEGER NOT NULL DEFAULT 1160"),
                          ("full_padding_pct", "INTEGER NOT NULL DEFAULT 4"),
+                         ("pad_top", "INTEGER NOT NULL DEFAULT 80"),
+                         ("pad_bottom", "INTEGER NOT NULL DEFAULT 96"),
+                         ("pad_x", "INTEGER NOT NULL DEFAULT 16"),
+                         ("section_gap", "INTEGER NOT NULL DEFAULT 32"),
+                         ("block_margin_y", "INTEGER NOT NULL DEFAULT 12"),
                          ("bg_dynamic_key", "VARCHAR(64)"),
                          ("bg_dynbg_config_json", "TEXT"),
                          ("bg_color", "VARCHAR(16)"),
@@ -1291,6 +1418,78 @@ def _migrate_sqlite(app):
             "  AND COALESCE(utility_bar_right_json, '[]') = '[]'"
         ), {"left": _ub_left, "right": _ub_right})
         app.logger.info("utility_bar seed rowcount=%s", _ub_res.rowcount)
+
+
+def _seed_homepage_page(app):
+    """Ensure there's a Page designated as the public `/` root.
+
+    Runs after `_migrate_sqlite` (which adds the `homepage_page_id`
+    column on existing DBs) and after `db.create_all()` (which creates
+    the Page table on fresh installs). The function is idempotent —
+    it short-circuits when `SiteSetting.homepage_page_id` is already
+    set, so it's safe to run on every boot.
+
+    Strategy:
+      1. If `SiteSetting.homepage_page_id` is already set → no-op.
+      2. Else, look for an existing Page with slug='home' → adopt it.
+      3. Else, create a fresh "Home" Page (slug='home', published,
+         minimal hero placeholder so the admin sees something on first
+         render) and link it.
+
+    Net effect: every install has a homepage Page after first boot. The
+    admin can re-point `homepage_page_id` to any other Page from the
+    Pages admin if they prefer a different page as the root."""
+    import json
+    import uuid
+    from .models import Page, SiteSetting
+    s = SiteSetting.query.first()
+    if s is None:
+        # First boot, no SiteSetting yet — skip; we'll seed on the
+        # next boot once SiteSetting exists (created lazily on first
+        # admin save).
+        return
+    if s.homepage_page_id:
+        existing = Page.query.get(s.homepage_page_id)
+        if existing is not None:
+            return
+        # Stale FK — fall through and re-seed below.
+        s.homepage_page_id = None
+    # Prefer an existing slug='home' page if the admin happened to
+    # create one before this auto-seed ran.
+    page = Page.query.filter_by(slug="home").first()
+    if page is None:
+        # Single-section blank shell with one hero block so the admin
+        # immediately sees the page-builder rather than a blank
+        # canvas. The hero defaults match the legacy homepage's
+        # opening copy so existing admins recognise the starting
+        # point. Block ids use uuid4 hex so they don't collide with
+        # any future block additions.
+        hero_id = uuid.uuid4().hex[:8]
+        sections = [{
+            "title": "",
+            "blocks": [{
+                "id": hero_id,
+                "type": "hero",
+                "data": {
+                    "heading": "You are not alone.",
+                    "subheading": "Find meetings, connect with your community, and take the next step in your recovery journey.",
+                    "eyebrow": "A recovery fellowship portal.",
+                    "tagline_enabled": True,
+                    "buttons": [],
+                },
+            }],
+        }]
+        page = Page(
+            slug="home", title="Home",
+            blocks_json=json.dumps(sections),
+            template="standard", is_published=True, is_private=False,
+            layout_key="page-blank",
+        )
+        db.session.add(page)
+        db.session.flush()  # populate page.id
+    s.homepage_page_id = page.id
+    db.session.commit()
+    app.logger.info("Seeded homepage Page id=%s slug='home' as SiteSetting.homepage_page_id", page.id)
 
 
 def _seed_admin(app):

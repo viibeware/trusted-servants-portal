@@ -1,0 +1,215 @@
+{# Lightweight, dependency-free image lightbox.
+
+   Usage: drop this partial onto any frontend page that wants to make
+   images zoomable, then add `data-lightbox-scope` to one or more
+   container elements. The script auto-discovers every <img> inside
+   those scopes (skipping images wrapped in <a> so card thumbnails
+   still link as expected) and wires a click → open-modal handler.
+
+   Multiple images in the same scope get prev/next navigation; a
+   single image hides the arrows. Closes on backdrop click, the X
+   button, or Escape. Honors prefers-reduced-motion.
+
+   The full-size source defaults to ``img.src``; admins can override
+   with ``data-lightbox-src="..."`` on a per-image basis (e.g. to
+   point at an unrescaled original when the page is showing a
+   thumbnail).
+#}
+<div id="fe-lightbox" class="fe-lightbox" hidden aria-hidden="true" role="dialog" aria-label="Image viewer">
+  <button type="button" class="fe-lightbox-close" aria-label="Close image viewer" data-lightbox-close>×</button>
+  <button type="button" class="fe-lightbox-nav fe-lightbox-prev" aria-label="Previous image" data-lightbox-prev>‹</button>
+  <button type="button" class="fe-lightbox-nav fe-lightbox-next" aria-label="Next image" data-lightbox-next>›</button>
+  <figure class="fe-lightbox-figure">
+    <img class="fe-lightbox-img" alt="" data-lightbox-img>
+    <figcaption class="fe-lightbox-caption" data-lightbox-caption hidden></figcaption>
+  </figure>
+</div>
+
+<style>
+  .fe-lightbox {
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    padding: clamp(1rem, 4vw, 3rem);
+    background: rgba(8, 10, 18, .92);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    opacity: 0; pointer-events: none;
+    transition: opacity .18s ease;
+  }
+  .fe-lightbox[hidden] { display: none; }
+  .fe-lightbox.is-open { opacity: 1; pointer-events: auto; }
+  .fe-lightbox-figure {
+    margin: 0; max-width: 100%; max-height: 100%;
+    display: flex; flex-direction: column; align-items: center; gap: .75rem;
+  }
+  .fe-lightbox-img {
+    max-width: 100%; max-height: 88vh;
+    width: auto; height: auto; display: block;
+    border-radius: 6px;
+    box-shadow: 0 30px 80px -10px rgba(0, 0, 0, .6);
+    transform: scale(.96);
+    transition: transform .22s cubic-bezier(.2,.7,.2,1);
+    cursor: zoom-out;
+  }
+  .fe-lightbox.is-open .fe-lightbox-img { transform: scale(1); }
+  .fe-lightbox-caption {
+    color: rgba(255, 255, 255, .82);
+    font-size: .9rem; line-height: 1.4;
+    text-align: center;
+    max-width: 70ch;
+    font-family: var(--fe-font-body, 'Inter', system-ui, sans-serif);
+  }
+  .fe-lightbox-close {
+    position: absolute; top: 1rem; right: 1.25rem;
+    width: 44px; height: 44px;
+    border: 0; border-radius: 50%;
+    background: rgba(255, 255, 255, .12);
+    color: #fff;
+    font-size: 1.6rem; line-height: 1;
+    cursor: pointer;
+    display: grid; place-items: center;
+    transition: background .15s ease, transform .15s ease;
+  }
+  .fe-lightbox-close:hover { background: rgba(255, 255, 255, .22); transform: scale(1.05); }
+  .fe-lightbox-nav {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 52px; height: 52px;
+    border: 0; border-radius: 50%;
+    background: rgba(255, 255, 255, .12);
+    color: #fff;
+    font-size: 2rem; line-height: 1;
+    cursor: pointer;
+    display: grid; place-items: center;
+    transition: background .15s ease, transform .15s ease;
+  }
+  .fe-lightbox-nav:hover:not(:disabled) {
+    background: rgba(255, 255, 255, .22);
+    transform: translateY(-50%) scale(1.05);
+  }
+  .fe-lightbox-nav:disabled, .fe-lightbox-nav[hidden] {
+    opacity: 0; pointer-events: none;
+  }
+  .fe-lightbox-prev { left: 1rem; }
+  .fe-lightbox-next { right: 1rem; }
+  /* Cursor signal on every image inside a lightbox-scoped container,
+     so admins / visitors can tell at a glance that the image is
+     interactive. The wrapper-anchored variant (`a > img`) opts out
+     since the click should follow the link, not open the lightbox. */
+  [data-lightbox-scope] img:not([data-lightbox-skip]) { cursor: zoom-in; }
+  [data-lightbox-scope] a img { cursor: pointer; }
+
+  body.fe-lightbox-locked { overflow: hidden; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fe-lightbox { transition: none; }
+    .fe-lightbox-img { transition: none; transform: scale(1); }
+    .fe-lightbox-close:hover, .fe-lightbox-nav:hover:not(:disabled) { transform: none; }
+  }
+</style>
+
+<script>
+(function () {
+  var lightbox = document.getElementById('fe-lightbox');
+  if (!lightbox) return;
+  var imgEl   = lightbox.querySelector('[data-lightbox-img]');
+  var capEl   = lightbox.querySelector('[data-lightbox-caption]');
+  var prevBtn = lightbox.querySelector('[data-lightbox-prev]');
+  var nextBtn = lightbox.querySelector('[data-lightbox-next]');
+  var images = [];   // [{src, alt}]
+  var index = -1;
+
+  // Discover lightbox-eligible images on page load. Images wrapped in
+  // an <a> are intentionally excluded so card thumbs still navigate;
+  // images carrying `data-lightbox-skip` opt out individually.
+  function collect() {
+    images = [];
+    var nodes = document.querySelectorAll('[data-lightbox-scope] img');
+    nodes.forEach(function (img) {
+      if (img.closest('a')) return;
+      if (img.hasAttribute('data-lightbox-skip')) return;
+      var src = img.getAttribute('data-lightbox-src') || img.currentSrc || img.src;
+      if (!src) return;
+      images.push({ src: src, alt: img.getAttribute('alt') || '', el: img });
+      img.addEventListener('click', function (e) {
+        e.preventDefault();
+        var idx = images.findIndex(function (it) { return it.el === img; });
+        if (idx >= 0) open(idx);
+      });
+      // Keyboard activation for accessibility (Enter/Space when the
+      // image gets focus — possible when wrapped in a button or with
+      // tabindex; we add tabindex below so screen-reader users can
+      // reach the lightbox trigger).
+      if (!img.hasAttribute('tabindex')) img.setAttribute('tabindex', '0');
+      img.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          var idx = images.findIndex(function (it) { return it.el === img; });
+          if (idx >= 0) open(idx);
+        }
+      });
+    });
+  }
+
+  function open(i) {
+    if (i < 0 || i >= images.length) return;
+    index = i;
+    var item = images[index];
+    imgEl.src = item.src;
+    imgEl.alt = item.alt;
+    if (item.alt) {
+      capEl.textContent = item.alt;
+      capEl.hidden = false;
+    } else {
+      capEl.textContent = '';
+      capEl.hidden = true;
+    }
+    var multi = images.length > 1;
+    prevBtn.hidden = !multi;
+    nextBtn.hidden = !multi;
+    lightbox.hidden = false;
+    lightbox.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('fe-lightbox-locked');
+    // Force reflow so the .is-open class transition fires.
+    void lightbox.offsetWidth;
+    lightbox.classList.add('is-open');
+  }
+  function close() {
+    lightbox.classList.remove('is-open');
+    lightbox.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('fe-lightbox-locked');
+    // Hide after the transition finishes so the fade-out plays.
+    setTimeout(function () {
+      if (!lightbox.classList.contains('is-open')) {
+        lightbox.hidden = true;
+        imgEl.src = '';
+      }
+    }, 200);
+  }
+  function go(delta) {
+    if (!images.length) return;
+    index = (index + delta + images.length) % images.length;
+    open(index);
+  }
+
+  lightbox.addEventListener('click', function (e) {
+    // Click on backdrop (the modal itself, not the figure) closes.
+    if (e.target === lightbox) close();
+    if (e.target === imgEl) close();
+  });
+  lightbox.querySelector('[data-lightbox-close]').addEventListener('click', close);
+  prevBtn.addEventListener('click', function () { go(-1); });
+  nextBtn.addEventListener('click', function () { go(1); });
+  document.addEventListener('keydown', function (e) {
+    if (lightbox.hidden || !lightbox.classList.contains('is-open')) return;
+    if (e.key === 'Escape')      close();
+    else if (e.key === 'ArrowLeft')  go(-1);
+    else if (e.key === 'ArrowRight') go(1);
+  });
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', collect);
+  } else {
+    collect();
+  }
+})();
+</script>

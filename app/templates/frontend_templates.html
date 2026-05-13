@@ -317,14 +317,14 @@
     <span class="muted smaller">Each picker applies to every page of that content type — no need to set it per meeting or per event.</span>
   </div>
   <p class="muted small fe-tplgrid-intro">
-    Templates here are different from <a href="{{ url_for('main.frontend_homepage') }}">Homepage</a> layouts:
-    <b>layouts</b> control the block sequence of <em>one specific page</em> (the homepage); <b>templates</b> on this page control how every page of a content type (meetings, events) is presented.
+    Templates here are different from page <a href="{{ url_for('main.frontend_pages') }}">layouts</a>:
+    <b>layouts</b> control the block sequence of <em>one specific page</em>; <b>templates</b> on this page control how every page of a content type (meetings, events) is presented.
   </p>
 </section>
 
 {{ tpl_section(
-     "Announcements / Events detail",
-     "Used for every announcement and event page (e.g. /event/spring-roundup-2026, /announcement/group-conscience).",
+     "Announcements / Events / Archive detail",
+     "Used for every announcement, event, and archived-post detail page (e.g. /event/spring-roundup-2026, /announcement/group-conscience, /archive/2024-fall-roundup).",
      "event",
      event_templates,
      (site.frontend_event_template if site else 'classic') or 'classic',
@@ -545,6 +545,43 @@
       </label>
     </fieldset>
 
+    {# Container width — same shape as every other list / detail
+       admin surface (events_list, announcements_list, stories_list,
+       blog_list, …). Two radio cards choose between a centered
+       boxed layout (capped at the max-width below) or full-bleed
+       (spans the viewport with the side-padding %). Out-of-range
+       numeric inputs clamp on the server side. #}
+    {%- set _cmode = (site.contact_form_width_mode if site else None) or 'boxed' -%}
+    {%- set _cpad  = (site.contact_form_padding_pct if site else 5) -%}
+    {%- set _cmax  = (site.contact_form_max_width   if site else 1160) -%}
+    <fieldset class="fieldset fe-mlist-width-fieldset">
+      <legend>Container width</legend>
+      <div class="fe-mlist-width-row">
+        <label class="check">
+          <input type="radio" name="contact_form_width_mode" value="boxed"
+                 {% if _cmode == 'boxed' %}checked{% endif %}>
+          <span><b>Boxed</b> — caps at the max-width below and centers in the viewport.</span>
+        </label>
+        <label class="check">
+          <input type="radio" name="contact_form_width_mode" value="full"
+                 {% if _cmode == 'full' %}checked{% endif %}>
+          <span><b>Full width</b> — spans the entire viewport with the side padding below applied as <code>vw</code> gutters.</span>
+        </label>
+      </div>
+      <div class="fe-mlist-width-controls">
+        <label class="fe-mlist-width-pad">
+          <span>Max width (px, boxed only)</span>
+          <input type="number" name="contact_form_max_width"
+                 min="640" max="2400" step="10" value="{{ _cmax }}">
+        </label>
+        <label class="fe-mlist-width-pad">
+          <span>Side padding (% of viewport, full-width only)</span>
+          <input type="number" name="contact_form_padding_pct"
+                 min="0" max="20" step="1" value="{{ _cpad }}">
+        </label>
+      </div>
+    </fieldset>
+
     <div class="form-actions">
       <a class="btn" href="{{ url_for('frontend.contact') }}" target="_blank" rel="noopener">Preview /contact ↗</a>
       <a class="btn" href="{{ url_for('main.contact_form') }}">View messages</a>
@@ -670,6 +707,103 @@
     <div class="form-actions">
       <a class="btn" href="{{ url_for('frontend.events_list') }}" target="_blank" rel="noopener">Preview /events ↗</a>
       <button class="btn btn-primary">Save Events list</button>
+    </div>
+  </form>
+</section>
+
+{# Archive page (/archive) — layout picker + pagination + customize
+   panel. Container width inherits from the Events list settings above
+   (the archive is the visual successor to /events/archive), so this
+   card owns the layout, pagination knobs, and per-template appearance
+   overrides. #}
+<section class="card fe-tplgrid-section">
+  <div class="card-head">
+    <h2>Archive (/archive)</h2>
+    <span class="muted smaller">Unified list of past events + archived announcements. Pick a layout, decide how many items load on first paint, and choose infinite scroll or numbered pages. Container width inherits from the Events list settings above.</span>
+  </div>
+  <form class="form fe-tplgrid-form" method="post"
+        action="{{ url_for('main.frontend_archive_template_save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="fe-tplgrid">
+      {% for t in archive_templates %}
+      <label class="fe-tplgrid-card{% if archive_active_key == t.key %} active{% endif %}">
+        <input type="radio" name="frontend_archive_template" value="{{ t.key }}"
+               {% if archive_active_key == t.key %}checked{% endif %}>
+        <div class="fe-tplgrid-thumb fe-tplgrid-thumb-archive fe-tplgrid-thumb-archive-{{ t.key }}" aria-hidden="true">
+          {% if t.key == 'year-sidebar' %}
+            <span class="t-side"><span></span><span></span><span></span><span></span></span>
+            <span class="t-main">
+              <span class="t-row"></span>
+              <span class="t-row"></span>
+              <span class="t-row"></span>
+            </span>
+          {% elif t.key == 'timeline' %}
+            <span class="t-strip"></span>
+            <span class="t-tl-spine"></span>
+            <span class="t-tl-row t-tl-row-left"></span>
+            <span class="t-tl-row t-tl-row-right"></span>
+            <span class="t-tl-row t-tl-row-left"></span>
+          {% elif t.key == 'compact-list' %}
+            <span class="t-strip"></span>
+            <span class="t-cl-row"></span>
+            <span class="t-cl-row"></span>
+            <span class="t-cl-row"></span>
+            <span class="t-cl-row"></span>
+          {% elif t.key == 'magazine' %}
+            <span class="t-strip"></span>
+            <span class="t-mag-hero"></span>
+            <span class="t-mag-tile"></span>
+            <span class="t-mag-tile"></span>
+            <span class="t-mag-tile"></span>
+          {% endif %}
+        </div>
+        <div class="fe-tplgrid-info">
+          <div class="fe-tplgrid-name">
+            {{ t.name }}
+            <span class="fe-tplgrid-badge">Active</span>
+          </div>
+          <div class="fe-tplgrid-desc muted small">{{ t.description }}</div>
+        </div>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary">Save layout</button>
+    </div>
+  </form>
+
+  {{ tpl_customize_panel('archive', archive_active_key, archive_active_settings, ((archive_templates | selectattr('key', 'equalto', archive_active_key) | list | first).name if (archive_templates | selectattr('key', 'equalto', archive_active_key) | list | first) else ''), scope_label='archive page') }}
+
+  <form class="form" method="post"
+        action="{{ url_for('main.frontend_archive_template_save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {%- set _amode = (site.frontend_archive_pagination_mode if site else None) or 'infinite' -%}
+    {%- set _asize = (site.frontend_archive_page_size if site else 20) -%}
+    <fieldset class="fieldset">
+      <legend>Pagination</legend>
+      <div class="fe-mlist-width-row">
+        <label class="check">
+          <input type="radio" name="frontend_archive_pagination_mode" value="infinite"
+                 {% if _amode == 'infinite' %}checked{% endif %}>
+          <span><b>Infinite scroll</b> — load the first batch on page open, then reveal another batch each time the visitor reaches the end of the list.</span>
+        </label>
+        <label class="check">
+          <input type="radio" name="frontend_archive_pagination_mode" value="numbered"
+                 {% if _amode == 'numbered' %}checked{% endif %}>
+          <span><b>Numbered pages</b> — show one batch at a time with page links at the bottom of the list.</span>
+        </label>
+      </div>
+      <div class="fe-mlist-width-controls">
+        <label class="fe-mlist-width-pad">
+          <span>Posts per page</span>
+          <input type="number" name="frontend_archive_page_size"
+                 min="1" max="200" step="1" value="{{ _asize }}">
+        </label>
+      </div>
+    </fieldset>
+    <div class="form-actions">
+      <a class="btn" href="{{ url_for('frontend.archive') }}" target="_blank" rel="noopener">Preview /archive ↗</a>
+      <button class="btn btn-primary">Save Archive</button>
     </div>
   </form>
 </section>
@@ -1165,6 +1299,187 @@
 </section>
 {% endif %}
 
+{# ── Blog ─────────────────────────────────────────────────────
+   Picker for the public /blog index page + the per-post detail.
+   Six list layouts (magazine / cards / minimal / gazette / mosaic /
+   sidebar) and four detail layouts (modern / longform / classic /
+   cover). Surfaces only when the Blog module is enabled. #}
+{% if site and site.blog_enabled %}
+<section class="card fe-tplgrid-section">
+  <div class="card-head">
+    <h2>Blog list (/blog)</h2>
+    <span class="muted smaller">Picks the layout for the public blog index. Magazine and cards lean modern + image-forward; gazette is a newspaper feel; minimal is image-light; mosaic is a column-mason grid; sidebar adds a sticky filter rail.</span>
+  </div>
+  <form class="form fe-tplgrid-form" method="post"
+        action="{{ url_for('main.frontend_blog_list_template_save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="fe-tplgrid">
+      {% for t in blog_list_templates %}
+      <label class="fe-tplgrid-card{% if blog_list_active_key == t.key %} active{% endif %}">
+        <input type="radio" name="frontend_blog_list_template" value="{{ t.key }}"
+               {% if blog_list_active_key == t.key %}checked{% endif %}>
+        <div class="fe-tplgrid-thumb fe-tplgrid-thumb-blog-list fe-tplgrid-thumb-blog-list-{{ t.key }}" aria-hidden="true">
+          {% if t.key == 'magazine' %}
+            <span class="t-mag-hero"></span>
+            <span class="t-mag-tile"></span><span class="t-mag-tile"></span><span class="t-mag-tile"></span>
+          {% elif t.key == 'cards' %}
+            <span class="t-row"></span><span class="t-row"></span><span class="t-row"></span>
+          {% elif t.key == 'minimal' %}
+            <span class="t-h-big centered"></span>
+            <span class="t-line"></span><span class="t-line short"></span>
+            <span class="t-line"></span>
+          {% elif t.key == 'gazette' %}
+            <span class="t-h-big"></span>
+            <span class="t-cols">
+              <span class="t-col-main"><span></span><span></span><span></span></span>
+              <span class="t-col-side"><span></span><span></span></span>
+            </span>
+          {% elif t.key == 'mosaic' %}
+            <span class="t-row"></span><span class="t-row"></span><span class="t-row"></span><span class="t-row"></span>
+          {% elif t.key == 'sidebar' %}
+            <span class="t-cols">
+              <span class="t-col-main"><span></span><span></span><span></span></span>
+              <span class="t-col-side"><span></span><span></span></span>
+            </span>
+          {% endif %}
+        </div>
+        <div class="fe-tplgrid-info">
+          <div class="fe-tplgrid-name">
+            {{ t.name }}
+            <span class="fe-tplgrid-badge">Active</span>
+          </div>
+          <div class="fe-tplgrid-desc muted small">{{ t.description }}</div>
+        </div>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary">Save layout</button>
+    </div>
+  </form>
+
+  {{ tpl_customize_panel('blog_list', blog_list_active_key, blog_list_active_settings, ((blog_list_templates | selectattr('key', 'equalto', blog_list_active_key) | list | first).name if (blog_list_templates | selectattr('key', 'equalto', blog_list_active_key) | list | first) else ''), scope_label='blog list') }}
+
+  <form class="form" method="post"
+        action="{{ url_for('main.frontend_blog_list_template_save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {%- set _bwmode = (site.frontend_blog_list_width_mode if site else None) or 'boxed' -%}
+    {%- set _bwpad  = (site.frontend_blog_list_padding_pct if site else 5) -%}
+    {%- set _bwmax  = (site.frontend_blog_list_max_width   if site else 1160) -%}
+    {%- set _bwhead = (site.frontend_blog_list_heading     if site else '') or '' -%}
+    {%- set _bwsub  = (site.frontend_blog_list_subheading  if site else '') or '' -%}
+    <fieldset class="fieldset fe-mlist-copy-fieldset">
+      <legend>Page heading</legend>
+      <p class="muted small" style="margin: 0 0 8px;">Override the title and subheading the public /blog page shows above the layout. Leave blank to use the chosen layout's built-in copy.</p>
+      <label>Title
+        <input type="text" name="frontend_blog_list_heading"
+               maxlength="200" value="{{ _bwhead }}"
+               placeholder="Blog">
+      </label>
+      <label>Subheading
+        <textarea name="frontend_blog_list_subheading"
+                  rows="2" maxlength="500"
+                  placeholder="Editorial notes from the fellowship.">{{ _bwsub }}</textarea>
+      </label>
+    </fieldset>
+    <fieldset class="fieldset fe-mlist-width-fieldset">
+      <legend>Container width</legend>
+      <div class="fe-mlist-width-row">
+        <label class="check">
+          <input type="radio" name="frontend_blog_list_width_mode" value="boxed"
+                 {% if _bwmode == 'boxed' %}checked{% endif %}>
+          <span><b>Boxed</b> — caps at the max-width below and centers in the viewport.</span>
+        </label>
+        <label class="check">
+          <input type="radio" name="frontend_blog_list_width_mode" value="full"
+                 {% if _bwmode == 'full' %}checked{% endif %}>
+          <span><b>Full width</b> — spans the entire viewport with the side padding below applied as <code>vw</code> gutters.</span>
+        </label>
+      </div>
+      <div class="fe-mlist-width-controls">
+        <label class="fe-mlist-width-pad">
+          <span>Max width (px, boxed only)</span>
+          <input type="number" name="frontend_blog_list_max_width"
+                 min="640" max="2400" step="10" value="{{ _bwmax }}">
+        </label>
+        <label class="fe-mlist-width-pad">
+          <span>Side padding (% of viewport, full-width only)</span>
+          <input type="number" name="frontend_blog_list_padding_pct"
+                 min="0" max="20" step="1" value="{{ _bwpad }}">
+        </label>
+      </div>
+    </fieldset>
+    <div class="form-actions">
+      <a class="btn" href="{{ url_for('frontend.blog_list') }}" target="_blank" rel="noopener">Preview /blog ↗</a>
+      <button class="btn btn-primary">Save Blog list</button>
+    </div>
+  </form>
+</section>
+
+<section class="card fe-tplgrid-section">
+  <div class="card-head">
+    <h2>Blog detail (/blog/&lt;slug&gt;)</h2>
+    <span class="muted smaller">Picks the layout for an individual blog post. Modern is an editorial default; longform is a Medium-style essay treatment; classic adds a sidebar; cover is a flagship full-bleed treatment.</span>
+  </div>
+  <form class="form fe-tplgrid-form" method="post"
+        action="{{ url_for('main.frontend_blog_post_template_save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="fe-tplgrid">
+      {% for t in blog_post_templates %}
+      <label class="fe-tplgrid-card{% if blog_post_active_key == t.key %} active{% endif %}">
+        <input type="radio" name="frontend_blog_post_template" value="{{ t.key }}"
+               {% if blog_post_active_key == t.key %}checked{% endif %}>
+        <div class="fe-tplgrid-thumb fe-tplgrid-thumb-blog-post fe-tplgrid-thumb-blog-post-{{ t.key }}" aria-hidden="true">
+          {% if t.key == 'modern' %}
+            <span class="t-cover"></span>
+            <span class="t-h centered"></span>
+            <span class="t-line"></span><span class="t-line"></span><span class="t-line short"></span>
+          {% elif t.key == 'longform' %}
+            <span class="t-eyebrow centered"></span>
+            <span class="t-h-big centered"></span>
+            <span class="t-line"></span><span class="t-line"></span><span class="t-line short"></span>
+          {% elif t.key == 'classic' %}
+            <span class="t-cols">
+              <span class="t-col-main"><span></span><span></span><span></span></span>
+              <span class="t-col-side"><span></span><span></span></span>
+            </span>
+          {% elif t.key == 'cover' %}
+            <span class="t-poster-hero"></span>
+            <span class="t-poster-overlay"><span class="t-poster-title"></span></span>
+            <span class="t-cols">
+              <span class="t-col-main"><span></span><span></span><span></span></span>
+              <span class="t-col-side"><span></span><span></span></span>
+            </span>
+          {% endif %}
+        </div>
+        <div class="fe-tplgrid-info">
+          <div class="fe-tplgrid-name">
+            {{ t.name }}
+            <span class="fe-tplgrid-badge">Active</span>
+          </div>
+          <div class="fe-tplgrid-desc muted small">{{ t.description }}</div>
+        </div>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary">Save layout</button>
+    </div>
+  </form>
+
+  {{ tpl_customize_panel('blog_post', blog_post_active_key, blog_post_active_settings, ((blog_post_templates | selectattr('key', 'equalto', blog_post_active_key) | list | first).name if (blog_post_templates | selectattr('key', 'equalto', blog_post_active_key) | list | first) else ''), scope_label='blog-detail page') }}
+
+  <form class="form" method="post"
+        action="{{ url_for('main.frontend_blog_post_template_save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-actions">
+      <a class="btn" href="{{ url_for('frontend.blog_list') }}" target="_blank" rel="noopener">Browse /blog ↗</a>
+      <button class="btn btn-primary">Save Blog post template</button>
+    </div>
+  </form>
+</section>
+{% endif %}
+
 {# ── Site Index ──────────────────────────────────────────────────
    Auto-populated /siteindex page that lists every public surface:
    static pages, meetings, events, announcements, stories, library
@@ -1289,6 +1604,159 @@
       <a class="btn" href="{{ url_for('frontend.site_index') }}" target="_blank" rel="noopener">Preview /siteindex ↗</a>
       {% endif %}
       <button class="btn btn-primary">Save Site Index</button>
+    </div>
+  </form>
+</section>
+
+{# ── Fellowships list (/fellowships) ─────────────────────────────
+   Public Fellowships Index page — the list of peer recovery
+   fellowships the admin curates from Settings → Global. Two layouts
+   (Sidebar + Compact list), the standard Customize panel for
+   typography / dynbg / colour, the same Container width controls
+   every other list template carries, page heading copy, default
+   client-side sort mode, and a Publish toggle that gates the public
+   route. #}
+{%- set _fwmode    = (site.frontend_fellowships_list_width_mode if site else None) or 'boxed' -%}
+{%- set _fwpad     = (site.frontend_fellowships_list_padding_pct if site else 5) -%}
+{%- set _fwmax     = (site.frontend_fellowships_list_max_width   if site else 1160) -%}
+{%- set _fwhead    = (site.frontend_fellowships_list_heading     if site else '') or '' -%}
+{%- set _fwsub     = (site.frontend_fellowships_list_subheading  if site else '') or '' -%}
+{%- set _fwsort    = (site.frontend_fellowships_list_sort_mode   if site else None) or 'name-asc' -%}
+{%- set _fwenabled = (site.frontend_fellowships_enabled          if site else False) -%}
+<section class="card fe-tplgrid-section">
+  <div class="card-head">
+    <h2>Fellowships list (/fellowships)</h2>
+    <span class="muted smaller">Public index of sister recovery fellowships. Add and edit rows in Settings → Global → Fellowships Index. This card controls the public-page layout, heading, container width, default sort order, and whether the page is published.</span>
+  </div>
+  <form class="form fe-tplgrid-form" method="post"
+        action="{{ url_for('main.frontend_fellowships_list_template_save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="fe-tplgrid">
+      {% for t in fellowships_list_templates %}
+      <label class="fe-tplgrid-card{% if fellowships_list_active_key == t.key %} active{% endif %}">
+        <input type="radio" name="frontend_fellowships_list_template" value="{{ t.key }}"
+               {% if fellowships_list_active_key == t.key %}checked{% endif %}>
+        <div class="fe-tplgrid-thumb fe-tplgrid-thumb-fellowships-list fe-tplgrid-thumb-fellowships-list-{{ t.key }}" aria-hidden="true">
+          {% if t.key == 'sidebar' %}
+            <span class="t-cols">
+              <span class="t-col-side"><span></span><span></span><span></span></span>
+              <span class="t-col-main"><span></span><span></span><span></span></span>
+            </span>
+          {% elif t.key == 'compact' %}
+            <span class="t-h"></span>
+            <span class="t-row"></span><span class="t-row"></span>
+            <span class="t-row"></span><span class="t-row"></span>
+            <span class="t-row"></span>
+          {% endif %}
+        </div>
+        <div class="fe-tplgrid-info">
+          <div class="fe-tplgrid-name">
+            {{ t.name }}
+            <span class="fe-tplgrid-badge">Active</span>
+          </div>
+          <div class="fe-tplgrid-desc muted small">{{ t.description }}</div>
+        </div>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary">Save layout</button>
+    </div>
+  </form>
+
+  {{ tpl_customize_panel('fellowships_list', fellowships_list_active_key, fellowships_list_active_settings, ((fellowships_list_templates | selectattr('key', 'equalto', fellowships_list_active_key) | list | first).name if (fellowships_list_templates | selectattr('key', 'equalto', fellowships_list_active_key) | list | first) else ''), scope_label='fellowships list') }}
+
+  <form class="form" method="post"
+        action="{{ url_for('main.frontend_fellowships_list_template_save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <fieldset class="fieldset fe-mlist-copy-fieldset">
+      <legend>Page heading</legend>
+      <p class="muted small" style="margin: 0 0 8px;">Override the title and subheading the public /fellowships page shows. Leave blank to use the layout's default copy.</p>
+      <label>Title
+        <input type="text" name="frontend_fellowships_list_heading"
+               maxlength="200" value="{{ _fwhead }}"
+               placeholder="Fellowships">
+      </label>
+      <label>Subheading
+        <textarea name="frontend_fellowships_list_subheading"
+                  rows="2" maxlength="500"
+                  placeholder="Sister recovery fellowships, with links to their own pages.">{{ _fwsub }}</textarea>
+      </label>
+    </fieldset>
+
+    <fieldset class="fieldset fe-mlist-width-fieldset">
+      <legend>Container width</legend>
+      <div class="fe-mlist-width-row">
+        <label class="check">
+          <input type="radio" name="frontend_fellowships_list_width_mode" value="boxed"
+                 {% if _fwmode == 'boxed' %}checked{% endif %}>
+          <span><b>Boxed</b> — caps at the max-width below and centers in the viewport.</span>
+        </label>
+        <label class="check">
+          <input type="radio" name="frontend_fellowships_list_width_mode" value="full"
+                 {% if _fwmode == 'full' %}checked{% endif %}>
+          <span><b>Full width</b> — spans the entire viewport with the side padding below applied as <code>vw</code> gutters.</span>
+        </label>
+      </div>
+      <div class="fe-mlist-width-controls">
+        <label class="fe-mlist-width-pad">
+          <span>Max width (px, boxed only)</span>
+          <input type="number" name="frontend_fellowships_list_max_width"
+                 min="640" max="2400" step="10" value="{{ _fwmax }}">
+        </label>
+        <label class="fe-mlist-width-pad">
+          <span>Side padding (% of viewport, full-width only)</span>
+          <input type="number" name="frontend_fellowships_list_padding_pct"
+                 min="0" max="20" step="1" value="{{ _fwpad }}">
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset class="fieldset">
+      <legend>Default sort</legend>
+      <p class="muted small" style="margin: 0 0 8px;">Initial sort order applied when the page loads. Visitors can change the sort live with the dropdown in the sidebar.</p>
+      <label class="check">
+        <input type="radio" name="frontend_fellowships_list_sort_mode" value="name-asc"
+               {% if _fwsort == 'name-asc' %}checked{% endif %}>
+        <span><b>Name (A–Z)</b></span>
+      </label>
+      <label class="check">
+        <input type="radio" name="frontend_fellowships_list_sort_mode" value="name-desc"
+               {% if _fwsort == 'name-desc' %}checked{% endif %}>
+        <span><b>Name (Z–A)</b></span>
+      </label>
+      <label class="check">
+        <input type="radio" name="frontend_fellowships_list_sort_mode" value="country-asc"
+               {% if _fwsort == 'country-asc' %}checked{% endif %}>
+        <span><b>Country (A–Z)</b> — virtual fellowships land at the end of the list.</span>
+      </label>
+      <label class="check">
+        <input type="radio" name="frontend_fellowships_list_sort_mode" value="newest"
+               {% if _fwsort == 'newest' %}checked{% endif %}>
+        <span><b>Newest first</b> — by date added.</span>
+      </label>
+      <label class="check">
+        <input type="radio" name="frontend_fellowships_list_sort_mode" value="oldest"
+               {% if _fwsort == 'oldest' %}checked{% endif %}>
+        <span><b>Oldest first</b> — by date added.</span>
+      </label>
+    </fieldset>
+
+    <fieldset class="fieldset">
+      <legend>Publish</legend>
+      <label class="check">
+        <input type="hidden" name="frontend_fellowships_enabled_present" value="1">
+        <input type="checkbox" name="frontend_fellowships_enabled" value="1"
+               {% if _fwenabled %}checked{% endif %}>
+        <span>Publish the Fellowships Index page at <code>/fellowships</code>. When off, the URL returns 404 and the page is hidden from menus, /siteindex, and frontend search.</span>
+      </label>
+    </fieldset>
+
+    <div class="form-actions">
+      {% if _fwenabled %}
+      <a class="btn" href="{{ url_for('frontend.fellowships_list') }}" target="_blank" rel="noopener">Preview /fellowships ↗</a>
+      {% endif %}
+      <button class="btn btn-primary">Save Fellowships list</button>
     </div>
   </form>
 </section>

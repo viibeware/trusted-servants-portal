@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 {% block heading %}Stories{% endblock %}
-{% block heading_help %}Recovery stories — long-form first-person posts. Each story has an author, a featured image, optional sobriety / story dates, and a body.{% endblock %}
+{% block heading_help %}Recovery stories — long-form first-person posts. Each story has an author, a featured image, optional sobriety / story dates, and a body. Click a column header to sort.{% endblock %}
 {% block top_actions %}
   <div class="view-controls">
     <div class="view-toggle">
       <a class="btn btn-sm {% if show == 'active' or show not in ('archived', 'drafts') %}active{% endif %}"
-         href="{{ url_for('main.stories', show='active') }}">Published</a>
+         href="{{ url_for('main.stories', show='active', sort=sort) }}">Published</a>
       <a class="btn btn-sm {% if show == 'drafts' %}active{% endif %}"
-         href="{{ url_for('main.stories', show='drafts') }}">Drafts</a>
+         href="{{ url_for('main.stories', show='drafts', sort=sort) }}">Drafts</a>
       <a class="btn btn-sm {% if show == 'archived' %}active{% endif %}"
-         href="{{ url_for('main.stories', show='archived') }}">Archived</a>
+         href="{{ url_for('main.stories', show='archived', sort=sort) }}">Archived</a>
     </div>
   </div>
   <button type="button" class="btn btn-primary"
@@ -18,15 +18,34 @@
           data-modal-title="New story">+ New story</button>
 {% endblock %}
 {% block content %}
+{%- set _sortmap = {
+    'title': ('title_asc', 'title_desc'),
+    'author': ('author_asc', 'author_asc'),
+    'story_date': ('story_date_desc', 'story_date_asc'),
+    'posted': ('posted_desc', 'posted_asc'),
+} -%}
+{%- macro sort_link(col, label) -%}
+  {%- set primary, secondary = _sortmap[col] -%}
+  {%- set is_active = sort in (primary, secondary) -%}
+  {%- set next_sort = secondary if sort == primary else primary -%}
+  <a class="posts-sort{% if is_active %} is-active{% endif %}"
+     href="{{ url_for('main.stories', show=show, sort=next_sort) }}">
+    {{ label }}
+    {% if sort == primary %}<span class="posts-sort-arrow" aria-hidden="true">{{ '↑' if 'asc' in primary else '↓' }}</span>
+    {% elif sort == secondary %}<span class="posts-sort-arrow" aria-hidden="true">{{ '↑' if 'asc' in secondary else '↓' }}</span>
+    {% endif %}
+  </a>
+{%- endmacro -%}
 {% if stories %}
 <section class="card posts-card">
   <table class="tbl posts-tbl">
     <thead>
       <tr>
         <th class="posts-th-thumb"></th>
-        <th>Title</th>
-        <th class="hide-sm">Author</th>
-        <th class="hide-sm">Date</th>
+        <th>{{ sort_link('title', 'Title') }}</th>
+        <th class="hide-sm">{{ sort_link('author', 'Author') }}</th>
+        <th class="hide-sm">{{ sort_link('story_date', 'Story date') }}</th>
+        <th class="hide-sm">{{ sort_link('posted', 'Posted') }}</th>
         <th class="hide-sm">Status</th>
         <th class="posts-th-actions"></th>
       </tr>
@@ -56,6 +75,14 @@
         <td class="hide-sm">
           {% if s.display_date %}
             <div class="muted small">{{ s.display_date.strftime('%b %d, %Y') }}</div>
+          {% else %}
+            <span class="muted smaller">—</span>
+          {% endif %}
+        </td>
+        <td class="hide-sm">
+          {% if s.display_posted %}
+            <div class="muted small">{{ s.display_posted.strftime('%b %d, %Y') }}</div>
+            <div class="muted smaller">{{ s.display_posted.strftime('%-I:%M %p') }}</div>
           {% else %}
             <span class="muted smaller">—</span>
           {% endif %}

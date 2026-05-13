@@ -643,6 +643,13 @@ class SiteSetting(db.Model):
     # Module gate: when False, hides Web Frontend from the sidebar entirely,
     # blocks the admin editor routes, and the public homepage won't serve.
     frontend_module_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    # Which Page renders at the public `/` root. Nullable for the brief
+    # window between column add and the auto-seed running; in normal
+    # operation always points at a Page row. The Pages admin surfaces a
+    # "Make Homepage" action that writes this column, and the sidebar's
+    # "Homepage" link routes to that page's edit screen.
+    homepage_page_id = db.Column(db.Integer, db.ForeignKey('page.id', ondelete='SET NULL'),
+                                  nullable=True, index=True)
     # Public visibility: when False (but module is enabled), signed-in editors
     # and admins can still preview while the public root redirects to login.
     frontend_enabled = db.Column(db.Boolean, nullable=False, default=False)
@@ -656,6 +663,15 @@ class SiteSetting(db.Model):
     frontend_hero_heading_size = db.Column(db.Integer, nullable=False, default=100)  # percent of default
     frontend_hero_heading_grad_start = db.Column(db.String(16))  # hex; None = theme default
     frontend_hero_heading_grad_end = db.Column(db.String(16))
+    # Hero subheading typography — independent of the heading so admins
+    # can mix-and-match (e.g. serif heading + sans-serif subheading,
+    # different sizes, different colours). Subheading uses a single
+    # solid colour rather than a gradient since the body of the
+    # subheading is usually short enough that a gradient looks busy.
+    # Defaults preserve the legacy look (Inter, 100%, theme muted).
+    frontend_hero_subheading_font = db.Column(db.String(32), nullable=False, default="inter")  # 'fraunces' | 'inter'
+    frontend_hero_subheading_size = db.Column(db.Integer, nullable=False, default=100)  # percent of default
+    frontend_hero_subheading_color = db.Column(db.String(16))   # hex; None = theme default
     # When on, heading + subheading colors auto-derive from the chosen
     # background's lightness so text stays readable on dark or light bgs.
     frontend_hero_text_dynamic = db.Column(db.Boolean, nullable=False, default=False)
@@ -691,6 +707,14 @@ class SiteSetting(db.Model):
     frontend_hero_particle_effect = db.Column(db.String(32), nullable=False, default="stars")
     frontend_hero_particle_speed = db.Column(db.Integer, nullable=False, default=100)
     frontend_hero_particle_size = db.Column(db.Integer, nullable=False, default=100)
+    # Vertical height of the hero block, in vh. 0 means "auto" — fall
+    # back to the existing padding-derived height so installs that
+    # never visit the field keep their current look. Two columns so
+    # the admin can dial desktop and mobile separately (a single shared
+    # value makes it hard to keep a tall poster-hero on desktop AND a
+    # phone-friendly compact hero on mobile).
+    frontend_hero_height_vh_desktop = db.Column(db.Integer, nullable=False, default=0)
+    frontend_hero_height_vh_mobile = db.Column(db.Integer, nullable=False, default=0)
     frontend_about_heading = db.Column(db.String(200))
     frontend_about_body = db.Column(db.Text)
     frontend_contact_heading = db.Column(db.String(200))
@@ -730,6 +754,32 @@ class SiteSetting(db.Model):
     frontend_announcements_list_padding_pct = db.Column(db.Integer, nullable=False, default=5)
     frontend_announcements_list_heading = db.Column(db.String(200))
     frontend_announcements_list_subheading = db.Column(db.String(500))
+    # Archive (/archive) — layout picker + pagination strategy + initial
+    # page size for the unified past-events + archived-announcements list.
+    # `frontend_archive_template` chooses one of ARCHIVE_TEMPLATES
+    # (year-sidebar / timeline / compact-list / magazine). Pagination
+    # mode is 'infinite' (load next page_size cards on scroll-to-end) or
+    # 'numbered' (page_size at a time with bottom-of-list page links).
+    frontend_archive_template = db.Column(db.String(64), nullable=False, default="year-sidebar")
+    frontend_archive_pagination_mode = db.Column(db.String(16), nullable=False, default="infinite")
+    frontend_archive_page_size = db.Column(db.Integer, nullable=False, default=20)
+    frontend_archive_bg_dynamic_key = db.Column(db.String(64))
+    frontend_archive_bg_dynbg_config_json = db.Column(db.Text)
+    # Fellowships Index (/fellowships) — public list of peer recovery
+    # fellowships the admin curates from Settings → Global. Mirrors the
+    # archive / library list shape: layout picker, container width
+    # controls, optional heading + subheading, dynbg, and a default
+    # client-side sort mode (name-asc / name-desc / country-asc).
+    frontend_fellowships_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    frontend_fellowships_list_template = db.Column(db.String(64), nullable=False, default="sidebar")
+    frontend_fellowships_list_width_mode = db.Column(db.String(16), nullable=False, default="boxed")
+    frontend_fellowships_list_max_width = db.Column(db.Integer, nullable=False, default=1160)
+    frontend_fellowships_list_padding_pct = db.Column(db.Integer, nullable=False, default=5)
+    frontend_fellowships_list_heading = db.Column(db.String(200))
+    frontend_fellowships_list_subheading = db.Column(db.String(500))
+    frontend_fellowships_list_sort_mode = db.Column(db.String(32), nullable=False, default="name-asc")
+    frontend_fellowships_list_bg_dynamic_key = db.Column(db.String(64))
+    frontend_fellowships_list_bg_dynbg_config_json = db.Column(db.Text)
     # Stories module — recovery-story long-form posts at /stories and
     # /stories/<slug>. Toggle hides the admin entry + 404s the public
     # routes; required role gates who in the admin area can create /
@@ -743,6 +793,25 @@ class SiteSetting(db.Model):
     frontend_stories_list_heading = db.Column(db.String(200))
     frontend_stories_list_subheading = db.Column(db.String(500))
     frontend_story_template = db.Column(db.String(64), nullable=False, default="paper")
+    # Blog module — long-form editorial posts at /blog and /blog/<slug>.
+    # Same module-toggle + required-role plumbing as Stories. List +
+    # detail templates pick the public layout. Categories and tags
+    # power per-blog filtering on the page-block so a single posts
+    # table can serve many distinct frontend "blogs" (one per group
+    # or committee).
+    blog_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    blog_required_role = db.Column(db.String(32), nullable=False, default="admin")
+    frontend_blog_list_template = db.Column(db.String(64), nullable=False, default="magazine")
+    frontend_blog_list_width_mode = db.Column(db.String(16), nullable=False, default="boxed")
+    frontend_blog_list_max_width = db.Column(db.Integer, nullable=False, default=1160)
+    frontend_blog_list_padding_pct = db.Column(db.Integer, nullable=False, default=5)
+    frontend_blog_list_heading = db.Column(db.String(200))
+    frontend_blog_list_subheading = db.Column(db.String(500))
+    frontend_blog_post_template = db.Column(db.String(64), nullable=False, default="modern")
+    frontend_blog_list_bg_dynamic_key = db.Column(db.String(64))
+    frontend_blog_list_bg_dynbg_config_json = db.Column(db.Text)
+    frontend_blog_post_bg_dynamic_key = db.Column(db.String(64))
+    frontend_blog_post_bg_dynbg_config_json = db.Column(db.Text)
     # Printlist (/printlist) — printable schedule. Subheading sits under
     # the page title; website appears in the header band; page_size
     # drives both the @page CSS rule and the on-screen paper aspect.
@@ -954,6 +1023,15 @@ class SiteSetting(db.Model):
     contact_form_show_pic_email = db.Column(db.Boolean, nullable=False, default=True)
     contact_form_show_pic_phone = db.Column(db.Boolean, nullable=False, default=True)
 
+    # Container width for the public /contact page. Mirrors the same
+    # boxed/full + max-width + side-padding shape every other list /
+    # detail surface uses (events_list, announcements_list, etc.).
+    # 'boxed' caps content at `max_width` px and centers; 'full' spans
+    # the viewport with `padding_pct` % vw gutters.
+    contact_form_width_mode = db.Column(db.String(16), nullable=False, default="boxed")
+    contact_form_max_width = db.Column(db.Integer, nullable=False, default=1160)
+    contact_form_padding_pct = db.Column(db.Integer, nullable=False, default=5)
+
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -981,6 +1059,28 @@ class IntergroupOfficer(db.Model):
     name = db.Column(db.String(200))
     phone = db.Column(db.String(64))
     email = db.Column(db.String(255))
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Fellowship(db.Model):
+    """A single entry in the Fellowships Index — a peer recovery
+    fellowship the admin chooses to surface to visitors (CMA, AA, NA,
+    OA, etc.). Each row is either fully virtual (online-only, no
+    geography) or regional (carries a country + state/province/region).
+    Rendered publicly at /fellowships through a templates-page-picked
+    layout and edited from Settings → Global as a repeatable row table.
+    """
+    __tablename__ = "fellowship"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    # True = virtual / online-only fellowship (country + state_region
+    # ignored). False = regional / geography-bound.
+    is_virtual = db.Column(db.Boolean, nullable=False, default=False)
+    country = db.Column(db.String(120))           # display-only string
+    state_region = db.Column(db.String(120))      # state / province / region — display-only
+    url = db.Column(db.String(500))               # fellowship's public website
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1428,6 +1528,11 @@ class Post(db.Model):
     submitter_phone = db.Column(db.String(64))
     submitter_notes = db.Column(db.Text)
     submitted_at = db.Column(db.DateTime)
+    # Public "posted" timestamp surfaced in admin lists + (eventually)
+    # the public site's "Posted on …" line. Editable by the admin so a
+    # post can be backdated; falls back to created_at when NULL so the
+    # display layer always has something to show.
+    published_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"))
@@ -1438,6 +1543,14 @@ class Post(db.Model):
         slugified title otherwise."""
         from .colors import slugify
         return slugify(self.slug) if self.slug else slugify(self.title)
+
+    @property
+    def display_posted(self):
+        """Datetime shown anywhere a "posted on" stamp belongs.
+        Prefers the admin-set ``published_at``; falls back to
+        ``created_at`` so legacy rows imported before the column
+        existed still surface a date."""
+        return self.published_at or self.created_at
 
 
 class Story(db.Model):
@@ -1464,6 +1577,12 @@ class Story(db.Model):
     is_featured = db.Column(db.Boolean, nullable=False, default=False)
     is_draft = db.Column(db.Boolean, nullable=False, default=False)
     is_archived = db.Column(db.Boolean, nullable=False, default=False)
+    # Editorial "posted on" timestamp — distinct from ``story_date``,
+    # which is the in-story milestone date the admin enters (sobriety
+    # anniversary, write-up date, etc.). ``published_at`` is purely
+    # the publication timestamp; it falls back to created_at when
+    # NULL so legacy rows still surface a date.
+    published_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"))
@@ -1478,6 +1597,136 @@ class Story(db.Model):
         """Date the public page shows under the title. Prefers the
         admin-set story_date; falls back to created_at."""
         return self.story_date or (self.created_at.date() if self.created_at else None)
+
+    @property
+    def display_posted(self):
+        """Datetime shown wherever a "posted on" stamp belongs. Prefers
+        ``published_at`` (admin-set or imported); falls back to
+        ``created_at``."""
+        return self.published_at or self.created_at
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Blog module — admin-authored long-form posts with categories and tags.
+#
+# Where Stories are first-person recovery accounts and Posts are
+# announcements/events, BlogPost is the general-purpose blog entity:
+# editorial articles, committee updates, group news. A single Blog
+# table can serve many distinct front-end "blogs" (committee, group,
+# meeting-host) by filtering the public list/block on a chosen
+# category or tag — that way two committees can each own a separate
+# /<page>/ that surfaces only their own posts without needing
+# parallel data tables.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Many-to-many association tables — kept as plain Tables (not models)
+# so simple .append() / list manipulation works directly on the post.
+blog_post_categories = db.Table(
+    "blog_post_categories",
+    db.Column("post_id", db.Integer,
+              db.ForeignKey("blog_post.id", ondelete="CASCADE"),
+              primary_key=True),
+    db.Column("category_id", db.Integer,
+              db.ForeignKey("blog_category.id", ondelete="CASCADE"),
+              primary_key=True),
+)
+
+blog_post_tags = db.Table(
+    "blog_post_tags",
+    db.Column("post_id", db.Integer,
+              db.ForeignKey("blog_post.id", ondelete="CASCADE"),
+              primary_key=True),
+    db.Column("tag_id", db.Integer,
+              db.ForeignKey("blog_tag.id", ondelete="CASCADE"),
+              primary_key=True),
+)
+
+
+class BlogCategory(db.Model):
+    """Editorial category — a top-level grouping a post can belong to.
+    Multiple categories per post are allowed so a single article can
+    surface under several committees / sections. The ``color`` field
+    is an optional hex used by the public templates to colour-code
+    chips. ``position`` lets admins re-order the category list."""
+    __tablename__ = "blog_category"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    slug = db.Column(db.String(160), nullable=False, unique=True)
+    description = db.Column(db.Text)
+    color = db.Column(db.String(16))
+    position = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class BlogTag(db.Model):
+    """Free-form tag for cross-cutting topics — many tags per post,
+    many posts per tag. Lighter-weight than categories: no colour, no
+    description, just a label + slug used as a filter target on the
+    public block + tag-archive routes."""
+    __tablename__ = "blog_tag"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), nullable=False)
+    slug = db.Column(db.String(120), nullable=False, unique=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class BlogPost(db.Model):
+    """Long-form blog entry. Modeled on Story but with editorial
+    metadata and many-to-many category / tag links so a single table
+    can power multiple distinct frontend blogs (one per committee,
+    group, meeting). Drafts hide from the public site, archives are
+    kept around but hidden too. URLs live at /blog and /blog/<slug>."""
+    __tablename__ = "blog_post"
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    slug = db.Column(db.String(255))
+    summary = db.Column(db.Text)
+    body = db.Column(db.Text)
+    featured_image_filename = db.Column(db.String(500))
+    author_name = db.Column(db.String(120))
+    author_bio = db.Column(db.Text)
+    # Date the public page shows under the title. Doubles as the sort
+    # key (newest published first). Falls back to created_at when blank.
+    published_at = db.Column(db.DateTime)
+    is_featured = db.Column(db.Boolean, nullable=False, default=False)
+    is_pinned = db.Column(db.Boolean, nullable=False, default=False)
+    is_draft = db.Column(db.Boolean, nullable=False, default=False)
+    is_archived = db.Column(db.Boolean, nullable=False, default=False)
+    # Whether the post permits comments — UI surfaces a "Comments off"
+    # chip when False; the actual comment submission flow is left to a
+    # future iteration. Stored now so the public templates can render
+    # the right affordance and admins can opt out per-post today.
+    allow_comments = db.Column(db.Boolean, nullable=False, default=True)
+    reading_minutes = db.Column(db.Integer)  # estimated; computed at save-time when blank
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"))
+
+    categories = db.relationship(
+        "BlogCategory", secondary=blog_post_categories,
+        order_by="BlogCategory.position, BlogCategory.name",
+        backref=db.backref("posts", lazy="dynamic"))
+    tags = db.relationship(
+        "BlogTag", secondary=blog_post_tags,
+        order_by="BlogTag.name",
+        backref=db.backref("posts", lazy="dynamic"))
+
+    @property
+    def public_slug(self):
+        from .colors import slugify
+        return slugify(self.slug) if self.slug else slugify(self.title)
+
+    @property
+    def display_date(self):
+        """Date the public page shows under the title. Prefers the
+        admin-set published_at; falls back to created_at."""
+        return self.published_at or self.created_at
+
+    # Alias so admin-list / sort code can use a uniform property name
+    # across Post / Story / BlogPost without branching by type.
+    @property
+    def display_posted(self):
+        return self.published_at or self.created_at
 
 
 class CustomFont(db.Model):
@@ -1755,6 +2004,24 @@ class Page(db.Model):
     width_mode = db.Column(db.String(16), nullable=False, default="boxed")
     max_width = db.Column(db.Integer, nullable=False, default=1160)
     full_padding_pct = db.Column(db.Integer, nullable=False, default=4)
+    # Per-page page-shell spacing. Each is a pixel value the public
+    # renderer stamps as a CSS custom property on the article so the
+    # default `.fe-pp` / `.fe-pp-shell` / `.fe-pp-section` rules
+    # consume them via `var(--fe-pp-pad-top, 80px)` etc. Defaults
+    # match the legacy hard-coded values so existing pages render
+    # unchanged. Set any to 0 for a fully flush page (e.g. a hero
+    # that sits flush against the header with no top padding).
+    pad_top = db.Column(db.Integer, nullable=False, default=80)
+    pad_bottom = db.Column(db.Integer, nullable=False, default=96)
+    pad_x = db.Column(db.Integer, nullable=False, default=16)
+    section_gap = db.Column(db.Integer, nullable=False, default=32)
+    # Vertical margin around `.block` elements (containers, blog
+    # cards, etc.). The global `.block { margin: 12px 0 }` rule in
+    # app.css is the source of inter-block whitespace; this column
+    # overrides via a CSS custom property scoped to the article so
+    # blocks can sit fully flush (e.g. a hero pinned to the header
+    # with no gap above) when set to 0.
+    block_margin_y = db.Column(db.Integer, nullable=False, default=12)
     # Per-page hero typography overrides. Each is optional — None / blank
     # falls back to the theme's design tokens (handled by CSS via
     # default values in `var(--fe-pp-*, …)`). `heading_align` is one of

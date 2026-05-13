@@ -1,0 +1,109 @@
+{# Year Sidebar layout — sticky filter rail on the left (live search +
+   type checkboxes + per-year pills) paired with a card stack on the
+   right grouped under year headings. Default archive layout; matches
+   the chrome of the /meetings list. #}
+<section class="fe-section fe-mlist fe-mlist-sidebar fe-events fe-archive fe-archive--year-sidebar fe-mlist--w-{{ list_width_mode }}" id="archive">
+  <div class="{% if list_width_mode == 'boxed' %}fe-container{% else %}fe-mlist-fullwrap{% endif %} fe-mlist-shell"
+       {% if list_width_mode == 'boxed' %}style="max-width: {{ list_max_width }}px;"
+       {%- elif list_padding_pct %}style="padding-left: {{ list_padding_pct }}vw; padding-right: {{ list_padding_pct }}vw;"{% endif %}>
+    <div class="fe-mlist-grid">
+      <aside class="fe-mlist-rail" data-archive-rail>
+        <header class="fe-mlist-head">
+          <h1>Archive</h1>
+          <p class="muted">Past announcements and events, ordered newest first. Filter by year, search by title or location, or hide one kind to focus on the other.</p>
+          <p class="fe-events-archive-back">
+            <a href="{{ url_for('frontend.events_list') }}">{{ icon('arrow-left') }} <span>Upcoming events</span></a>
+          </p>
+          <p class="fe-events-archive-back">
+            <a href="{{ url_for('frontend.announcements_list') }}">{{ icon('arrow-left') }} <span>Announcements</span></a>
+          </p>
+        </header>
+        <div class="fe-mlist-rail-inner">
+          <label class="fe-mlist-search fe-mlist-rail-search">
+            <span class="fe-mlist-search-icon" aria-hidden="true">{{ icon('search') }}</span>
+            <input type="search" data-archive-search
+                   placeholder="Search past items…" autocomplete="off"
+                   aria-label="Search archive">
+            <kbd class="fe-mlist-search-kbd" aria-hidden="true">/</kbd>
+          </label>
+
+          <fieldset class="fe-archive-types">
+            <legend class="fe-archive-types-legend">Show</legend>
+            <label class="fe-archive-type-check">
+              <input type="checkbox" data-archive-kind-toggle="event" checked>
+              <span class="fe-archive-type-check-label">Events</span>
+              <span class="fe-mlist-day-count">{{ archive_counts.get('event', 0) }}</span>
+            </label>
+            <label class="fe-archive-type-check">
+              <input type="checkbox" data-archive-kind-toggle="announcement" checked>
+              <span class="fe-archive-type-check-label">Announcements</span>
+              <span class="fe-mlist-day-count">{{ archive_counts.get('announcement', 0) }}</span>
+            </label>
+          </fieldset>
+
+          <ul class="fe-mlist-day-list" role="tablist">
+            <li>
+              <button type="button" class="fe-mlist-day-pill is-active"
+                      data-archive-filter="all" role="tab" aria-selected="true">
+                <span>All years</span>
+                <span class="fe-mlist-day-count">{{ archive_items|length }}</span>
+              </button>
+            </li>
+            {% if year_buckets %}
+            <li class="fe-mlist-rail-section" role="presentation">
+              <span>Filter by year</span>
+            </li>
+            {% for bucket in year_buckets %}
+            <li>
+              <button type="button" class="fe-mlist-day-pill"
+                      data-archive-filter="{{ bucket.year }}" role="tab" aria-selected="false">
+                <span>{{ bucket.year }}</span>
+                <span class="fe-mlist-day-count">{{ bucket['items']|length }}</span>
+              </button>
+            </li>
+            {% endfor %}
+            {% endif %}
+          </ul>
+        </div>
+      </aside>
+
+      <div class="fe-mlist-main" data-archive-results
+           data-archive-pagination-mode="{{ archive_pagination_mode }}"
+           data-archive-page-size="{{ archive_page_size }}">
+        {% if not archive_items %}
+        <p class="fe-mlist-empty muted">Nothing in the archive yet.</p>
+        {% else %}
+        {% for bucket in year_buckets %}
+        <section class="fe-mlist-day-section fe-events-archive-year"
+                 data-archive-year-section="{{ bucket.year }}">
+          <h2 class="fe-mlist-day-section-heading">
+            <span>{{ bucket.year }}</span>
+            <span class="fe-mlist-day-section-count">{{ bucket['items']|length }}</span>
+          </h2>
+          <div class="fe-events-list-stack">
+            {% for it in bucket['items'] %}
+              <div class="fe-events-archive-card-wrap"
+                   data-archive-search="{{ search_blobs.get(it.post.id, '') }}"
+                   data-archive-year="{{ it.year }}"
+                   data-archive-kind="{{ it.kind }}">
+                {% if it.kind == 'event' %}
+                  {%- set ev = it.post -%}
+                  {% include "frontend/events_list/_event_card.html" %}
+                {% else %}
+                  {%- set ann = it.post -%}
+                  {% include "frontend/announcements_list/_announcement_card.html" %}
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        </section>
+        {% endfor %}
+        <p class="fe-mlist-empty muted" data-archive-no-match hidden>No items match your filters.</p>
+        <div class="fe-archive-load-sentinel" data-archive-load-sentinel hidden aria-hidden="true"></div>
+        <nav class="fe-archive-pagination" data-archive-pagination
+             aria-label="Archive pages" hidden></nav>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>

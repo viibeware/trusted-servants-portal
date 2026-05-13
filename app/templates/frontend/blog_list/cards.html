@@ -1,0 +1,172 @@
+{# Cards layout — uniform 3-up grid of editorial cards. No hero — every
+   post gets equal visual weight. Modern, balanced, easy to skim. #}
+<section class="fe-blog fe-blog-cards fe-blog-list--w-{{ list_width_mode }}">
+  <div class="{% if list_width_mode == 'boxed' %}fe-container{% else %}fe-blog-fullwrap{% endif %}"
+       {% if list_width_mode == 'boxed' %}style="max-width: {{ list_max_width }}px;"
+       {%- elif list_padding_pct %}style="padding-left: {{ list_padding_pct }}vw; padding-right: {{ list_padding_pct }}vw;"{% endif %}>
+
+    <header class="fe-blog-cards-head">
+      <h1 class="fe-blog-cards-title">{{ list_heading or 'Blog' }}</h1>
+      {% if list_subheading %}<p class="fe-blog-cards-sub">{{ list_subheading }}</p>{% endif %}
+    </header>
+
+    {% if all_categories %}
+    <nav class="fe-blog-cards-cats" aria-label="Filter by category">
+      <a class="fe-blog-cards-cat{% if not active_category %} is-active{% endif %}"
+         href="{{ url_for('frontend.blog_list') }}">All</a>
+      {% for c in all_categories %}
+      <a class="fe-blog-cards-cat{% if active_category and active_category.id == c.id %} is-active{% endif %}"
+         {% if c.color %}style="--blog-cat-color: {{ c.color }};"{% endif %}
+         href="{{ url_for('frontend.blog_list', category=c.slug) }}">{{ c.name }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+
+    {% if not all_posts %}
+    <p class="fe-blog-cards-empty">No posts yet.</p>
+    {% else %}
+    <ul class="fe-blog-cards-grid" role="list">
+      {% for p in all_posts %}
+      <li class="fe-blog-cards-card{% if p.is_featured %} is-featured{% endif %}">
+        <a class="fe-blog-cards-link" href="{{ url_for('frontend.blog_post_detail', slug=p.public_slug) }}">
+          <div class="fe-blog-cards-art">
+            {% if p.featured_image_filename %}
+            <img src="{{ url_for('public.blog_post_featured_image', bid=p.id, thumb=600) }}"
+                 alt="" loading="lazy">
+            {% else %}
+            <div class="fe-blog-cards-art-fallback">
+              <span>{{ p.title[:1] }}</span>
+            </div>
+            {% endif %}
+          </div>
+          <div class="fe-blog-cards-body">
+            {% if p.categories %}
+            <div class="fe-blog-cards-cats-row">
+              {% for c in p.categories[:2] %}
+              <span class="fe-blog-cards-cat-chip" {% if c.color %}style="--blog-cat-color: {{ c.color }};"{% endif %}>{{ c.name }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+            <h3 class="fe-blog-cards-card-title">{{ p.title }}</h3>
+            {% if p.summary %}
+            <p class="fe-blog-cards-summary">{{ p.summary[:150] }}{% if p.summary|length > 150 %}…{% endif %}</p>
+            {% endif %}
+            <div class="fe-blog-cards-meta">
+              {% if p.author_name %}<span>{{ p.author_name }}</span>{% endif %}
+              {% if p.display_date %}<span>{{ p.display_date.strftime('%b %-d, %Y') }}</span>{% endif %}
+              {% if p.reading_minutes %}<span>{{ p.reading_minutes }} min read</span>{% endif %}
+            </div>
+          </div>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</section>
+
+<style>
+  .fe-blog-cards {
+    --blog-bg: var(--fe-color-surface, #f9fafb);
+    --blog-card: var(--fe-color-bg, #ffffff);
+    --blog-ink: var(--fe-color-text, #111827);
+    --blog-ink-soft: var(--fe-color-muted, #6b7280);
+    --blog-rule: var(--fe-color-border, #e5e7eb);
+    --blog-accent: var(--fe-color-accent, #2563eb);
+    background: var(--blog-bg);
+    color: var(--blog-ink);
+    padding: clamp(2.5rem, 5vw, 4.5rem) 0;
+  }
+  [data-theme="dark"] .fe-blog-cards {
+    --blog-bg: #0b1120;
+    --blog-card: #111827;
+    --blog-ink: #e5e7eb;
+    --blog-ink-soft: #9ca3af;
+    --blog-rule: #1f2937;
+  }
+  .fe-blog-cards-head { text-align: center; margin-bottom: 2rem; }
+  .fe-blog-cards-title {
+    font-family: var(--tpl-heading-font, var(--fe-font-heading, 'Inter', system-ui, sans-serif));
+    font-weight: 700; font-size: clamp(2.2rem, 5vw, 3.4rem);
+    line-height: 1.1; margin: 0; letter-spacing: -.02em;
+  }
+  .fe-blog-cards-sub {
+    margin: .9rem auto 0; max-width: 36rem;
+    color: var(--blog-ink-soft);
+    font-size: 1.05rem; line-height: 1.6;
+  }
+  .fe-blog-cards-cats {
+    display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center;
+    margin: 0 auto 2.5rem;
+  }
+  .fe-blog-cards-cat {
+    --blog-cat-color: var(--blog-accent);
+    padding: 6px 14px; border-radius: 8px;
+    border: 1px solid var(--blog-rule); background: var(--blog-card);
+    color: var(--blog-ink-soft); text-decoration: none; font-size: .85rem;
+    transition: all .15s ease;
+  }
+  .fe-blog-cards-cat:hover { color: var(--blog-cat-color); border-color: color-mix(in srgb, var(--blog-cat-color) 50%, var(--blog-rule)); }
+  .fe-blog-cards-cat.is-active {
+    background: var(--blog-cat-color); color: #fff;
+    border-color: var(--blog-cat-color); font-weight: 600;
+  }
+  .fe-blog-cards-empty {
+    text-align: center; color: var(--blog-ink-soft); font-style: italic;
+    padding: 3rem 0;
+  }
+  .fe-blog-cards-grid {
+    list-style: none; padding: 0; margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+    gap: 1.75rem;
+  }
+  .fe-blog-cards-card {
+    background: var(--blog-card);
+    border: 1px solid var(--blog-rule);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+  }
+  .fe-blog-cards-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--blog-accent) 30%, var(--blog-rule));
+    box-shadow: 0 10px 30px -12px rgba(15,23,42,.15);
+  }
+  .fe-blog-cards-card.is-featured {
+    box-shadow: inset 3px 0 0 var(--blog-accent);
+  }
+  .fe-blog-cards-link { display: block; color: inherit; text-decoration: none; }
+  .fe-blog-cards-art { aspect-ratio: 16 / 10; overflow: hidden; background: var(--blog-bg); }
+  .fe-blog-cards-art img { width: 100%; height: 100%; object-fit: cover; }
+  .fe-blog-cards-art-fallback {
+    width: 100%; height: 100%; display: grid; place-items: center;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--blog-accent) 12%, var(--blog-card)) 0%, var(--blog-card) 100%);
+    color: color-mix(in srgb, var(--blog-accent) 50%, transparent);
+    font: 700 4rem var(--tpl-heading-font, 'Inter', sans-serif);
+    opacity: .35;
+  }
+  .fe-blog-cards-body { padding: 1.2rem 1.4rem 1.5rem; }
+  .fe-blog-cards-cats-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: .65rem; }
+  .fe-blog-cards-cat-chip {
+    --blog-cat-color: var(--blog-accent);
+    color: var(--blog-cat-color);
+    background: color-mix(in srgb, var(--blog-cat-color) 14%, transparent);
+    padding: 2px 9px; border-radius: 6px;
+    font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .fe-blog-cards-card-title {
+    font-family: var(--tpl-heading-font, var(--fe-font-heading, 'Inter', sans-serif));
+    font-weight: 700; font-size: 1.2rem; line-height: 1.3;
+    margin: 0 0 .55rem;
+  }
+  .fe-blog-cards-summary {
+    margin: 0 0 .9rem; color: var(--blog-ink-soft);
+    font-size: .92rem; line-height: 1.55;
+  }
+  .fe-blog-cards-meta {
+    display: flex; flex-wrap: wrap; gap: .5rem;
+    color: var(--blog-ink-soft); font-size: .78rem;
+  }
+  .fe-blog-cards-meta > span + span::before { content: "·"; margin-right: .5rem; opacity: .55; }
+</style>

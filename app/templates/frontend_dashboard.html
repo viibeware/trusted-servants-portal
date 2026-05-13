@@ -49,8 +49,11 @@
       <ul class="list">
         <li><a href="{{ url_for('main.frontend_header') }}"><b>Header</b><span class="muted">Width, padding, and navigation links</span></a></li>
         <li><a href="{{ url_for('main.frontend_footer') }}"><b>Footer</b><span class="muted">Footer copy and links</span></a></li>
-        <li><a href="{{ url_for('main.frontend_homepage') }}"><b>Homepage</b><span class="muted">Hero, about, and contact content</span></a></li>
-        <li><a href="{{ url_for('main.frontend_pages') }}"><b>Pages</b><span class="muted">Additional content pages (coming soon)</span></a></li>
+        {%- set _hp_id = site.homepage_page_id if site else None -%}
+        {%- if _hp_id -%}
+          <li><a href="{{ url_for('main.frontend_page_edit', page_id=_hp_id) }}"><b>Homepage</b><span class="muted">Edit the Page that renders at the public `/` root</span></a></li>
+        {%- endif -%}
+        <li><a href="{{ url_for('main.frontend_pages') }}"><b>Pages</b><span class="muted">All content pages</span></a></li>
       </ul>
     </section>
   </div>

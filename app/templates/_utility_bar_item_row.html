@@ -8,8 +8,7 @@
    parallel-arrays encoding.
 
    Required context:
-     `it` — dict with keys: kind, label, url, icon, open_in_new_tab.
-     `_ub_icons` — list of (name, label) tuples for the icon picker. #}
+     `it` — dict with keys: kind, label, url, icon, open_in_new_tab. #}
 <div class="utility-bar-row" data-utility-row data-utility-kind="leaf"
      draggable="true">
   <button type="button" class="utility-bar-handle" data-utility-handle
@@ -29,13 +28,37 @@
     <label data-utility-show-for="link,button,icon">URL
       <input type="url" data-utility-field="url" value="{{ it.url or '' }}" placeholder="https://example.com">
     </label>
-    <label data-utility-show-for="link,button,text,icon">Icon
-      <select data-utility-field="icon">
-        {% for nn, nl in _ub_icons %}
-          <option value="{{ nn }}" {% if (it.icon or '') == nn %}selected{% endif %}>{{ nl }}</option>
-        {% endfor %}
-      </select>
+    {# Optional hover tooltip — surfaced as the rendered element's
+       `title` (and `aria-label` on icon-only kinds) on the public bar.
+       Leave blank to fall back to the existing label / icon name. #}
+    <label data-utility-show-for="link,button,text,icon">Tooltip <span class="muted smaller">(optional)</span>
+      <input type="text" data-utility-field="tooltip"
+             value="{{ it.tooltip or '' }}" maxlength="200"
+             placeholder="Shown on hover (and to screen readers)">
     </label>
+    {# Icon: chooser button that opens the shared icon-picker modal.
+       The hidden input carries the picked ref via [data-icon-input];
+       the saver still reads it through [data-utility-field="icon"]
+       so the JSON payload shape is unchanged. The picker resolves the
+       input via the [data-icon-field] wrapper rather than a global
+       ID, which is how cloned new-row fragments stay safe without
+       minting unique IDs per row. #}
+    <div class="utility-bar-icon-field{% if it.icon %} has-icon{% endif %}"
+         data-utility-show-for="link,button,text,icon" data-icon-field>
+      <span class="utility-bar-icon-field-lbl">Icon</span>
+      <div class="icon-picker-trigger-wrap">
+        <button type="button" class="icon-picker-trigger" data-open-icon-picker>
+          <span class="icon-picker-preview" data-icon-preview>
+            {% if it.icon %}{{ icon(it.icon) }}{% endif %}
+          </span>
+          <span class="icon-picker-trigger-empty" data-icon-empty>Choose…</span>
+        </button>
+        <button type="button" class="icon-picker-clear" data-icon-clear
+                title="Clear icon">{{ icon('x') }}</button>
+      </div>
+      <input type="hidden" data-utility-field="icon" data-icon-input
+             value="{{ it.icon or '' }}">
+    </div>
     <label class="check utility-bar-newtab" data-utility-show-for="link,button,icon">
       <input type="checkbox" data-utility-field="open_in_new_tab" value="0" {% if it.open_in_new_tab %}checked{% endif %}>
       <span>Open in new tab</span>

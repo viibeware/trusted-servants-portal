@@ -1,0 +1,223 @@
+{% extends "frontend/base.html" %}
+{% block title %}{{ heading or 'Fellowships' }} · {{ frontend_title }}{% endblock %}
+{# Dispatcher for the public /fellowships page. Every layout under
+   frontend/fellowships/<key>.html receives the same `fellowships` +
+   `country_buckets` + `search_blobs` + sort/heading payload and drops
+   the same `data-fellowships-*` hooks; the shared filter + sort JS
+   below works across every variant. Layout key is picked on the
+   admin Templates page (SiteSetting.frontend_fellowships_list_template). #}
+{% block content %}
+{%- set _tpl = template_settings(site, 'fellowships_list', list_template_key) if site else {} -%}
+{%- set _dynbg = _tpl.get('bg_dynamic_key') or (site.frontend_fellowships_list_bg_dynamic_key if site else None) -%}
+{%- set _dynbg_cfg_raw = {'overlay': _tpl.get('bg_dynbg_overlay'), 'colors': _tpl.get('bg_dynbg_colors') or [], 'overlay_scope': _tpl.get('bg_dynbg_overlay_scope'), 'overlay_size': _tpl.get('bg_dynbg_overlay_size'), 'overlay_intensity': _tpl.get('bg_dynbg_overlay_intensity'), 'randomize_colors': _tpl.get('bg_dynbg_randomize_colors'), 'randomize_positions': _tpl.get('bg_dynbg_randomize_positions'), 'animate': _tpl.get('bg_dynbg_animate', True)} if _tpl.get('bg_dynamic_key') or _tpl.get('bg_dynbg_overlay') else (site.frontend_fellowships_list_bg_dynbg_config_json if site else None) -%}
+{%- set _dynbg_cfg = dynbg_decode(_dynbg_cfg_raw) -%}
+{%- set _dynbg_color_vars = dynbg_colors_css(dynbg_resolve_colors(_dynbg_cfg)) -%}
+{%- set _dynbg_pos_vars = dynbg_resolve_positions(_dynbg_cfg, _dynbg) -%}
+{%- set _dynbg_inline = (_dynbg_color_vars ~ " " ~ _dynbg_pos_vars) | trim -%}
+{%- set _dynbg_active = _dynbg or _dynbg_cfg.overlay -%}
+<div class="fe-page-dynbg-host{% if _dynbg_active %} fe-dynbg-host{% endif %}"{% if _dynbg_active and _dynbg_inline %} style="{{ _dynbg_inline }}"{% endif %}>
+  {% if _dynbg_active %}{% with dynbg_key=_dynbg, dynbg_config=_dynbg_cfg_raw %}{% include "frontend/_dynbg_apply.html" %}{% endwith %}{% endif %}
+  {% include list_partial %}
+</div>
+
+<script>
+(function () {
+  // Shared filter / sort / search engine for every Fellowships layout.
+  // Each layout drops the same data-attribute hooks; the JS doesn't
+  // care about layout shape. Hooks:
+  //   [data-fellowships-rail]                 — sidebar (optional)
+  //   [data-fellowships-results]              — main container
+  //   [data-fellowships-search]               — search input
+  //   [data-fellowships-country-toggle]       — country pill buttons
+  //   [data-fellowships-type-toggle="virtual"|"regional"] — type checkboxes
+  //   [data-fellowships-sort]                 — sort <select>
+  //   [data-fellowships-section]              — per-country section wrapper
+  //   [data-fellowships-card]                 — individual card wrap
+  //   [data-fellowships-no-match]             — empty state for filtered-out
+  var results = document.querySelector('[data-fellowships-results]');
+  if (!results) return;
+  var searchInput = document.querySelector('[data-fellowships-search]');
+  var countryPills = document.querySelectorAll('[data-fellowships-country-toggle]');
+  var typeToggles = document.querySelectorAll('[data-fellowships-type-toggle]');
+  var sortSelect = document.querySelector('[data-fellowships-sort]');
+  var noMatch = results.querySelector('[data-fellowships-no-match]');
+  var sections = results.querySelectorAll('[data-fellowships-section]');
+  var activeCountry = 'all';
+
+  // Flat list of every card wrap in document order. Each card carries
+  // data-fellowships-name / -country / -country-label / -is-virtual /
+  // -created-ms so client-side sort can re-order without re-querying.
+  var allCards = [];
+  results.querySelectorAll('[data-fellowships-card]').forEach(function (c) { allCards.push(c); });
+
+  var PUNCT_RE = /[‘’'?!.,;"“”()\[\]{}]/g;
+  function tokens() {
+    return ((searchInput && searchInput.value) || '')
+      .toLowerCase()
+      .replace(PUNCT_RE, '')
+      .split(/\s+/)
+      .filter(Boolean);
+  }
+
+  function activeTypes() {
+    // No toggles in a layout → both types active so we don't accidentally
+    // hide everything when the layout doesn't ship them.
+    if (typeToggles.length === 0) return {virtual: 1, regional: 1};
+    var set = {};
+    typeToggles.forEach(function (cb) {
+      if (cb.checked) set[cb.getAttribute('data-fellowships-type-toggle')] = 1;
+    });
+    return set;
+  }
+
+  function passes(card, query, types) {
+    var isVirtual = card.getAttribute('data-fellowships-is-virtual') === '1';
+    var kind = isVirtual ? 'virtual' : 'regional';
+    if (!types[kind]) return false;
+    var country = card.getAttribute('data-fellowships-country-label');
+    if (query.length === 0 && activeCountry !== 'all' && country !== activeCountry) return false;
+    if (query.length === 0) return true;
+    var blob = card.getAttribute('data-fellowships-search') || '';
+    for (var i = 0; i < query.length; i++) {
+      if (blob.indexOf(query[i]) === -1) return false;
+    }
+    return true;
+  }
+
+  function sortValue(a, b, mode) {
+    function aName() { return (a.getAttribute('data-fellowships-name') || '').toLowerCase(); }
+    function bName() { return (b.getAttribute('data-fellowships-name') || '').toLowerCase(); }
+    function aCountry() { return (a.getAttribute('data-fellowships-country') || '').toLowerCase(); }
+    function bCountry() { return (b.getAttribute('data-fellowships-country') || '').toLowerCase(); }
+    function aVirt() { return a.getAttribute('data-fellowships-is-virtual') === '1' ? 1 : 0; }
+    function bVirt() { return b.getAttribute('data-fellowships-is-virtual') === '1' ? 1 : 0; }
+    function aMs() { return parseInt(a.getAttribute('data-fellowships-created-ms') || '0', 10) || 0; }
+    function bMs() { return parseInt(b.getAttribute('data-fellowships-created-ms') || '0', 10) || 0; }
+    if (mode === 'name-desc') {
+      if (aName() < bName()) return 1;
+      if (aName() > bName()) return -1;
+      return 0;
+    }
+    if (mode === 'country-asc') {
+      // Virtual sorts last; otherwise by country then state, then name.
+      if (aVirt() !== bVirt()) return aVirt() - bVirt();
+      if (aCountry() !== bCountry()) return aCountry() < bCountry() ? -1 : 1;
+      if (aName() < bName()) return -1;
+      if (aName() > bName()) return 1;
+      return 0;
+    }
+    if (mode === 'newest') return bMs() - aMs();
+    if (mode === 'oldest') return aMs() - bMs();
+    // Default: name-asc
+    if (aName() < bName()) return -1;
+    if (aName() > bName()) return 1;
+    return 0;
+  }
+
+  function applyFilter() {
+    var query = tokens();
+    var hasQuery = query.length > 0;
+    var types = activeTypes();
+    var visibleCount = 0;
+    allCards.forEach(function (c) {
+      var ok = passes(c, query, types);
+      c.hidden = !ok;
+      if (ok) visibleCount++;
+    });
+    // Hide a country section when every card in it is filtered out so
+    // the section heading doesn't sit empty.
+    sections.forEach(function (sec) {
+      var any = false;
+      sec.querySelectorAll('[data-fellowships-card]').forEach(function (c) {
+        if (!c.hidden) any = true;
+      });
+      sec.hidden = !any;
+    });
+    if (noMatch) {
+      var label = 'No fellowships match your filters.';
+      if (Object.keys(types).length === 0) label = 'Pick at least one type to display.';
+      else if (hasQuery) label = 'No fellowships match your search.';
+      noMatch.textContent = label;
+      noMatch.hidden = visibleCount > 0;
+    }
+  }
+
+  function applySort(mode) {
+    // Reorder DOM nodes within each section by mode. We sort INSIDE
+    // each country section rather than across sections so the
+    // section headings stay intact; flipping sort order shuffles each
+    // bucket independently. The country-asc / -desc sort options
+    // would actually re-bucket — for that we re-collect every card
+    // into a single bucket and rebuild the section list. For
+    // simplicity (and since the server picks the initial bucket
+    // structure), the client-side sort only re-orders within each
+    // existing bucket and reorders sections by their first-card sort
+    // value when needed.
+    if (!mode) return;
+    sections.forEach(function (sec) {
+      var cards = Array.prototype.slice.call(
+        sec.querySelectorAll('[data-fellowships-card]'));
+      cards.sort(function (a, b) { return sortValue(a, b, mode); });
+      cards.forEach(function (c) { sec.appendChild(c); });
+    });
+  }
+
+  countryPills.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      countryPills.forEach(function (b) {
+        b.classList.toggle('is-active', b === btn);
+        b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+      });
+      activeCountry = btn.getAttribute('data-fellowships-country-toggle');
+      if (searchInput && searchInput.value) searchInput.value = '';
+      applyFilter();
+    });
+  });
+
+  typeToggles.forEach(function (cb) {
+    cb.addEventListener('change', applyFilter);
+  });
+
+  if (searchInput) {
+    searchInput.addEventListener('input', function () {
+      var allPill = document.querySelector('[data-fellowships-country-toggle="all"]');
+      if (allPill && searchInput.value) {
+        countryPills.forEach(function (b) {
+          b.classList.toggle('is-active', b === allPill);
+          b.setAttribute('aria-selected', b === allPill ? 'true' : 'false');
+        });
+        activeCountry = 'all';
+      }
+      applyFilter();
+    });
+    searchInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && searchInput.value) {
+        e.preventDefault();
+        searchInput.value = '';
+        applyFilter();
+      }
+    });
+  }
+
+  if (sortSelect) {
+    sortSelect.addEventListener('change', function () {
+      applySort(sortSelect.value);
+    });
+  }
+
+  // Keyboard nicety — '/' focuses search (matches archive/library).
+  document.addEventListener('keydown', function (e) {
+    if (!searchInput) return;
+    var inField = (e.target && /^(input|textarea|select)$/i.test(e.target.tagName)) ||
+                  (e.target && e.target.isContentEditable);
+    if (e.key === '/' && !inField && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      searchInput.focus();
+      searchInput.select();
+    }
+  });
+
+  applyFilter();
+})();
+</script>
+{% endblock %}

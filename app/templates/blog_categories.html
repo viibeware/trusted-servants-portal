@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block heading %}Blog categories{% endblock %}
+{% block heading_help %}Top-level groupings for blog posts. A post can belong to multiple categories. Frontend page blocks can scope a list to a single category, so each committee or group gets its own filtered "blog".{% endblock %}
+{% block top_actions %}
+  <a class="btn" href="{{ url_for('main.blog_index') }}">← All posts</a>
+  <a class="btn btn-sm" href="{{ url_for('main.blog_tags') }}">Tags</a>
+{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="card-head">
+    <h2>{% if categories %}Existing categories{% else %}No categories yet{% endif %}</h2>
+    <span class="muted smaller">Click a name to edit. Position controls list order — lower numbers sort first.</span>
+  </div>
+  {% if categories %}
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Name</th>
+        <th>Slug</th>
+        <th>Description</th>
+        <th class="hide-sm">Posts</th>
+        <th class="hide-sm">Pos</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for c in categories %}
+      <tr>
+        <td>
+          <span class="blog-cat-swatch" style="background: {{ c.color or '#cbd5e1' }};"
+                title="{{ c.color or 'no color' }}"></span>
+        </td>
+        <td>
+          <button type="button" class="btn-link blog-cat-edit" data-cat="{{ c.id }}"
+                  data-name="{{ c.name }}" data-slug="{{ c.slug or '' }}"
+                  data-desc="{{ c.description or '' }}"
+                  data-color="{{ c.color or '' }}" data-pos="{{ c.position }}">{{ c.name }}</button>
+        </td>
+        <td><code class="muted small">{{ c.slug }}</code></td>
+        <td>
+          {% if c.description %}<span class="muted small">{{ c.description[:80] }}{% if c.description|length > 80 %}…{% endif %}</span>
+          {% else %}<span class="muted smaller">—</span>{% endif %}
+        </td>
+        <td class="hide-sm">
+          <a href="{{ url_for('main.blog_index', category=c.id) }}" class="muted small">{{ counts.get(c.id, 0) }}</a>
+        </td>
+        <td class="hide-sm muted small">{{ c.position }}</td>
+        <td class="row-actions" style="text-align: right">
+          <form method="post" action="{{ url_for('main.blog_category_delete', cid=c.id) }}" style="display:inline"
+                onsubmit="return confirm('Delete this category? Posts assigned to it will keep their other categories. ({{ counts.get(c.id, 0) }} post{{ '' if counts.get(c.id, 0) == 1 else 's' }} affected.)');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Create a category below to start filing posts.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2 id="cat-form-heading">Add a category</h2>
+    <span class="muted smaller">Categories are heavyweight groupings — a post usually has one or two. Use tags below for finer-grained topics.</span>
+  </div>
+  <form method="post" action="{{ url_for('main.blog_category_save') }}" class="form" id="blog-cat-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="category_id" id="blog-cat-id" value="">
+    <div class="form-row">
+      <label>Name
+        <input type="text" name="name" id="blog-cat-name" required maxlength="120"
+               placeholder="Literature">
+      </label>
+      <label>Slug <span class="muted small">(URL fragment; auto from name when blank)</span>
+        <input type="text" name="slug" id="blog-cat-slug"
+               pattern="[a-z0-9-]*" maxlength="160" placeholder="literature">
+      </label>
+    </div>
+    <div class="form-row">
+      <label>Color <span class="muted small">(hex; used for chips)</span>
+        <input type="color" name="color" id="blog-cat-color">
+      </label>
+      <label>Position
+        <input type="number" name="position" id="blog-cat-pos" value="0" step="1">
+      </label>
+    </div>
+    <label>Description <span class="muted small">(optional)</span>
+      <textarea name="description" id="blog-cat-desc" rows="2"
+                placeholder="A short note shown on the category landing page."></textarea>
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary" id="blog-cat-submit">Add category</button>
+      <button type="button" class="btn" id="blog-cat-cancel" hidden>Cancel edit</button>
+    </div>
+  </form>
+</section>
+
+<style>
+  .blog-cat-swatch {
+    display: inline-block; width: 18px; height: 18px; border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.15);
+  }
+  .btn-link {
+    background: none; border: 0; padding: 0; cursor: pointer;
+    color: var(--accent); font: inherit; text-align: left;
+  }
+  .btn-link:hover { text-decoration: underline; }
+</style>
+
+<script>
+(function () {
+  var f = document.getElementById('blog-cat-form');
+  var idField = document.getElementById('blog-cat-id');
+  var name = document.getElementById('blog-cat-name');
+  var slug = document.getElementById('blog-cat-slug');
+  var desc = document.getElementById('blog-cat-desc');
+  var color = document.getElementById('blog-cat-color');
+  var pos = document.getElementById('blog-cat-pos');
+  var submit = document.getElementById('blog-cat-submit');
+  var cancel = document.getElementById('blog-cat-cancel');
+  var heading = document.getElementById('cat-form-heading');
+  document.querySelectorAll('.blog-cat-edit').forEach(function (b) {
+    b.addEventListener('click', function () {
+      idField.value = b.dataset.cat || '';
+      name.value = b.dataset.name || '';
+      slug.value = b.dataset.slug || '';
+      desc.value = b.dataset.desc || '';
+      color.value = b.dataset.color || '#cbd5e1';
+      pos.value = b.dataset.pos || '0';
+      heading.textContent = 'Edit category: ' + (b.dataset.name || '');
+      submit.textContent = 'Save changes';
+      cancel.hidden = false;
+      f.scrollIntoView({behavior: 'smooth', block: 'center'});
+    });
+  });
+  cancel.addEventListener('click', function () {
+    idField.value = '';
+    f.reset();
+    heading.textContent = 'Add a category';
+    submit.textContent = 'Add category';
+    cancel.hidden = true;
+  });
+})();
+</script>
+{% endblock %}

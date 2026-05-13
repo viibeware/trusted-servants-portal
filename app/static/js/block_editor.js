@@ -21,12 +21,22 @@
     { type: 'intergroup_member', label: 'Officer', icon: '☻' },
     { type: 'intergroup_member_roster', label: 'Officer Roster', icon: '⚏' },
     { type: 'library',     label: 'Library', icon: '📚' },
+    { type: 'blog_list',   label: 'Blog list', icon: '📰' },
     { type: 'code',        label: 'Code', icon: '</>' },
     { type: 'callout',     label: 'Callout', icon: '⚠' },
     { type: 'list',        label: 'List', icon: '•' },
     { type: 'separator',   label: 'Divider', icon: '—' },
     { type: 'toc_sidebar', label: 'Wiki sidebar', icon: '☰' },
     { type: 'icon',        label: 'Icon', icon: '★' },
+    // Homepage section blocks — usable on any content page via the
+    // same builder. `hero` embeds the site-wide hero (no per-block
+    // config); `meetings` + `events` carry their own filter / display
+    // settings, hydrated server-side per instance.
+    { type: 'hero',        label: 'Hero', icon: '✦' },
+    { type: 'meetings',    label: 'Meetings', icon: '🗓' },
+    { type: 'events',      label: 'Events', icon: '📅' },
+    { type: 'features',    label: 'Features', icon: '▦' },
+    { type: 'faq',         label: 'FAQ', icon: '?' },
   ];
 
   // Default typography knobs every text-bearing block carries. Blank
@@ -94,6 +104,30 @@
         show_name: true,
         show_phone: true,
         show_email: true,
+      },
+      // Blog list — pulls a filtered list of BlogPost rows. Pick a
+      // single category OR tag (or neither) to scope the block — that's
+      // how a fellowship hosts multiple distinct frontend "blogs" out
+      // of a single Posts table. ``style`` picks the visual treatment;
+      // ``max_items`` caps the rendered list (0 = unlimited). Drafts
+      // and archives are filtered server-side.
+      blog_list: {
+        category_id: 0,
+        tag_id: 0,
+        title: '',
+        subtitle: '',
+        style: 'cards',          // cards | list | headlines
+        columns: 3,              // cards-only: 1..4
+        gap: '1.25rem',
+        max_items: 6,
+        sort: 'newest',          // newest | oldest | title | random
+        only_featured: false,
+        only_pinned: false,
+        show_image: true,
+        show_summary: true,
+        show_categories: true,
+        show_date: true,
+        show_more_link: true,
       },
       // Library — picks a Library row by id, renders its items.
       // `mode='all'` shows everything; `mode='granular'` shows only
@@ -194,6 +228,12 @@
         // ── Layout ──────────────────────────────────────────────────
         display: 'flex',           // flex | grid
         direction: 'column',        // row | column | row-reverse | column-reverse
+        // Per-viewport flex direction override. Blank = "use the
+        // default mobile collapse to column" (existing behaviour).
+        // Otherwise: row | column | row-reverse | column-reverse —
+        // wins at <=720px so admins can keep a row, reverse its
+        // order, or surface the bottom child first on phones.
+        mobile_direction: '',
         justify: 'flex-start',      // justify-content
         align: 'stretch',           // align-items
         wrap: false,                // flex-wrap
@@ -201,11 +241,33 @@
         gap: '0',
         // ── Spacing + width ────────────────────────────────────────
         padding: '0',
+        // Per-viewport padding override. Blank = "use the desktop
+        // padding on mobile too". Accepts any CSS padding shorthand
+        // (single value, `top bottom`, `top right bottom left`, etc.).
+        padding_mobile: '',
+        // Free-form CSS height + min-height. Both blank = auto-sizing.
+        // `height` is for the common "fill parent" case (e.g. `100%`
+        // inside a grid cell so `justify-content: space-between`
+        // actually has room to distribute children); `min_height` is
+        // for the "at least N tall, but can grow" use case.
+        height: '',
+        min_height: '',
         width_mode: 'full',         // boxed | full — full = no max-width
         max_width: 0,
         // ── Background + border ────────────────────────────────────
         bg_color: '',               // empty → transparent
         border_width: 0,
+        // Per-side width overrides. Empty string = "inherit
+        // `border_width`" so the uniform value drives every side that
+        // hasn't been customised. Setting any of these to an explicit
+        // integer (incl. 0) overrides that side only — the renderer
+        // switches from `border: <w>px ...` shorthand to the 4-value
+        // `border-width: T R B L` shorthand when the four sides
+        // differ.
+        border_w_top: '',
+        border_w_right: '',
+        border_w_bottom: '',
+        border_w_left: '',
         border_style: 'solid',      // solid | dashed | dotted | double
         border_color: '',
         border_radius: 0,
@@ -213,10 +275,128 @@
         // ── Hover (each empty = no hover override) ─────────────────
         hover_bg_color: '',
         hover_border_color: '',
+        // Hover border width (uniform across all sides). Empty = no
+        // hover change (rest-state widths stay in effect on hover);
+        // any integer 0-16 = swap to that width on hover. Pairs well
+        // with `border_width: 0` at rest + non-zero on hover so a
+        // border appears only on hover.
+        hover_border_width: '',
         hover_shadow: '',           // none | sm | md | lg | xl
         hover_lift: false,          // adds translateY(-2px)
         // ── Children (recursive) ───────────────────────────────────
         blocks: [],
+      },
+      // Hero block — per-instance content + background config. Mirrors
+      // the homepage hero's full surface (heading + subheading + tagline,
+      // heading/sub typography, dynamic text, desktop+mobile heights, 7
+      // background styles, particle overlay, rich CTA button list).
+      // Every field is independent of SiteSetting so each page's hero
+      // is fully customisable. Visual primitives (.fe-hero, .fe-btn,
+      // particle / sinewave / dynbg shells) are reused from the site
+      // hero so the rendered block matches the design system without
+      // any new stylesheet.
+      hero: {
+        // ── Content ─────────────────────────────────────────────
+        heading: 'New hero',
+        subheading: '',
+        eyebrow: '',
+        tagline_enabled: true,
+        // ── Typography ──────────────────────────────────────────
+        heading_font: 'fraunces',    // fraunces | inter
+        heading_size_pct: 100,       // 50..200
+        heading_grad_start: '#0f172a',
+        heading_grad_end: '#374151',
+        subheading_font: 'inter',    // fraunces | inter
+        subheading_size_pct: 100,
+        subheading_color: '#475569',
+        text_dynamic: false,
+        // ── Height ──────────────────────────────────────────────
+        height_vh_desktop: 0,        // 0 = auto (padding-derived)
+        height_vh_mobile: 0,         // 0 = inherit desktop value
+        // ── Background ──────────────────────────────────────────
+        bg_style: 'solid',           // frosty | solid | gradient | image | sinewave | video | dynamic
+        // Solid + gradient
+        bg_color: '',
+        bg_color_2: '',
+        bg_gradient_angle: 180,
+        // Image
+        bg_image_src: '',            // /pub/<filename> when uploaded
+        bg_image_mode: 'cover',      // cover | tile
+        bg_image_scale: 100,
+        // Frosty
+        bg_hue: 225,
+        bg_hue_2: 170,
+        bg_blur: 80,
+        bg_opacity: 45,
+        bg_randomize: false,
+        // Sinewave — up to 4 hex stops
+        bg_sinewave_colors: ['#16c2ba', '#1883d5', '#5a1ce5', '#0a3eb5'],
+        // Video
+        bg_video_src: '',
+        bg_video_speed: 100,
+        // Dynbg — points at a catalog key from app/dynbg.py
+        bg_dynamic_key: '',
+        bg_dynbg_config_json: '',
+        // ── Particle overlay ───────────────────────────────────
+        particle_enabled: false,
+        particle_effect: 'stars',    // network | stars | fireflies | bubbles | snow | waves | orbits | rain
+        particle_speed: 100,
+        particle_size: 100,
+        // ── Buttons ────────────────────────────────────────────
+        // Each: {id, label, url, style, open_in_new_tab,
+        //        icon_before, icon_before_color, icon_before_size,
+        //        icon_after, icon_after_color, icon_after_size,
+        //        custom_bg_color, custom_text_color}
+        // `style` is 'primary' | 'ghost' (matches the homepage).
+        buttons: [],
+      },
+      // Meetings list — mirrors blocks.MEETINGS_DEFAULTS. Each block
+      // instance carries its own filter / display config; the page
+      // route resolves `meetings_groups` per instance at render time.
+      meetings: {
+        heading: 'Upcoming Meetings',
+        intro: "A quick look at what's on the schedule.",
+        filter: 'upcoming_today',   // today_all | upcoming_today | next_24h | next_7_days | this_week | all
+        max_count: 6,
+        group_by_day: false,
+        show_type_chip: true,
+        show_schedule: true,
+        show_first_n: 3,
+        empty_message: 'No meetings scheduled — check back soon.',
+        animation: 'fade',         // fade | slide | none
+        stagger_ms: 60,
+      },
+      // Upcoming events — mirrors blocks.EVENTS_DEFAULTS.
+      events: {
+        heading: 'Upcoming Events',
+        intro: '',
+        max_count: 6,
+        empty_message: 'No upcoming events — check back soon.',
+        animation: 'fade',
+        stagger_ms: 60,
+        show_image: true,
+        show_summary: true,
+        show_location: true,
+      },
+      // Features block — heading + subheading + an inline list of
+      // {icon, icon_color, icon_size, title, body, href,
+      // open_in_new_tab} cards. The dedicated `#page-features-edit-modal`
+      // handles add/remove/reorder/edit; this blank just seeds the
+      // shape so palette drops produce a valid payload.
+      features: {
+        heading: 'What we offer',
+        subheading: 'Everything a fellowship needs to stay connected and welcoming.',
+        items: [],
+      },
+      // FAQ block — heading + subheading + flat list of
+      // {question, answer, icon, icon_size} accordion items.
+      // Heading / subheading default to empty so the public partial's
+      // fallbacks ("Frequently asked questions" / "Common questions
+      // from people…") engage until the admin customises them.
+      faq: {
+        heading: '',
+        subheading: '',
+        items: [],
       },
     }[type] || {};
     return { id: uid(), type, data: d };
@@ -1575,6 +1755,9 @@
       if (b.type === 'library') {
         return renderLibraryBody(b);
       }
+      if (b.type === 'blog_list') {
+        return renderBlogListBody(b);
+      }
       if (b.type === 'code') {
         return el('div', { class: 'be-body' }, [
           el('label', {}, ['Language',
@@ -1824,6 +2007,15 @@
       }
       if (b.type === 'button') {
         return renderButtonBody(b);
+      }
+      if (b.type === 'hero') {
+        return renderHeroBody(b);
+      }
+      if (b.type === 'meetings') {
+        return renderMeetingsBody(b);
+      }
+      if (b.type === 'events') {
+        return renderEventsBody(b);
       }
       if (b.type === 'container') {
         return renderContainerBody(b);
@@ -2777,6 +2969,175 @@
       return wrap;
     }
 
+    // ── Blog list block ───────────────────────────────────────────
+    // Picks a category OR tag (or neither) to scope the rendered list,
+    // plus presentation knobs (style + columns + max + sort + which
+    // metadata to surface). The frontend renderer reads these via
+    // `blog_block_data` at request time so admin edits propagate to
+    // every page that embeds a blog list.
+    function renderBlogListBody(b) {
+      const d = b.data;
+      if (!d.style) d.style = 'cards';
+      if (!d.columns) d.columns = 3;
+      if (!d.gap) d.gap = '1.25rem';
+      if (!d.sort) d.sort = 'newest';
+      if (d.max_items == null) d.max_items = 6;
+      ['show_image', 'show_summary', 'show_categories', 'show_date', 'show_more_link']
+        .forEach(k => { if (d[k] == null) d[k] = true; });
+
+      const cats = (window.tspBlogCategories || []).slice();
+      const tags = (window.tspBlogTags || []).slice();
+      const wrap = el('div', { class: 'be-body be-library-body' });
+
+      // ── Filter scope ───────────────────────────────────────────
+      const catSel = el('select', { class: 'be-library-select' });
+      catSel.appendChild(el('option', { value: '0' }, ['— Any category —']));
+      cats.forEach(c => {
+        const opt = el('option', { value: String(c.id) }, [c.name]);
+        if (Number(d.category_id) === c.id) opt.selected = true;
+        catSel.appendChild(opt);
+      });
+      catSel.addEventListener('change', e => {
+        const v = parseInt(e.target.value, 10);
+        d.category_id = isNaN(v) ? 0 : v;
+        notifyChange();
+      });
+
+      const tagSel = el('select', { class: 'be-library-select' });
+      tagSel.appendChild(el('option', { value: '0' }, ['— Any tag —']));
+      tags.forEach(t => {
+        const opt = el('option', { value: String(t.id) }, ['#' + t.name]);
+        if (Number(d.tag_id) === t.id) opt.selected = true;
+        tagSel.appendChild(opt);
+      });
+      tagSel.addEventListener('change', e => {
+        const v = parseInt(e.target.value, 10);
+        d.tag_id = isNaN(v) ? 0 : v;
+        notifyChange();
+      });
+
+      wrap.appendChild(el('div', { class: 'muted smaller', style: 'margin-bottom: 4px;' },
+        ['Filter the rendered list by category and/or tag. Pick neither to show every published post.']));
+      wrap.appendChild(el('label', {}, ['Category', catSel]));
+      wrap.appendChild(el('label', {}, ['Tag', tagSel]));
+
+      // ── Title + subtitle ───────────────────────────────────────
+      wrap.appendChild(el('label', {}, ['Heading (optional)',
+        el('input', {
+          type: 'text', value: d.title || '',
+          placeholder: 'Defaults to the category / tag name when set',
+          oninput: e => { d.title = e.target.value; notifyChange(); },
+        })]));
+      wrap.appendChild(el('label', {}, ['Subheading (optional)',
+        el('input', {
+          type: 'text', value: d.subtitle || '',
+          placeholder: 'A short caption shown beneath the heading',
+          oninput: e => { d.subtitle = e.target.value; notifyChange(); },
+        })]));
+
+      // ── Style picker ──────────────────────────────────────────
+      const styleTog = el('div', { class: 'view-toggle' });
+      [['cards', 'Cards'], ['list', 'List'], ['headlines', 'Headlines']]
+        .forEach(([v, lbl]) => {
+          styleTog.appendChild(el('button', {
+            type: 'button',
+            class: 'btn btn-sm' + ((d.style || 'cards') === v ? ' active' : ''),
+            'data-style': v,
+          }, [lbl]));
+        });
+      styleTog.addEventListener('click', e => {
+        const btn = e.target.closest('button[data-style]');
+        if (!btn) return;
+        d.style = btn.dataset.style;
+        styleTog.querySelectorAll('button').forEach(x =>
+          x.classList.toggle('active', x === btn));
+        cardsBox.style.display = (d.style === 'cards') ? '' : 'none';
+        notifyChange();
+      });
+      wrap.appendChild(el('label', {}, ['Display style', styleTog]));
+
+      // ── Cards-only controls ───────────────────────────────────
+      const cardsBox = el('div', { class: 'be-library-cards-controls' });
+      const colsTog = el('div', { class: 'view-toggle' });
+      [1, 2, 3, 4].forEach(n => {
+        colsTog.appendChild(el('button', {
+          type: 'button',
+          class: 'btn btn-sm' + (Number(d.columns) === n ? ' active' : ''),
+          'data-cols': String(n),
+        }, [n + ' col' + (n === 1 ? '' : 's')]));
+      });
+      colsTog.addEventListener('click', e => {
+        const btn = e.target.closest('button[data-cols]');
+        if (!btn) return;
+        d.columns = parseInt(btn.dataset.cols, 10) || 3;
+        colsTog.querySelectorAll('button').forEach(x =>
+          x.classList.toggle('active', x === btn));
+        notifyChange();
+      });
+      cardsBox.appendChild(el('label', {}, ['Columns', colsTog]));
+      cardsBox.appendChild(el('label', {}, ['Gap',
+        el('input', {
+          type: 'text', value: d.gap || '1.25rem',
+          placeholder: '1rem, 24px',
+          oninput: e => { d.gap = (e.target.value || '').trim() || '1.25rem'; notifyChange(); },
+        })]));
+      cardsBox.style.display = (d.style === 'cards') ? '' : 'none';
+      wrap.appendChild(cardsBox);
+
+      // ── Max items ─────────────────────────────────────────────
+      wrap.appendChild(el('label', {}, ['Max items (0 = unlimited)',
+        el('input', {
+          type: 'number', min: '0', max: '50', step: '1',
+          value: String(d.max_items == null ? 6 : d.max_items),
+          oninput: e => {
+            const n = parseInt(e.target.value, 10);
+            d.max_items = isNaN(n) ? 0 : Math.max(0, Math.min(50, n));
+            notifyChange();
+          },
+        })]));
+
+      // ── Sort ──────────────────────────────────────────────────
+      const sortSel = el('select', {
+        onchange: e => { d.sort = e.target.value; notifyChange(); },
+      });
+      [['newest', 'Newest first'], ['oldest', 'Oldest first'],
+       ['title', 'Title A → Z'], ['random', 'Random']]
+        .forEach(([v, lbl]) => {
+          const o = el('option', { value: v }, [lbl]);
+          if ((d.sort || 'newest') === v) o.selected = true;
+          sortSel.appendChild(o);
+        });
+      wrap.appendChild(el('label', {}, ['Sort', sortSel]));
+
+      // ── Toggles ───────────────────────────────────────────────
+      function fieldToggle(key, label) {
+        const lbl = el('label', { class: 'be-row' });
+        const cb = el('input', {
+          type: 'checkbox',
+          checked: d[key] !== false ? 'checked' : null,
+          onchange: e => { d[key] = e.target.checked; notifyChange(); },
+        });
+        lbl.appendChild(cb);
+        lbl.appendChild(el('span', {}, [label]));
+        return lbl;
+      }
+      wrap.appendChild(el('div', { class: 'be-library-fields' }, [
+        el('div', { class: 'muted smaller' }, ['Per-item display']),
+        fieldToggle('show_image', 'Featured image'),
+        fieldToggle('show_summary', 'Summary text'),
+        fieldToggle('show_categories', 'Category chips'),
+        fieldToggle('show_date', 'Date'),
+      ]));
+      wrap.appendChild(el('div', { class: 'be-library-fields' }, [
+        el('div', { class: 'muted smaller' }, ['Filters']),
+        fieldToggle('only_featured', 'Only featured posts'),
+        fieldToggle('only_pinned', 'Only pinned posts'),
+        fieldToggle('show_more_link', 'Show "View all posts" link below'),
+      ]));
+
+      return wrap;
+    }
+
     function uploadLottieFile(file, onSrc) {
       // Inline upload — same /tspro/files/upload endpoint the image
       // block uses (no MIME filter on the server). On success we resolve
@@ -2792,6 +3153,922 @@
           onSrc('/pub/' + data.item.original_filename);
         }
       }).catch(err => console.warn('lottie upload failed', err));
+    }
+
+    // ── Hero block (per-instance config) ────────────────────────────
+    // Mirrors the homepage's hero edit modal one-to-one — every text /
+    // typography / background / particle / button control surfaces as
+    // a JS-bound input on the block's `data` object. CSS class names
+    // intentionally match the homepage admin's so the existing styles
+    // (hero-section-grid, nav-megalink-*, hero-bg-panel, hero-typo-*)
+    // apply without anything new.
+    function renderHeroBody(b) {
+      const d = b.data;
+      // Backfill defaults for instances that predate any field.
+      const DEFAULTS = {
+        heading: '', subheading: '', eyebrow: '',
+        tagline_enabled: true,
+        heading_font: 'fraunces', heading_size_pct: 100,
+        heading_grad_start: '#0f172a', heading_grad_end: '#374151',
+        subheading_font: 'inter', subheading_size_pct: 100,
+        subheading_color: '#475569',
+        text_dynamic: false,
+        height_vh_desktop: 0, height_vh_mobile: 0,
+        bg_style: 'solid',
+        bg_color: '', bg_color_2: '', bg_gradient_angle: 180,
+        bg_image_src: '', bg_image_mode: 'cover', bg_image_scale: 100,
+        bg_hue: 225, bg_hue_2: 170, bg_blur: 80, bg_opacity: 45,
+        bg_randomize: false,
+        bg_sinewave_colors: ['#16c2ba', '#1883d5', '#5a1ce5', '#0a3eb5'],
+        bg_video_src: '', bg_video_speed: 100,
+        bg_dynamic_key: '', bg_dynbg_config_json: '',
+        particle_enabled: false, particle_effect: 'stars',
+        particle_speed: 100, particle_size: 100,
+        buttons: [],
+      };
+      Object.keys(DEFAULTS).forEach(k => { if (d[k] == null) d[k] = DEFAULTS[k]; });
+      if (!Array.isArray(d.buttons)) d.buttons = [];
+      if (!Array.isArray(d.bg_sinewave_colors)) {
+        d.bg_sinewave_colors = DEFAULTS.bg_sinewave_colors.slice();
+      }
+
+      // ── DOM helpers — match the homepage admin's class names so the
+      // existing CSS picks up our markup with zero new rules. Each
+      // helper writes through `notifyChange()` so the save bar lights
+      // up immediately. `oninput` is preferred over `onchange` for
+      // text/number/range so the bar reflects every keystroke. ──────
+      function field(lbl, inner, hintMd) {
+        const wrap = el('div', { class: 'nav-megalink-field' });
+        wrap.appendChild(el('span', { class: 'nav-megalink-field-lbl' }, [lbl]));
+        wrap.appendChild(inner);
+        if (hintMd) wrap.appendChild(el('p', { class: 'muted smaller' }, [hintMd]));
+        return wrap;
+      }
+      function textInput(key, placeholder) {
+        return el('input', { type: 'text', value: d[key] || '',
+          placeholder: placeholder || '',
+          oninput: e => { d[key] = e.target.value; notifyChange(); } });
+      }
+      function colorInput(key) {
+        return el('input', { type: 'color',
+          class: 'nav-megalink-color-input',
+          value: d[key] || '#ffffff',
+          oninput: e => { d[key] = e.target.value; notifyChange(); } });
+      }
+      function slider(key, min, max, step, suffix) {
+        const fld = el('div', { class: 'nav-megalink-field hero-slider-field' });
+        const out = el('output', {}, [String(d[key])]);
+        fld.appendChild(el('span', { class: 'nav-megalink-field-lbl' },
+          [arguments[5] || key, ' ', out, suffix || '']));
+        const inp = el('input', { type: 'range',
+          min: String(min), max: String(max), step: String(step),
+          value: String(d[key]),
+          oninput: e => {
+            const n = parseInt(e.target.value, 10);
+            d[key] = isNaN(n) ? 0 : n;
+            out.textContent = String(d[key]);
+            notifyChange();
+          } });
+        fld.appendChild(inp);
+        return fld;
+      }
+      function segmented(key, options) {
+        // Radio-style segmented control. `options` = [['val','Label'], …]
+        const seg = el('div', { class: 'nav-megalink-seg' });
+        options.forEach(([v, lbl]) => {
+          const opt = el('label', { class: 'nav-megalink-seg-opt' });
+          const r = el('input', { type: 'radio', value: v,
+            checked: (d[key] === v ? 'checked' : null),
+            onchange: e => { if (e.target.checked) { d[key] = v; notifyChange(); refresh && refresh(); } } });
+          r.name = 'be-hero-' + key + '-' + uid();   // unique-per-instance
+          opt.appendChild(r);
+          opt.appendChild(el('span', {}, [lbl]));
+          seg.appendChild(opt);
+        });
+        return seg;
+      }
+      function checkRow(key, name, hint) {
+        const row = el('li', { class: 'special-page-row',
+          style: 'list-style:none; margin: 0.75rem 0;' });
+        const info = el('div', { class: 'special-page-info' });
+        info.appendChild(el('div', { class: 'u-name' }, [name]));
+        if (hint) info.appendChild(el('p', { class: 'muted small' }, [hint]));
+        row.appendChild(info);
+        const lbl = el('label', { class: 'mode-toggle' });
+        const cb = el('input', { type: 'checkbox',
+          checked: d[key] ? 'checked' : null,
+          onchange: e => { d[key] = e.target.checked; notifyChange(); } });
+        lbl.appendChild(cb);
+        lbl.appendChild(el('span', { class: 'mode-track' },
+          [el('span', { class: 'mode-thumb' })]));
+        row.appendChild(lbl);
+        return row;
+      }
+
+      let refresh;  // recomputed each panel-show pass; assigned below
+
+      // ── Root wrapper ────────────────────────────────────────────
+      const wrap = el('div', { class: 'be-body hero-unified' });
+      wrap.appendChild(el('p', { class: 'muted smaller', style: 'margin: 0 0 12px;' },
+        ["Per-instance hero — every field is independent of the site-wide hero. Edits save with the page."]));
+
+      // ── Live preview (simplified, isolated) ─────────────────────
+      // Earlier versions reused the homepage's `.hero-full-preview-
+      // clip` / `.hero-full-preview` / `.fe-hero` markup so the
+      // preview looked photorealistic. In the page-edit modal
+      // context that markup interacted badly with surrounding CSS
+      // (the preview ended up rendered outside the modal). This
+      // simplified version uses unique class names + inline styles
+      // so its placement is fully under our control. Loses the
+      // animated bits (frosty blobs, particles, sinewave canvas,
+      // video) but shows heading / subhead / eyebrow / colours /
+      // typography accurately enough to dial the design in. The
+      // public renderer still uses the full `.fe-hero` chain.
+      const previewWrap = el('div', { class: 'be-hero-preview',
+        style: 'position: relative; height: 220px; margin: 0 0 16px; ' +
+               'border: 1px dashed var(--border); border-radius: 12px; ' +
+               'overflow: hidden; background: linear-gradient(180deg, #fff 0%, #f4f7fb 100%);' });
+      const previewLabel = el('p', { class: 'muted smaller',
+        style: 'position: absolute; top: 8px; left: 12px; z-index: 2; ' +
+               'margin: 0; padding: 2px 8px; border-radius: 4px; ' +
+               'background: rgba(255, 255, 255, 0.85); ' +
+               'font-weight: 600; letter-spacing: .04em; ' +
+               'text-transform: uppercase; pointer-events: none;' },
+        ['Live preview']);
+      previewWrap.appendChild(previewLabel);
+      const previewInner = el('div', {
+        style: 'position: absolute; inset: 0; display: flex; ' +
+               'flex-direction: column; align-items: center; ' +
+               'justify-content: center; gap: 6px; padding: 24px; ' +
+               'text-align: center; pointer-events: none;' });
+      const previewEyebrow = el('p', {
+        style: 'margin: 0; padding: 4px 10px; border-radius: 999px; ' +
+               'background: rgba(81, 100, 255, 0.10); color: #5164ff; ' +
+               'font-weight: 600; font-size: 0.72rem; letter-spacing: 0.04em; ' +
+               'text-transform: uppercase; display: none;' });
+      const previewHeading = el('h1', {
+        style: 'margin: 0; font-family: Fraunces, Inter, Georgia, serif; ' +
+               'font-weight: 800; font-size: clamp(1.6rem, 3vw, 2.4rem); ' +
+               'line-height: 1.15; letter-spacing: -0.025em; color: #0f172a;' });
+      const previewSub = el('p', {
+        style: 'margin: 0; font-family: Inter, sans-serif; ' +
+               'font-size: clamp(0.875rem, 1.4vw, 1.0625rem); ' +
+               'line-height: 1.5; color: #475569; max-width: 560px;' });
+      const previewCta = el('div', {
+        style: 'display: flex; gap: 8px; flex-wrap: wrap; ' +
+               'justify-content: center; margin-top: 6px;' });
+      previewInner.appendChild(previewEyebrow);
+      previewInner.appendChild(previewHeading);
+      previewInner.appendChild(previewSub);
+      previewInner.appendChild(previewCta);
+      previewWrap.appendChild(previewInner);
+      wrap.appendChild(previewWrap);
+
+      // Stubs kept so the rest of the code (refreshPreview, etc.)
+      // can still call them harmlessly without a major rewrite.
+      // Sinewave / video / particles drop to no-op in this simpler
+      // preview; their controls still save correctly and the public
+      // render uses the full pipeline.
+      const previewBg = el('div', { hidden: true });
+      const previewParticles = el('canvas', { hidden: true });
+      const previewVideo = el('video', { hidden: true });
+      const previewSection = previewWrap;   // alias so existing refs work
+      function fitPreview() { /* no-op — fixed-size preview */ }
+      let _partFx = null;
+      function destroyPart() { _partFx = null; }
+      function buildPart() { /* particles not in this preview */ }
+
+      // ── Refresh helpers ─────────────────────────────────────────
+      function hexLightness(h) {
+        h = (h || '').replace('#', '');
+        if (h.length === 3) h = h.split('').map(c => c + c).join('');
+        if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+        const r = parseInt(h.slice(0, 2), 16) / 255;
+        const g = parseInt(h.slice(2, 4), 16) / 255;
+        const bv = parseInt(h.slice(4, 6), 16) / 255;
+        return (Math.max(r, g, bv) + Math.min(r, g, bv)) / 2;
+      }
+      function avgLightness(values) {
+        const v = values.filter(x => x != null);
+        return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+      }
+
+      function refreshPreview() {
+        // Always try — even before the wrap is in the DOM, setting
+        // textContent / styles on detached nodes is harmless and
+        // means the preview is already painted when the BlockEditor
+        // appends the wrap to the modal. Errors get logged but never
+        // bubble so one bad input can't break the whole modal.
+        try { _refreshPreviewInner(); }
+        catch (err) { console.warn('[hero-block preview] refresh failed', err); }
+      }
+      function _refreshPreviewInner() {
+        // ── Text ───────────────────────────────────────────────
+        previewHeading.textContent = d.heading || 'Hero heading';
+        previewSub.textContent = d.subheading || '';
+        const eyeOn = d.tagline_enabled !== false;
+        previewEyebrow.textContent = d.eyebrow || '';
+        previewEyebrow.style.display = (eyeOn && (d.eyebrow || '').trim())
+          ? 'inline-block' : 'none';
+
+        // ── Typography (inline styles on the simple preview) ──
+        const FAMILY = {
+          fraunces: '"Fraunces", "Inter", Georgia, serif',
+          inter:    '"Inter", "Fraunces", sans-serif',
+        };
+        previewHeading.style.fontFamily = FAMILY[d.heading_font] || FAMILY.fraunces;
+        previewSub.style.fontFamily = FAMILY[d.subheading_font] || FAMILY.inter;
+        // Size: blend the admin's % into the existing clamp() so the
+        // preview scales without breaking the responsive cap.
+        const hSize = (parseInt(d.heading_size_pct, 10) || 100) / 100;
+        const sSize = (parseInt(d.subheading_size_pct, 10) || 100) / 100;
+        previewHeading.style.fontSize = 'calc(clamp(1.4rem, 3vw, 2.4rem) * ' + hSize + ')';
+        previewSub.style.fontSize = 'calc(clamp(0.875rem, 1.4vw, 1.0625rem) * ' + sSize + ')';
+        // Heading color — average the gradient start + end into a
+        // single colour for the simple preview. Skip the
+        // background-clip:text dance to keep rendering robust in
+        // the admin context.
+        previewHeading.style.color = _avgHex(d.heading_grad_start, d.heading_grad_end) || '#0f172a';
+        previewSub.style.color = d.subheading_color || '#475569';
+
+        // ── Background ────────────────────────────────────────
+        const style = d.bg_style || 'solid';
+        // Reset all bg props before applying so a prior paint
+        // doesn't bleed through. previewWrap's default light wash
+        // is the fallback for styles without an explicit bg.
+        previewWrap.style.background = '';
+        previewWrap.style.backgroundImage = '';
+        previewWrap.style.backgroundSize = '';
+        previewWrap.style.backgroundRepeat = '';
+        previewWrap.style.backgroundColor = '';
+
+        if (style === 'solid' && d.bg_color) {
+          previewWrap.style.background = d.bg_color;
+        } else if (style === 'gradient') {
+          const g1 = d.bg_color || '#ffffff';
+          const g2 = d.bg_color_2 || '#e0e7ff';
+          const ang = parseInt(d.bg_gradient_angle, 10) || 180;
+          previewWrap.style.background = 'linear-gradient(' + ang + 'deg, ' + g1 + ', ' + g2 + ')';
+        } else if (style === 'image' && d.bg_image_src) {
+          if (d.bg_image_mode === 'tile') {
+            const s = parseInt(d.bg_image_scale, 10) || 100;
+            previewWrap.style.background = 'url("' + d.bg_image_src + '") repeat';
+            previewWrap.style.backgroundSize = s + 'px ' + s + 'px';
+          } else {
+            previewWrap.style.background = 'url("' + d.bg_image_src + '") center/cover no-repeat';
+          }
+        } else if (style === 'sinewave') {
+          // Show the first two stops as a vertical gradient in the
+          // simple preview; the public render does the full canvas
+          // sine-blend. Good enough for dialling colours in.
+          const cs = (d.bg_sinewave_colors || []).filter(c =>
+            /^#[0-9a-fA-F]{6}$/.test((c || '').trim()));
+          if (cs.length >= 2) {
+            previewWrap.style.background = 'linear-gradient(180deg, ' + cs.join(', ') + ')';
+          } else if (cs.length === 1) {
+            previewWrap.style.background = cs[0];
+          } else {
+            previewWrap.style.background = 'linear-gradient(180deg, #16c2ba, #5a1ce5)';
+          }
+        } else if (style === 'frosty') {
+          // Show the two frosty hues as a soft gradient in the
+          // simple preview (the public render adds animated blobs).
+          const ha = parseInt(d.bg_hue, 10) || 225;
+          const hb = parseInt(d.bg_hue_2, 10) || 170;
+          previewWrap.style.background = 'linear-gradient(180deg, hsl(' + ha + ', 60%, 92%) 0%, hsl(' + hb + ', 60%, 90%) 100%)';
+        }
+        // 'video' and 'dynamic' styles intentionally show the
+        // default light wash — they're hard to preview statically.
+
+        // ── Dynamic-text contrast ──────────────────────────────
+        // Auto-pick a contrasting text colour when the bg is dark.
+        if (d.text_dynamic) {
+          let l = 0.95;
+          if (style === 'solid') {
+            l = hexLightness(d.bg_color) ?? 0.95;
+          } else if (style === 'gradient') {
+            l = avgLightness([hexLightness(d.bg_color), hexLightness(d.bg_color_2)]) ?? 0.95;
+          } else if (style === 'sinewave') {
+            l = avgLightness((d.bg_sinewave_colors || []).map(hexLightness)) ?? 0.55;
+          } else if (style === 'frosty') {
+            l = 0.9;
+          }
+          if (l < 0.55) {
+            previewHeading.style.color = '#ffffff';
+            previewSub.style.color = 'rgba(255,255,255,0.85)';
+          }
+        }
+      }
+      // Helper: blend two hex colours by averaging RGB channels.
+      // Used for the heading colour preview since the simple
+      // renderer paints with a single fill instead of a gradient.
+      function _avgHex(a, b) {
+        function toRgb(h) {
+          h = (h || '').replace('#', '');
+          if (h.length === 3) h = h.split('').map(c => c + c).join('');
+          if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+          return [parseInt(h.slice(0, 2), 16),
+                  parseInt(h.slice(2, 4), 16),
+                  parseInt(h.slice(4, 6), 16)];
+        }
+        const ra = toRgb(a), rb = toRgb(b);
+        if (!ra && !rb) return null;
+        if (!rb) return a;
+        if (!ra) return b;
+        function px(n) { return Math.round(n).toString(16).padStart(2, '0'); }
+        return '#' + px((ra[0] + rb[0]) / 2) + px((ra[1] + rb[1]) / 2) + px((ra[2] + rb[2]) / 2);
+      }
+
+      // Schedule a single refresh per animation frame, coalescing
+      // bursts of input events (e.g. dragging a slider) into one paint.
+      let _refreshScheduled = false;
+      function scheduleRefresh() {
+        if (_refreshScheduled) return;
+        _refreshScheduled = true;
+        requestAnimationFrame(() => {
+          _refreshScheduled = false;
+          refreshPreview();
+        });
+      }
+      // Catch every input / change anywhere in the editor — handlers
+      // mutate `d` first, this listener re-renders the preview after.
+      wrap.addEventListener('input', scheduleRefresh);
+      wrap.addEventListener('change', scheduleRefresh);
+
+      // Initial paint — synchronous so the preview shows content
+      // the instant the BlockEditor mounts the wrap. The
+      // ResizeObserver wired earlier handles the fit-to-clip pass
+      // automatically once layout settles; we also schedule one
+      // explicit fit on the next frame as a safety net for
+      // browsers where the observer's first measurement is
+      // delayed.
+      refreshPreview();
+      requestAnimationFrame(fitPreview);
+
+      // ── 1. Text column ──────────────────────────────────────────
+      const textGroup = el('div', { class: 'hero-text-col' });
+      textGroup.appendChild(el('h3', { class: 'hero-sub-heading' }, ['Text']));
+
+      textGroup.appendChild(el('label', {}, ['Heading',
+        textInput('heading', 'You are not alone.')]));
+      const subTa = el('textarea', { rows: '5', style: 'min-height: 120px;',
+        placeholder: 'Find meetings, connect with your community…',
+        oninput: e => { d.subheading = e.target.value; notifyChange(); } },
+        [d.subheading || '']);
+      textGroup.appendChild(el('label', {}, ['Subheading', subTa]));
+      textGroup.appendChild(el('label', {}, [
+        'Eyebrow ', el('span', { class: 'muted small' }, ['(small pill above the heading)']),
+        textInput('eyebrow', 'A recovery fellowship portal.')]));
+      textGroup.appendChild(checkRow('tagline_enabled', 'Show eyebrow above heading',
+        'Toggle the eyebrow pill on or off without clearing the text.'));
+
+      // Typography grid (heading + subheading groups, side by side)
+      const typoGrid = el('div', { class: 'hero-typo-grid' });
+
+      const hGroup = el('fieldset', { class: 'hero-typo-group' });
+      hGroup.appendChild(el('legend', {}, ['Heading']));
+      hGroup.appendChild(field('Font family',
+        segmented('heading_font', [['fraunces', 'Fraunces · serif'], ['inter', 'Inter · sans']])));
+      hGroup.appendChild(slider('heading_size_pct', 50, 200, 5, '%', 'Size'));
+      const hColors = el('div', { class: 'hero-typo-color-row' });
+      hColors.appendChild(field('Gradient start', colorInput('heading_grad_start')));
+      hColors.appendChild(field('Gradient end', colorInput('heading_grad_end')));
+      hGroup.appendChild(hColors);
+      typoGrid.appendChild(hGroup);
+
+      const sGroup = el('fieldset', { class: 'hero-typo-group' });
+      sGroup.appendChild(el('legend', {}, ['Subheading']));
+      sGroup.appendChild(field('Font family',
+        segmented('subheading_font', [['fraunces', 'Fraunces · serif'], ['inter', 'Inter · sans']])));
+      sGroup.appendChild(slider('subheading_size_pct', 50, 200, 5, '%', 'Size'));
+      const sColors = el('div', { class: 'hero-typo-color-row' });
+      sColors.appendChild(field('Text colour', colorInput('subheading_color')));
+      sGroup.appendChild(sColors);
+      typoGrid.appendChild(sGroup);
+
+      textGroup.appendChild(typoGrid);
+
+      textGroup.appendChild(checkRow('text_dynamic', 'Dynamic text colors',
+        "Auto-pick contrasting heading + subheading colors based on the background's lightness. Overrides the gradient and subheading colour above when on."));
+
+      // Heights
+      const hGrid = el('div', { class: 'hero-heading-opts hero-heading-grad-row' });
+      function heightField(key, lbl) {
+        const fld = el('div', { class: 'nav-megalink-field hero-slider-field' });
+        const out = el('output', {}, [d[key] ? d[key] + 'vh' : 'Auto']);
+        fld.appendChild(el('span', { class: 'nav-megalink-field-lbl' }, [lbl, ' ', out]));
+        fld.appendChild(el('input', { type: 'range', min: '0', max: '200', step: '5',
+          value: String(d[key] || 0),
+          oninput: e => {
+            const n = parseInt(e.target.value, 10) || 0;
+            d[key] = n;
+            out.textContent = n ? n + 'vh' : 'Auto';
+            notifyChange();
+          } }));
+        return fld;
+      }
+      hGrid.appendChild(heightField('height_vh_desktop', 'Desktop height'));
+      hGrid.appendChild(heightField('height_vh_mobile', 'Mobile height'));
+      textGroup.appendChild(hGrid);
+      textGroup.appendChild(el('p', { class: 'muted smaller', style: 'margin: 4px 2px 0;' },
+        ["Set 0 to keep the natural padding-based height. Higher values stretch the hero to that share of the viewport (50 = half-screen, 100 = full-screen). Mobile falls back to the desktop value when left at 0."]));
+
+      wrap.appendChild(textGroup);
+
+      // ── 2. Background column ────────────────────────────────────
+      const bgGroup = el('div', { class: 'hero-bg-col' });
+      bgGroup.appendChild(el('h3', { class: 'hero-sub-heading' }, ['Background']));
+      bgGroup.appendChild(el('p', { class: 'muted smaller hero-sub-help' },
+        ['Pick a style, tweak it, or upload an image.']));
+
+      const bgStyleField = el('div', { class: 'nav-megalink-field' });
+      bgStyleField.appendChild(el('span', { class: 'nav-megalink-field-lbl' }, ['Style']));
+      const bgSeg = el('div', { class: 'nav-megalink-seg' });
+      const BG_STYLES = [
+        ['frosty', 'Frosty'], ['solid', 'Solid'], ['gradient', 'Gradient'],
+        ['image', 'Image'], ['sinewave', 'Sinewave'], ['video', 'Video'],
+        ['dynamic', 'Dynamic'],
+      ];
+      const bgRadioName = 'be-hero-bg-' + uid();
+      BG_STYLES.forEach(([v, lbl]) => {
+        const opt = el('label', { class: 'nav-megalink-seg-opt' });
+        const r = el('input', { type: 'radio', name: bgRadioName, value: v,
+          checked: (d.bg_style === v ? 'checked' : null),
+          onchange: e => {
+            if (!e.target.checked) return;
+            d.bg_style = v;
+            syncBgPanels();
+            notifyChange();
+          } });
+        opt.appendChild(r);
+        opt.appendChild(el('span', {}, [lbl]));
+        bgSeg.appendChild(opt);
+      });
+      bgStyleField.appendChild(bgSeg);
+      bgGroup.appendChild(bgStyleField);
+
+      // Reserve a stable min-height across all bg panels so flipping
+      // between Frosty (tallest — 4 sliders + a toggle) and Sinewave
+      // (shortest — 4 colour pickers) doesn't make the modal body's
+      // scroll height jump, which otherwise re-centers the modal
+      // panel and pulls the sticky preview off-screen ("viewport
+      // collapses up" symptom). Tuned to the tallest panel's natural
+      // height so no panel needs to overflow to fit.
+      const panels = el('div', { class: 'hero-bg-panels',
+        style: 'min-height: 320px;' });
+
+      // — Frosty panel —
+      const pFrosty = el('div', { class: 'hero-bg-panel', 'data-bg-panel': 'frosty' });
+      pFrosty.appendChild(el('p', { class: 'muted smaller' },
+        ['Animated blurred colour blobs over a light wash — the original frosty look.']));
+      const frostyGrid = el('div', { class: 'hero-bg-grid' });
+      frostyGrid.appendChild(slider('bg_hue', 0, 360, 5, '°', 'Primary hue'));
+      frostyGrid.appendChild(slider('bg_hue_2', 0, 360, 5, '°', 'Accent hue'));
+      frostyGrid.appendChild(slider('bg_blur', 0, 200, 5, 'px', 'Blur'));
+      frostyGrid.appendChild(slider('bg_opacity', 0, 100, 5, '%', 'Intensity'));
+      pFrosty.appendChild(frostyGrid);
+      pFrosty.appendChild(checkRow('bg_randomize', 'Randomize on every page load',
+        'Picks fresh hues each time so the hero never looks the same twice.'));
+      panels.appendChild(pFrosty);
+
+      // — Solid panel —
+      const pSolid = el('div', { class: 'hero-bg-panel', 'data-bg-panel': 'solid' });
+      pSolid.appendChild(el('p', { class: 'muted smaller' },
+        ['A single flat colour behind the hero.']));
+      pSolid.appendChild(field('Background color', colorInput('bg_color')));
+      panels.appendChild(pSolid);
+
+      // — Gradient panel —
+      const pGrad = el('div', { class: 'hero-bg-panel', 'data-bg-panel': 'gradient' });
+      pGrad.appendChild(el('p', { class: 'muted smaller' },
+        ['A two-colour linear gradient at a chosen angle.']));
+      const gradGrid = el('div', { class: 'hero-bg-grid' });
+      gradGrid.appendChild(field('Start color', colorInput('bg_color')));
+      gradGrid.appendChild(field('End color', colorInput('bg_color_2')));
+      gradGrid.appendChild(slider('bg_gradient_angle', 0, 360, 5, '°', 'Angle'));
+      pGrad.appendChild(gradGrid);
+      panels.appendChild(pGrad);
+
+      // — Image panel —
+      const pImg = el('div', { class: 'hero-bg-panel', 'data-bg-panel': 'image' });
+      pImg.appendChild(el('p', { class: 'muted smaller' },
+        ['Upload a photo, illustration, or SVG. Use Tile for repeating patterns and the scale slider to size a single repeat.']));
+      const imgPreview = el('div', { class: 'hero-bg-image-preview' });
+      function renderImgPreview() {
+        imgPreview.innerHTML = '';
+        if (d.bg_image_src) {
+          imgPreview.appendChild(el('img', { src: d.bg_image_src, alt: '',
+            style: 'max-width: 220px; max-height: 120px; border-radius: 6px;' }));
+          const clr = el('button', { type: 'button', class: 'btn btn-sm',
+            onclick: () => { d.bg_image_src = ''; renderImgPreview(); notifyChange(); } },
+            ['Remove']);
+          imgPreview.appendChild(clr);
+        }
+      }
+      renderImgPreview();
+      pImg.appendChild(imgPreview);
+      const upWrap = el('label', {}, ['Upload image ',
+        el('span', { class: 'muted small' }, ['(PNG, JPG, or SVG)'])]);
+      const fileInp = el('input', { type: 'file', accept: 'image/*',
+        onchange: e => {
+          const f = e.target.files && e.target.files[0];
+          if (!f) return;
+          const fd = new FormData();
+          fd.append('file', f);
+          fd.append('csrf_token', imageBrowserCsrf());
+          fetch('/tspro/files/upload', { method: 'POST', body: fd,
+            credentials: 'same-origin' })
+            .then(r => r.json()).then(data => {
+              if (data && data.item && data.item.original_filename) {
+                d.bg_image_src = '/pub/' + data.item.original_filename;
+                renderImgPreview(); notifyChange();
+              }
+            }).catch(err => console.warn('hero bg upload failed', err));
+        } });
+      upWrap.appendChild(fileInp);
+      pImg.appendChild(upWrap);
+      const imgGrid = el('div', { class: 'hero-bg-grid' });
+      imgGrid.appendChild(field('Display mode',
+        segmented('bg_image_mode', [['cover', 'Cover'], ['tile', 'Tile']])));
+      imgGrid.appendChild(slider('bg_image_scale', 10, 400, 5, '%', 'Scale'));
+      pImg.appendChild(imgGrid);
+      panels.appendChild(pImg);
+
+      // — Sinewave panel —
+      const pSine = el('div', { class: 'hero-bg-panel', 'data-bg-panel': 'sinewave' });
+      pSine.appendChild(el('p', { class: 'muted smaller' },
+        ['A flowing multi-color sine-wave gradient. Pick 2–4 colors below; leave a slot blank to drop it.']));
+      const sineGrid = el('div', { class: 'hero-bg-grid' });
+      for (let i = 0; i < 4; i++) {
+        const fld = el('div', { class: 'nav-megalink-field' });
+        fld.appendChild(el('span', { class: 'nav-megalink-field-lbl' }, ['Color ' + (i + 1)]));
+        const inp = el('input', { type: 'color', class: 'nav-megalink-color-input',
+          value: d.bg_sinewave_colors[i] || '#ffffff',
+          oninput: e => { d.bg_sinewave_colors[i] = e.target.value; notifyChange(); } });
+        fld.appendChild(inp);
+        sineGrid.appendChild(fld);
+      }
+      pSine.appendChild(sineGrid);
+      panels.appendChild(pSine);
+
+      // — Video panel —
+      const pVid = el('div', { class: 'hero-bg-panel', 'data-bg-panel': 'video' });
+      pVid.appendChild(el('p', { class: 'muted smaller' },
+        ['Upload a short MP4/WebM clip. The video plays muted, autoplays, and fills the hero edge-to-edge.']));
+      const vidPreview = el('div', { class: 'hero-bg-image-preview' });
+      function renderVidPreview() {
+        vidPreview.innerHTML = '';
+        if (d.bg_video_src) {
+          vidPreview.appendChild(el('video', { src: d.bg_video_src,
+            muted: 'muted', autoplay: 'autoplay', loop: 'loop', playsinline: 'playsinline',
+            style: 'max-width: 220px; max-height: 120px; border-radius: 6px;' }));
+          vidPreview.appendChild(el('button', { type: 'button', class: 'btn btn-sm',
+            onclick: () => { d.bg_video_src = ''; renderVidPreview(); notifyChange(); } },
+            ['Remove']));
+        }
+      }
+      renderVidPreview();
+      pVid.appendChild(vidPreview);
+      const vidUp = el('label', {}, ['Upload video ',
+        el('span', { class: 'muted small' }, ['(MP4 or WebM, ≤ 256 MB)'])]);
+      const vidInp = el('input', { type: 'file',
+        accept: 'video/mp4,video/webm,video/quicktime',
+        onchange: e => {
+          const f = e.target.files && e.target.files[0];
+          if (!f) return;
+          const fd = new FormData();
+          fd.append('file', f);
+          fd.append('csrf_token', imageBrowserCsrf());
+          fetch('/tspro/files/upload', { method: 'POST', body: fd,
+            credentials: 'same-origin' })
+            .then(r => r.json()).then(data => {
+              if (data && data.item && data.item.original_filename) {
+                d.bg_video_src = '/pub/' + data.item.original_filename;
+                renderVidPreview(); notifyChange();
+              }
+            }).catch(err => console.warn('hero bg video upload failed', err));
+        } });
+      vidUp.appendChild(vidInp);
+      pVid.appendChild(vidUp);
+      const vidGrid = el('div', { class: 'hero-bg-grid' });
+      const vsel = el('select', {
+        onchange: e => { d.bg_video_speed = parseInt(e.target.value, 10) || 100; notifyChange(); } });
+      [[50, '0.5×'], [100, '1×'], [150, '1.5×'], [200, '2×'], [300, '3×']].forEach(([v, lbl]) => {
+        const o = el('option', { value: String(v) }, [lbl]);
+        if (Number(d.bg_video_speed) === v) o.selected = true;
+        vsel.appendChild(o);
+      });
+      vidGrid.appendChild(field('Speed', vsel));
+      pVid.appendChild(vidGrid);
+      panels.appendChild(pVid);
+
+      // — Dynamic panel (dynbg key, hand-typed; full picker UI lives
+      //   in a separate macro that the BlockEditor doesn't surface
+      //   here yet — admins paste a key or leave blank). —
+      const pDyn = el('div', { class: 'hero-bg-panel', 'data-bg-panel': 'dynamic' });
+      pDyn.appendChild(el('p', { class: 'muted smaller' },
+        ['Pick a CSS-driven backdrop preset by key (e.g. ', el('code', {}, ['aurora']), ', ', el('code', {}, ['mesh-citrus']), ', ', el('code', {}, ['starfield']), ', etc.). Available keys come from the dynbg catalog.']));
+      pDyn.appendChild(field('Dynbg key', textInput('bg_dynamic_key', 'aurora')));
+      panels.appendChild(pDyn);
+
+      bgGroup.appendChild(panels);
+
+      function syncBgPanels() {
+        panels.querySelectorAll('[data-bg-panel]').forEach(p => {
+          p.hidden = p.dataset.bgPanel !== d.bg_style;
+        });
+      }
+      syncBgPanels();
+
+      // — Particle overlay (any bg style) —
+      bgGroup.appendChild(el('h3', { class: 'hero-sub-heading',
+        style: 'margin-top: 1.5rem;' }, ['Particle overlay']));
+      bgGroup.appendChild(checkRow('particle_enabled', 'Show particles',
+        'Animated particle layer above the background.'));
+      const partGrid = el('div', { class: 'hero-bg-grid' });
+      const psel = el('select', {
+        onchange: e => { d.particle_effect = e.target.value; notifyChange(); } });
+      ['network', 'stars', 'fireflies', 'bubbles', 'snow', 'waves', 'orbits', 'rain']
+        .forEach(eff => {
+          const o = el('option', { value: eff }, [eff.charAt(0).toUpperCase() + eff.slice(1)]);
+          if (d.particle_effect === eff) o.selected = true;
+          psel.appendChild(o);
+        });
+      partGrid.appendChild(field('Effect', psel));
+      partGrid.appendChild(slider('particle_speed', 10, 300, 5, '%', 'Speed'));
+      partGrid.appendChild(slider('particle_size', 25, 400, 5, '%', 'Size'));
+      bgGroup.appendChild(partGrid);
+
+      wrap.appendChild(bgGroup);
+
+      // ── 3. Buttons column ───────────────────────────────────────
+      const btnGroup = el('div', { class: 'hero-buttons-col' });
+      const btnHead = el('h3', { class: 'hero-sub-heading' }, ['Call-to-action buttons']);
+      const addBtn = el('button', { type: 'button',
+        class: 'btn btn-sm btn-primary hero-sub-add',
+        onclick: () => {
+          d.buttons.push({ id: uid(), label: 'Click here', url: '',
+            style: 'primary', open_in_new_tab: false,
+            icon_before: '', icon_before_color: '', icon_before_size: '',
+            icon_after: '', icon_after_color: '', icon_after_size: '',
+            custom_bg_color: '', custom_text_color: '' });
+          renderButtons(); notifyChange();
+        } }, ['+ Add button']);
+      btnHead.appendChild(addBtn);
+      btnGroup.appendChild(btnHead);
+      btnGroup.appendChild(el('p', { class: 'muted small hero-sub-help' },
+        ['Rendered under the hero subheading. Drag the handle ↕ to reorder.']));
+
+      const btnList = el('div');
+      function renderButtons() {
+        btnList.innerHTML = '';
+        if (!d.buttons.length) {
+          btnList.appendChild(el('p', { class: 'muted smaller' },
+            ['No buttons yet — click "+ Add button" above.']));
+          return;
+        }
+        d.buttons.forEach((btn, idx) => {
+          const row = el('div', {
+            style: 'display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px;' });
+          const head = el('div', { style: 'display: flex; gap: 6px; align-items: center;' }, [
+            el('strong', { style: 'flex: 1;' }, ['Button ' + (idx + 1)]),
+            el('button', { type: 'button', class: 'btn btn-sm', title: 'Move up',
+              onclick: () => {
+                if (idx > 0) {
+                  const t = d.buttons[idx]; d.buttons[idx] = d.buttons[idx - 1];
+                  d.buttons[idx - 1] = t; renderButtons(); notifyChange();
+                }
+              } }, ['↑']),
+            el('button', { type: 'button', class: 'btn btn-sm', title: 'Move down',
+              onclick: () => {
+                if (idx < d.buttons.length - 1) {
+                  const t = d.buttons[idx]; d.buttons[idx] = d.buttons[idx + 1];
+                  d.buttons[idx + 1] = t; renderButtons(); notifyChange();
+                }
+              } }, ['↓']),
+            el('button', { type: 'button', class: 'btn btn-sm', title: 'Remove',
+              onclick: () => { d.buttons.splice(idx, 1); renderButtons(); notifyChange(); } },
+              ['Remove']),
+          ]);
+          row.appendChild(head);
+          const bind = (key, lbl, ph, type) => {
+            const inp = el('input', { type: type || 'text',
+              value: btn[key] != null ? String(btn[key]) : '',
+              placeholder: ph || '',
+              oninput: e => { btn[key] = e.target.value; notifyChange(); } });
+            return el('label', {}, [lbl, inp]);
+          };
+          row.appendChild(bind('label', 'Label', 'Find a Meeting'));
+          row.appendChild(bind('url', 'URL', '/meetings or https://…'));
+          const styleSel = el('select', {
+            onchange: e => { btn.style = e.target.value; notifyChange(); } });
+          [['primary', 'Primary (filled)'], ['ghost', 'Ghost (outline)']].forEach(([v, lbl]) => {
+            const o = el('option', { value: v }, [lbl]);
+            if ((btn.style || 'primary') === v) o.selected = true;
+            styleSel.appendChild(o);
+          });
+          row.appendChild(el('label', {}, ['Style', styleSel]));
+          const newTabLbl = el('label', { class: 'be-row' });
+          const newTabCb = el('input', { type: 'checkbox',
+            checked: btn.open_in_new_tab ? 'checked' : null,
+            onchange: e => { btn.open_in_new_tab = e.target.checked; notifyChange(); } });
+          newTabLbl.appendChild(newTabCb);
+          newTabLbl.appendChild(el('span', {}, ['Open in new tab']));
+          row.appendChild(newTabLbl);
+
+          // Optional icons + custom colors (collapsed by default to keep
+          // the row compact — admins who only need a label + URL aren't
+          // dazzled by ten extra inputs).
+          const adv = el('details', {});
+          adv.appendChild(el('summary', { class: 'muted smaller' },
+            ['Advanced (icons, custom colours)']));
+          adv.appendChild(bind('icon_before', 'Icon before', 'lucide name (e.g. calendar)'));
+          adv.appendChild(bind('icon_before_color', 'Before-icon color', '#ffffff'));
+          adv.appendChild(bind('icon_before_size', 'Before-icon size (px)', '24', 'number'));
+          adv.appendChild(bind('icon_after', 'Icon after', 'lucide name (e.g. arrow-right)'));
+          adv.appendChild(bind('icon_after_color', 'After-icon color', '#ffffff'));
+          adv.appendChild(bind('icon_after_size', 'After-icon size (px)', '24', 'number'));
+          adv.appendChild(bind('custom_bg_color', 'Custom bg (primary only)', '#1d4ed8'));
+          adv.appendChild(bind('custom_text_color', 'Custom text (primary only)', '#ffffff'));
+          row.appendChild(adv);
+          btnList.appendChild(row);
+        });
+      }
+      renderButtons();
+      btnGroup.appendChild(btnList);
+
+      wrap.appendChild(btnGroup);
+
+      return wrap;
+    }
+
+    // ── Meetings list block (data-driven) ──────────────────────────
+    // Per-instance copy of the homepage meetings card grid. Each
+    // block carries its own filter / display config; the page route
+    // calls `blocks.filtered_meetings(d)` per block and stamps the
+    // resolved groups into the render context.
+    function renderMeetingsBody(b) {
+      const d = b.data;
+      const wrap = el('div', { class: 'be-body be-library-body' });
+
+      wrap.appendChild(el('div', { class: 'muted smaller', style: 'margin-bottom: 4px;' },
+        ['Live meetings list filtered by your chosen window. Same configurable card grid the homepage uses; each block instance can carry its own filter + display settings.']));
+
+      wrap.appendChild(el('label', {}, ['Heading',
+        el('input', { type: 'text', value: d.heading || '',
+          placeholder: 'Upcoming Meetings',
+          oninput: e => { d.heading = e.target.value; notifyChange(); } })]));
+      wrap.appendChild(el('label', {}, ['Intro (optional)',
+        el('input', { type: 'text', value: d.intro || '',
+          placeholder: "A quick look at what's on the schedule.",
+          oninput: e => { d.intro = e.target.value; notifyChange(); } })]));
+
+      const filterSel = el('select', {
+        onchange: e => { d.filter = e.target.value; notifyChange(); },
+      });
+      [['today_all', 'Everything today'],
+       ['upcoming_today', "Today's upcoming (drops past)"],
+       ['next_24h', 'Next 24 hours'],
+       ['next_7_days', 'Next 7 days'],
+       ['this_week', 'This calendar week (Mon → Sun)'],
+       ['all', 'All meetings (next occurrence)']].forEach(([v, lbl]) => {
+        const o = el('option', { value: v }, [lbl]);
+        if ((d.filter || 'upcoming_today') === v) o.selected = true;
+        filterSel.appendChild(o);
+      });
+      wrap.appendChild(el('label', {}, ['Window filter', filterSel]));
+
+      wrap.appendChild(el('label', {}, ['Max cards (1–24)',
+        el('input', { type: 'number', min: '1', max: '24', step: '1',
+          value: String(d.max_count == null ? 6 : d.max_count),
+          oninput: e => {
+            const n = parseInt(e.target.value, 10);
+            d.max_count = isNaN(n) ? 6 : Math.max(1, Math.min(24, n));
+            notifyChange();
+          } })]));
+
+      wrap.appendChild(el('label', {}, ['Schedule lines per card',
+        el('input', { type: 'number', min: '1', max: '7', step: '1',
+          value: String(d.show_first_n == null ? 3 : d.show_first_n),
+          oninput: e => {
+            const n = parseInt(e.target.value, 10);
+            d.show_first_n = isNaN(n) ? 3 : Math.max(1, Math.min(7, n));
+            notifyChange();
+          } })]));
+
+      const animSel = el('select', {
+        onchange: e => { d.animation = e.target.value; notifyChange(); },
+      });
+      [['fade', 'Fade in'], ['slide', 'Slide up'], ['none', 'No animation']]
+        .forEach(([v, lbl]) => {
+          const o = el('option', { value: v }, [lbl]);
+          if ((d.animation || 'fade') === v) o.selected = true;
+          animSel.appendChild(o);
+        });
+      wrap.appendChild(el('label', {}, ['Card animation', animSel]));
+
+      wrap.appendChild(el('label', {}, ['Stagger between cards (ms)',
+        el('input', { type: 'number', min: '0', max: '500', step: '10',
+          value: String(d.stagger_ms == null ? 60 : d.stagger_ms),
+          oninput: e => {
+            const n = parseInt(e.target.value, 10);
+            d.stagger_ms = isNaN(n) ? 60 : Math.max(0, Math.min(500, n));
+            notifyChange();
+          } })]));
+
+      wrap.appendChild(el('label', {}, ['Empty-state message',
+        el('input', { type: 'text', value: d.empty_message || '',
+          placeholder: 'No meetings scheduled — check back soon.',
+          oninput: e => { d.empty_message = e.target.value; notifyChange(); } })]));
+
+      function toggle(key, label, dflt) {
+        const lbl = el('label', { class: 'be-row' });
+        const cb = el('input', { type: 'checkbox',
+          checked: (d[key] == null ? dflt : d[key]) ? 'checked' : null,
+          onchange: e => { d[key] = e.target.checked; notifyChange(); } });
+        lbl.appendChild(cb);
+        lbl.appendChild(el('span', {}, [label]));
+        return lbl;
+      }
+      wrap.appendChild(el('div', { class: 'be-library-fields' }, [
+        el('div', { class: 'muted smaller' }, ['Toggles']),
+        toggle('group_by_day', 'Group by day (rows per Mon / Tue / …)', false),
+        toggle('show_type_chip', 'Show in-person / online / hybrid chip', true),
+        toggle('show_schedule', 'Show meeting schedule lines', true),
+      ]));
+      return wrap;
+    }
+
+    // ── Upcoming events block (data-driven) ────────────────────────
+    // Per-instance copy of the homepage events list. Pulls Post rows
+    // where is_event=True via `blocks.filtered_events(d)`; past events
+    // drop off automatically (the auto-archive sweep flips them).
+    function renderEventsBody(b) {
+      const d = b.data;
+      const wrap = el('div', { class: 'be-body be-library-body' });
+
+      wrap.appendChild(el('div', { class: 'muted smaller', style: 'margin-bottom: 4px;' },
+        ['Live upcoming-events list. Pulls from the Posts module — past events drop off automatically.']));
+
+      wrap.appendChild(el('label', {}, ['Heading',
+        el('input', { type: 'text', value: d.heading || '',
+          placeholder: 'Upcoming Events',
+          oninput: e => { d.heading = e.target.value; notifyChange(); } })]));
+      wrap.appendChild(el('label', {}, ['Intro (optional)',
+        el('input', { type: 'text', value: d.intro || '',
+          placeholder: 'Mark your calendar',
+          oninput: e => { d.intro = e.target.value; notifyChange(); } })]));
+
+      wrap.appendChild(el('label', {}, ['Max rows (1–20)',
+        el('input', { type: 'number', min: '1', max: '20', step: '1',
+          value: String(d.max_count == null ? 6 : d.max_count),
+          oninput: e => {
+            const n = parseInt(e.target.value, 10);
+            d.max_count = isNaN(n) ? 6 : Math.max(1, Math.min(20, n));
+            notifyChange();
+          } })]));
+
+      const animSel = el('select', {
+        onchange: e => { d.animation = e.target.value; notifyChange(); },
+      });
+      [['fade', 'Fade in'], ['slide', 'Slide up'], ['none', 'No animation']]
+        .forEach(([v, lbl]) => {
+          const o = el('option', { value: v }, [lbl]);
+          if ((d.animation || 'fade') === v) o.selected = true;
+          animSel.appendChild(o);
+        });
+      wrap.appendChild(el('label', {}, ['Row animation', animSel]));
+
+      wrap.appendChild(el('label', {}, ['Stagger between rows (ms)',
+        el('input', { type: 'number', min: '0', max: '500', step: '10',
+          value: String(d.stagger_ms == null ? 60 : d.stagger_ms),
+          oninput: e => {
+            const n = parseInt(e.target.value, 10);
+            d.stagger_ms = isNaN(n) ? 60 : Math.max(0, Math.min(500, n));
+            notifyChange();
+          } })]));
+
+      wrap.appendChild(el('label', {}, ['Empty-state message',
+        el('input', { type: 'text', value: d.empty_message || '',
+          placeholder: 'No upcoming events — check back soon.',
+          oninput: e => { d.empty_message = e.target.value; notifyChange(); } })]));
+
+      function toggle(key, label, dflt) {
+        const lbl = el('label', { class: 'be-row' });
+        const cb = el('input', { type: 'checkbox',
+          checked: (d[key] == null ? dflt : d[key]) ? 'checked' : null,
+          onchange: e => { d[key] = e.target.checked; notifyChange(); } });
+        lbl.appendChild(cb);
+        lbl.appendChild(el('span', {}, [label]));
+        return lbl;
+      }
+      wrap.appendChild(el('div', { class: 'be-library-fields' }, [
+        el('div', { class: 'muted smaller' }, ['Per-row display']),
+        toggle('show_image', 'Featured image', true),
+        toggle('show_summary', 'Summary text', true),
+        toggle('show_location', 'Location', true),
+      ]));
+      return wrap;
     }
 
     // ── Container block ───────────────────────────────────────────
@@ -2929,6 +4206,17 @@
           ['row', 'Row →'], ['column', 'Column ↓'],
           ['row-reverse', 'Row reverse ←'], ['column-reverse', 'Column reverse ↑'],
         ], v => { d.direction = v; notifyChange(); })));
+      const _mobileDirRow = row('Mobile direction',
+        selectInput(d.mobile_direction || '', [
+          ['', 'Auto · stack as column (default)'],
+          ['column', 'Column ↓'],
+          ['column-reverse', 'Column reverse ↑ · bottom child first'],
+          ['row', 'Row → · keep side-by-side'],
+          ['row-reverse', 'Row reverse ← · keep side-by-side, swap order'],
+        ], v => { d.mobile_direction = v; notifyChange(); }),
+        'Applies at ≤720 px. Default collapses any row into a stacked column; column-reverse surfaces the bottom child first on phones.');
+      _mobileDirRow.classList.add('be-container-row--mobile-section');
+      flexBox.appendChild(_mobileDirRow);
       flexBox.appendChild(row('Wrap',
         (function () {
           const cb = el('input', {
@@ -3231,6 +4519,12 @@
         textInput(d.padding || '1rem', 'e.g. 1rem, 24px 16px, 0',
           v => { d.padding = v; notifyChange(); }),
         'CSS shorthand: top right bottom left, or a single value for all.'));
+      const _mobilePadRow = row('Padding (mobile)',
+        textInput(d.padding_mobile || '', 'inherits desktop padding if blank',
+          v => { d.padding_mobile = v; notifyChange(); }),
+        'Optional override applied at ≤720 px. Same CSS shorthand as the desktop field.');
+      _mobilePadRow.classList.add('be-container-row--mobile-section');
+      spacingBody.appendChild(_mobilePadRow);
       spacingBody.appendChild(row('Width',
         (function () {
           const tog = el('div', { class: 'view-toggle be-container-width-toggle' });
@@ -3258,6 +4552,14 @@
           v => { d.max_width = v; notifyChange(); }, 'px')));
       maxWrap.style.display = (d.width_mode || 'boxed') === 'boxed' ? '' : 'none';
       spacingBody.appendChild(maxWrap);
+      spacingBody.appendChild(row('Height',
+        textInput(d.height || '', 'auto — e.g. 100%, 400px',
+          v => { d.height = v; notifyChange(); }),
+        'Use 100% inside a grid cell so flex children can space-between to the bottom. Blank = auto-size to content.'));
+      spacingBody.appendChild(row('Min height',
+        textInput(d.min_height || '', 'none — e.g. 320px, 50vh',
+          v => { d.min_height = v; notifyChange(); }),
+        'Container will be at least this tall but can grow. Useful when content might be shorter than your visual target.'));
       spacingPanel.appendChild(spacingBody);
       wrap.appendChild(spacingPanel);
 
@@ -3324,9 +4626,43 @@
           },
         }),
         'CSS-driven backdrop layered behind the bg colour. The picker also lets you pair an overlay (texture), override colours per container, randomise colours and/or positions on every load, or tune the noise grain size + intensity.'));
-      visualBody.appendChild(row('Border width',
+      visualBody.appendChild(row('Border width (all sides)',
         numInput(d.border_width == null ? 0 : d.border_width, 0, 16,
-          v => { d.border_width = v; notifyChange(); }, 'px')));
+          v => { d.border_width = v; notifyChange(); }, 'px'),
+        'Sets every side. Use the four overrides below to vary individual sides.'));
+      // Per-side width overrides. Accept empty (= inherit the uniform
+      // border width set above) or an integer (incl. 0 to remove the
+      // border on that side only). When all four are blank, the
+      // renderer emits the existing `border: <w>px <style> <color>`
+      // shorthand — no change for containers that don't touch these.
+      function emptyableNumInput(value, min, max, oninput, placeholder, suffix) {
+        const inp = el('input', {
+          type: 'number',
+          value: (value === '' || value == null) ? '' : String(value),
+          min: String(min), max: String(max), step: '1',
+          placeholder: placeholder || '',
+          oninput: e => {
+            const raw = e.target.value.trim();
+            if (raw === '') { oninput(''); return; }
+            const n = parseInt(raw, 10);
+            oninput(isNaN(n) ? '' : Math.max(min, Math.min(max, n)));
+          },
+        });
+        return suffix ? el('span', { class: 'be-container-num-wrap' },
+          [inp, el('span', { class: 'be-container-num-suffix muted smaller' }, [suffix])]) : inp;
+      }
+      visualBody.appendChild(row('Top width',
+        emptyableNumInput(d.border_w_top, 0, 16,
+          v => { d.border_w_top = v; notifyChange(); }, 'all sides', 'px')));
+      visualBody.appendChild(row('Right width',
+        emptyableNumInput(d.border_w_right, 0, 16,
+          v => { d.border_w_right = v; notifyChange(); }, 'all sides', 'px')));
+      visualBody.appendChild(row('Bottom width',
+        emptyableNumInput(d.border_w_bottom, 0, 16,
+          v => { d.border_w_bottom = v; notifyChange(); }, 'all sides', 'px')));
+      visualBody.appendChild(row('Left width',
+        emptyableNumInput(d.border_w_left, 0, 16,
+          v => { d.border_w_left = v; notifyChange(); }, 'all sides', 'px')));
       visualBody.appendChild(row('Border style',
         selectInput(d.border_style || 'solid', [
           ['solid', 'Solid'], ['dashed', 'Dashed'], ['dotted', 'Dotted'],
@@ -3364,6 +4700,10 @@
         'Empty = no hover background change.'));
       hoverBody.appendChild(row('Hover border color',
         colorPair(d.hover_border_color, v => { d.hover_border_color = v; })));
+      hoverBody.appendChild(row('Hover border width',
+        emptyableNumInput(d.hover_border_width, 0, 16,
+          v => { d.hover_border_width = v; notifyChange(); }, 'no change', 'px'),
+        'Empty = no change on hover. Pair with rest-state width 0 to make a border appear only on hover.'));
       hoverBody.appendChild(row('Hover shadow',
         selectInput(d.hover_shadow || '', [
           ['', 'No change'], ['none', 'None'], ['sm', 'Subtle'],

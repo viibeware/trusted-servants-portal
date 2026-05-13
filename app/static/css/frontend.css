@@ -2,6 +2,50 @@
 /* Public-facing frontend styles. Kept separate from app.css so the admin
    panel and the marketing site can evolve independently. */
 
+/* ───────────────────────────────────────────────────────────────────
+   Public-detail minimum heights — every event / announcement / archive
+   / story / blog / meeting detail surface + the literature library list
+   now floors at 80% of the viewport height (less the sticky header
+   stack). Short posts no longer leave a strip of footer floating
+   under the page fold; longer posts grow naturally beyond the floor.
+   The `--fe-header-full-h` variable is set by the header chrome and
+   already reflects utility-bar / alert-band heights, so the calc
+   subtracts the actual visible header — not just the brand row.
+   ───────────────────────────────────────────────────────────────── */
+.fe-event-detail,
+.fe-event-time,
+.fe-event-min,
+.fe-event-poster,
+.fe-meeting-detail,
+.fe-meeting-min,
+.fe-meeting-stack,
+.fe-meeting-mag,
+.fe-story-paper,
+.fe-story-anth,
+.fe-story-letter,
+.fe-story-journal,
+.fe-story-mag,
+.fe-blog-post {
+  min-height: calc(80vh - var(--fe-header-full-h, 108px));
+}
+/* Literature library list floors at the FULL viewport (less the
+   header stack) — the page is the canonical landing surface for
+   public literature, so even a one-section result still fills the
+   browser. Compound selector beats the generic .fe-mlist 50vh
+   floor lower in this file on specificity (0,2,0 vs 0,1,0)
+   without relying on source order. */
+.fe-mlist.fe-library {
+  min-height: calc(100vh - var(--fe-header-full-h, 108px));
+}
+/* Fellowships Index list floors at 80vh - header. Matches the
+   meetings / stories / blog detail floor; the sidebar + compact
+   layouts both carry the .fe-mlist + .fe-fellowships pair so the
+   compound selector (0,2,0) beats the generic .fe-mlist 50vh rule
+   regardless of source order. */
+.fe-mlist.fe-fellowships {
+  min-height: calc(80vh - var(--fe-header-full-h, 108px));
+}
+
 /* Self-hosted Libre Baskerville (SIL OFL) — used by the announcements
    page's GSR Summary view to give the stripped-down list a paper /
    editorial feel. Only the latin subset is bundled. */
@@ -871,6 +915,17 @@ body.fe-megamenu-open .fe-recovery-menu-btn span:last-child {
   position: relative; overflow: hidden;
   padding: 120px 0 110px;
   background: linear-gradient(180deg, #fff 0%, var(--fe-panel-soft) 100%);
+  /* Optional admin-controlled vh height. The custom property is set
+     inline by the template only when the admin has dialled a non-zero
+     value; otherwise the fallback (auto) keeps the natural padding
+     behaviour and existing installs render unchanged. Flex column +
+     centre justification only matters when min-height stretches the
+     section past its content; with auto/no-stretch it's a no-op
+     because the single in-flow child fills the available space. */
+  min-height: var(--fe-hero-min-h, auto);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 /* Named background styles override the default wash. "solid", "gradient",
    and "image" are applied via inline style on the hero <section>; "frosty"
@@ -982,9 +1037,21 @@ body.fe-megamenu-open .fe-recovery-menu-btn span:last-child {
   background: rgba(15, 23, 42, 0.08); color: #0f172a;
 }
 .fe-hero-sub {
-  font-size: 1.1875rem; line-height: 1.55; color: var(--fe-ink-muted);
+  /* --fe-hero-sub-size is a unitless scale factor (1 = 100%), parallel
+     to --fe-hero-h-size on the heading. Wrapping the natural size in a
+     clamp() means the admin's % rides a fluid baseline that already
+     scales sensibly across phones / tablets / desktops — bumping
+     "Size" to 150% on a phone never grows beyond clamp's max anchor. */
+  --fe-hero-sub-size: 1;
+  font-size: calc(clamp(1rem, 1.45vw + 0.6rem, 1.1875rem) * var(--fe-hero-sub-size));
+  line-height: 1.55;
+  color: var(--fe-hero-sub-color, var(--fe-ink-muted));
   max-width: 620px; margin: 0 auto 32px;
 }
+/* Independent font pick for the subheading. Same allowlist as the
+   heading (Fraunces / Inter); other modifier classes are no-ops. */
+.fe-hero-sub-fraunces { font-family: "Fraunces", "Inter", Georgia, serif; font-weight: 400; }
+.fe-hero-sub-inter    { font-family: "Inter", "Fraunces", sans-serif; font-weight: 400; }
 .fe-hero-cta {
   display: inline-flex; gap: 14px; flex-wrap: wrap; justify-content: center;
 }
@@ -1019,6 +1086,43 @@ body.fe-megamenu-open .fe-recovery-menu-btn span:last-child {
   background: var(--fe-color-btn-secondary-bg, transparent);
   color: var(--fe-color-btn-secondary-text, var(--fe-ink));
   border-color: var(--fe-border);
+}
+
+/* Yellow CTA — high-contrast attention-grabbing variant. Hardcoded
+   yellow + near-black text by default (no design-token override) so
+   the style stays distinct from the brand-driven primary button.
+   Dark-mode value drops the lightness on the yellow so it doesn't
+   torch the eyes on a dark page bg — golden-amber instead of
+   highlighter — while keeping a yellow hue identity. */
+.fe-btn-yellow,
+.fe-page .fe-btn-yellow,
+.frontend-body .fe-btn-yellow {
+  background: #facc15;
+  color: #1c1917;
+  border-color: transparent;
+  box-shadow: var(--fe-btn-shadow, 0 8px 20px rgba(202, 138, 4, 0.30));
+}
+.fe-btn-yellow:hover,
+.fe-page .fe-btn-yellow:hover,
+.frontend-body .fe-btn-yellow:hover {
+  transform: var(--fe-btn-hover-transform, translateY(-1px));
+  background: #eab308;
+  color: #0c0a09;
+  box-shadow: var(--fe-btn-hover-glow, 0 10px 28px rgba(202, 138, 4, 0.42));
+}
+html[data-theme="dark"] .fe-btn-yellow,
+html[data-theme="dark"] .fe-page .fe-btn-yellow,
+html[data-theme="dark"] .frontend-body .fe-btn-yellow {
+  background: #eab308;
+  color: #0c0a09;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+html[data-theme="dark"] .fe-btn-yellow:hover,
+html[data-theme="dark"] .fe-page .fe-btn-yellow:hover,
+html[data-theme="dark"] .frontend-body .fe-btn-yellow:hover {
+  background: #facc15;
+  color: #0c0a09;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
 }
 .fe-btn-ghost:hover,
 .fe-page .fe-btn-ghost:hover,
@@ -1102,6 +1206,14 @@ html[data-theme="dark"] body[data-fe-theme="recovery-blue"] .fe-btn-ghost:hover 
   padding: 80px 0;
 }
 .fe-section + .fe-section { border-top: 1px solid var(--fe-border); }
+/* Page-builder pages compose sections explicitly via the admin; the
+   auto-divider above adds an uncontrollable hairline between adjacent
+   section blocks (e.g. Features + FAQ in the same `.fe-pp-section`)
+   which the admin can't see in the editor. Suppress it inside `.fe-pp`
+   so border styling stays the admin's call — wrap blocks in a
+   container if you want a divider. Homepage (no `.fe-pp` wrapper)
+   keeps the original behaviour. */
+.fe-pp .fe-section + .fe-section { border-top: 0; }
 .fe-section-head {
   text-align: center; max-width: 640px; margin: 0 auto 44px;
 }
@@ -1799,7 +1911,13 @@ html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-social a:hove
   .fe-nav a { padding: 12px 14px; }
   .fe-nav-cta { margin: 8px 14px 0; text-align: center; }
   .fe-menu-btn { display: inline-flex; }
-  .fe-hero { padding: 80px 0 72px; }
+  .fe-hero {
+    padding: 80px 0 72px;
+    /* Mobile uses its own admin-controlled height when set, falling
+       back to the desktop value (so a single tall-hero opt-in still
+       reads as tall on phones), then to the natural padding. */
+    min-height: var(--fe-hero-min-h-mobile, var(--fe-hero-min-h, auto));
+  }
   .fe-about-inner { grid-template-columns: 1fr; gap: 32px; }
   .fe-footer-inner { grid-template-columns: 1fr; gap: 18px; }
   .fe-footer-copy { text-align: left; }
@@ -2281,9 +2399,37 @@ html[data-theme="dark"] .fe-recovery-nav { background: #0f172a; border-bottom-co
 
 /* Hero */
 html[data-theme="dark"] .fe-hero { background: linear-gradient(180deg, #0b1026 0%, #0f172a 100%); }
-html[data-theme="dark"] .fe-hero-heading { background: linear-gradient(180deg, #fff 0%, #94a3b8 100%);
-  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-html[data-theme="dark"] .fe-hero-sub { color: #94a3b8; }
+/* Dark-mode hero heading + sub colours read from per-block dark-mode
+   CSS variables when set (admin picks them from the hero edit modal's
+   Dark-mode gradient + Text colour fields); fall back to the historic
+   hardcoded gradient (`#fff → #94a3b8`) and muted slate subheading
+   so the homepage hero and any unedited per-page hero render
+   identically to before the controls existed.
+
+   `!important` is required to beat the dynamic-text override
+   (`.fe-hero-text-dark .fe-hero-heading { … !important }` further up
+   the file): that rule hardcodes light-mode colours regardless of
+   theme, so without the `!important` here the heading stays dark on
+   a dark page when dynamic text is enabled. Dark-mode admin choice
+   always wins. */
+/* Use `background-image:` (NOT the `background:` shorthand) so we
+   don't reset `background-clip` to its initial value. The base rule
+   above sets `background-clip: text` + `text-fill-color: transparent`
+   to draw the heading through the gradient — the shorthand reset
+   would force the gradient to paint a solid rectangle behind the
+   text instead of clipping to the glyph shapes. The dynamic-text
+   override (`.fe-hero-text-light/dark .fe-hero-heading`) uses the
+   same trick. */
+html[data-theme="dark"] .fe-hero-heading,
+body.fe-frontend-force-dark .fe-hero-heading {
+  background-image: linear-gradient(180deg,
+      var(--fe-hero-h-grad-s-dark, #fff) 0%,
+      var(--fe-hero-h-grad-e-dark, #94a3b8) 100%) !important;
+}
+html[data-theme="dark"] .fe-hero-sub,
+body.fe-frontend-force-dark .fe-hero-sub {
+  color: var(--fe-hero-sub-color-dark, #94a3b8) !important;
+}
 html[data-theme="dark"] .fe-hero-blob { opacity: 0.25; }
 html[data-theme="dark"] .fe-hero-eyebrow { background: rgba(81,100,255,0.18); color: #7aa3ff; }
 html[data-theme="dark"] .fe-btn-primary { background: #052566; color: #e2e8f0;
@@ -2924,19 +3070,25 @@ html[data-theme="dark"] .fe-event-date-year { color: #94a3b8; }
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 .fe-meeting-detail-card {
+  /* Surface + border match `.fe-meeting-extended-card`; hover lift
+     and timing match the homepage `.fe-meeting-card` so every meeting-
+     shaped card across the public site shares one hover language.
+     Dark-mode override further down keeps the deep-navy surface so
+     this only flips the light-mode appearance. */
   padding: 24px; border-radius: 14px;
-  background: var(--fe-panel-soft); border: 1px solid var(--fe-border);
+  background: var(--fe-color-surface, #ffffff);
+  border: 1px solid var(--fe-accent);
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 }
-/* Match the homepage feature-card hover affordance: lift + accent border
-   + soft drop shadow. Applies to every detail-card in the Classic grid
-   (Schedule / Location / Zoom) AND the Files & Readings panel below
-   via the rule that aliases its appearance to this class. */
+/* Hover-lift mirrors the homepage `.fe-meeting-card:hover`: 2 px rise
+   with a softer indigo drop-shadow at the same `200ms ease` tempo.
+   Applies to every detail-card in the Classic grid (Schedule /
+   Location / Zoom) AND the Files & Readings panel via the chained
+   selector. */
 .fe-meeting-detail-card:hover,
 .fe-meeting-detail-grid > .fe-meeting-resources:hover {
-  transform: translateY(-3px);
-  border-color: var(--fe-accent, var(--fe-border));
-  box-shadow: 0 10px 32px rgba(15,23,42,0.08);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.10);
 }
 .fe-meeting-detail-card h3 {
   display: flex; align-items: center; gap: 8px;
@@ -3591,8 +3743,8 @@ html[data-theme="dark"] .fe-inclusion-tag {
      — so the row reads as three (or four) sibling cards instead of one
      stylistic outlier. The :hover lift is shared via the combined
      selector above. */
-  background: var(--fe-panel-soft);
-  border: 1px solid var(--fe-border);
+  background: var(--fe-color-surface, #ffffff);
+  border: 1px solid var(--fe-accent);
   border-radius: 14px;
   padding: 24px;
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
@@ -4501,10 +4653,10 @@ html[data-theme="dark"] .fe-event-min-cred code { background: #131a33; color: #e
      and the flex parent constrains the content into a narrow column.
      The default `align-items: stretch` on the flex parent already
      fills cross-axis width, so no explicit `width: 100%` needed.
-     Border + hover treatment matches the meetings-list cards: solid
-     accent border at rest, a 1 px lift + soft drop shadow on hover
-     over a 160 ms ease so the card animates in lock-step with the
-     meeting cards above it. */
+     Border + hover treatment matches the homepage `.fe-meeting-card`:
+     solid accent border at rest, 2 px lift with a soft indigo drop
+     shadow on hover, 200 ms ease — so every meeting-shaped card
+     across the public site shares one hover language. */
   box-sizing: border-box;
   display: block;
   padding: 2rem;
@@ -4512,11 +4664,11 @@ html[data-theme="dark"] .fe-event-min-cred code { background: #131a33; color: #e
   border: 1px solid var(--fe-accent);
   border-radius: 14px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 }
 .fe-meeting-extended-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.10);
 }
 @media (max-width: 600px) {
   /* Tighten the inner gutter on phones so the card doesn't lose half
@@ -4631,6 +4783,20 @@ html[data-theme="dark"] .fe-edit-shortcut:focus-visible {
      "papers" on a light desk. Dark theme inverts via the rules at
      the bottom of this section. */
   background: var(--fe-panel-soft, #f1f5f9);
+}
+
+/* Floor list-page sections at 50vh so a sparsely-populated list still
+   leaves visitors a page-shaped surface — without this, an empty
+   archive or one-day meeting list collapses to a thin strip beneath
+   the header. Applies to every public list/section template. */
+.fe-mlist,
+.fe-events-list-omni,
+.fe-events-list-cards,
+.fe-events-list-calendar,
+.fe-events-list-timeline,
+.fe-events-list-magazine,
+.fe-announcements-list {
+  min-height: 50vh;
 }
 
 /* "Pro Tips" accordion below the meetings list — reuses the FAQ block
@@ -4839,13 +5005,14 @@ body.fe-frontend-force-dark .fe-mlist-protips-inline .fe-faq-summary {
   display: flex; flex-direction: column; gap: 12px;
   padding: 20px 22px;
   background: #ffffff;
-  /* Border matches the homepage Upcoming Meetings card style — solid
-     1px in the accent color so the directory reads visually
-     consistent with the meeting tiles on the homepage block. */
+  /* Border + hover match the homepage `.fe-meeting-card` recipe so
+     every meeting-shaped surface across the public site (homepage,
+     /meetings list, meeting detail grid, Files & Readings panel,
+     extended card) shares one rest + motion language. */
   border: 1px solid var(--fe-accent);
   border-radius: 16px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 }
 /* The body wrapper holds head + schedules + rows + actions; in column
    layouts (directory, weekboard) it's a transparent passthrough so
@@ -4856,8 +5023,8 @@ body.fe-frontend-force-dark .fe-mlist-protips-inline .fe-faq-summary {
   flex: 1 1 auto; min-width: 0;
 }
 .fe-mlist-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.10);
   /* border-color intentionally not overridden — the resting accent
      border stays put on hover so the card feels stable instead of
      visibly recoloring under the cursor. */
@@ -5119,12 +5286,20 @@ body.fe-frontend-force-dark .fe-mlist-search-kbd {
   from { opacity: 0; transform: translate3d(60px, 0, 0); }
   to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
-.fe-mlist-card.is-entering {
+.fe-mlist-card.is-entering,
+.fe-library-item.is-entering,
+.fe-events-archive-card-wrap.is-entering,
+.fe-events-card.is-entering,
+.fe-announcements-card.is-entering {
   animation: fe-mlist-card-in 720ms cubic-bezier(.18,.74,.3,1) both;
   animation-delay: var(--fe-card-stagger, 0ms);
 }
 @media (prefers-reduced-motion: reduce) {
-  .fe-mlist-card.is-entering { animation: none; }
+  .fe-mlist-card.is-entering,
+  .fe-library-item.is-entering,
+  .fe-events-archive-card-wrap.is-entering,
+  .fe-events-card.is-entering,
+  .fe-announcements-card.is-entering { animation: none; }
 }
 .fe-mlist-day-section-heading {
   display: flex; align-items: baseline; gap: 14px;
@@ -7052,6 +7227,497 @@ body.fe-frontend-force-dark .fe-archive-types-legend {
   color: var(--fe-dm-text-muted);
 }
 
+/* ───────────────────────────────────────────────────────────────────
+   Shared top-filter strip — chrome for the non-sidebar archive layouts
+   (timeline, compact list, magazine). Mirrors the rail's information
+   architecture (title + subhead + back-links + search + type chips +
+   year pills) in a single horizontal band above the results column.
+   ───────────────────────────────────────────────────────────────── */
+.fe-archive-strip {
+  display: flex; flex-direction: column; gap: 1rem;
+  padding: 2.5rem 0 1.5rem;
+}
+.fe-archive-strip-head { display: flex; flex-direction: column; gap: 0.35rem; }
+.fe-archive-strip-title {
+  margin: 0;
+  font-family: var(--fe-font-heading, var(--font-heading, "Fraunces", serif));
+  font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem);
+  line-height: 1.1;
+}
+.fe-archive-strip-sub { max-width: 60ch; margin: 0; }
+.fe-archive-strip-back-links {
+  display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem;
+  margin-top: 0.35rem;
+}
+.fe-archive-strip-back-links a {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  color: var(--fe-color-text-muted, rgba(15, 23, 42, 0.65));
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.fe-archive-strip-back-links a:hover { color: var(--fe-color-accent, #0b5cff); }
+.fe-archive-strip-back-links svg { width: 14px; height: 14px; }
+.fe-archive-strip-controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 1rem;
+}
+.fe-archive-strip-search { flex: 1 1 320px; min-width: 0; }
+.fe-archive-types--inline {
+  display: flex; gap: 0.5rem; margin: 0; padding: 0; border: 0;
+  flex-wrap: wrap;
+}
+.fe-archive-types--inline .fe-archive-type-check {
+  border: 1px solid var(--fe-color-border, rgba(15, 23, 42, 0.12));
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem 0.35rem 0.5rem;
+}
+.fe-archive-strip-years {
+  display: flex; flex-wrap: wrap; gap: 0.4rem;
+  list-style: none; margin: 0; padding: 0;
+}
+
+/* ───────────────────────────────────────────────────────────────────
+   Timeline layout — vertical spine on the centerline with year markers
+   stamped along it and cards alternating left/right.
+   ───────────────────────────────────────────────────────────────── */
+.fe-archive-tl {
+  position: relative;
+  padding-top: 1rem;
+}
+.fe-archive-tl-spine {
+  position: absolute; left: 50%; top: 0; bottom: 0; width: 2px;
+  background: var(--fe-color-border, rgba(15, 23, 42, 0.12));
+  transform: translateX(-50%);
+  z-index: 0;
+}
+.fe-archive-tl-year { position: relative; margin: 2rem 0 1.25rem; }
+.fe-archive-tl-marker {
+  position: relative;
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  font-family: var(--fe-font-heading, var(--font-heading, "Fraunces", serif));
+  font-size: 1.4rem;
+  margin: 0 auto 1.5rem;
+  padding: 0.4rem 1.25rem;
+  background: var(--fe-color-surface, #fff);
+  border: 1px solid var(--fe-color-border, rgba(15, 23, 42, 0.14));
+  border-radius: 999px;
+  width: fit-content;
+  z-index: 1;
+}
+.fe-archive-tl-marker-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--fe-color-accent, #0b5cff);
+}
+.fe-archive-tl-marker-count {
+  font-size: 0.8rem;
+  font-family: var(--fe-font-body, var(--font-body, system-ui, sans-serif));
+  font-weight: 600;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: var(--fe-color-surface-alt, var(--fe-panel-soft, #f1f5f9));
+  color: var(--fe-color-text-muted, rgba(15, 23, 42, 0.65));
+}
+.fe-archive-tl-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 1.25rem;
+}
+.fe-archive-tl-item {
+  position: relative;
+  width: calc(50% - 1.5rem);
+  z-index: 1;
+}
+.fe-archive-tl-item--left  { align-self: flex-start; }
+.fe-archive-tl-item--right { align-self: flex-end; }
+.fe-archive-tl-item::before {
+  content: "";
+  position: absolute; top: 1.25rem;
+  width: 1.5rem; height: 2px;
+  background: var(--fe-color-border, rgba(15, 23, 42, 0.18));
+}
+.fe-archive-tl-item--left::before  { right: -1.5rem; }
+.fe-archive-tl-item--right::before { left:  -1.5rem; }
+.fe-archive-tl-item::after {
+  content: "";
+  position: absolute; top: 1.05rem;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--fe-color-surface, #fff);
+  border: 2px solid var(--fe-color-accent, #0b5cff);
+}
+.fe-archive-tl-item--left::after  { right: calc(-1.5rem - 6px); }
+.fe-archive-tl-item--right::after { left:  calc(-1.5rem - 6px); }
+.fe-archive-tl-card {
+  background: var(--fe-color-surface, #fff);
+  border: 1px solid var(--fe-color-border, rgba(15, 23, 42, 0.1));
+  border-radius: 14px;
+  padding: 1rem 1.15rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  display: flex; flex-direction: column; gap: 0.6rem;
+}
+.fe-archive-tl-card-head {
+  display: flex; align-items: center; gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.fe-archive-tl-card-date {
+  display: inline-flex; flex-direction: column; align-items: center;
+  padding: 0.3rem 0.55rem;
+  border-radius: 8px;
+  background: var(--fe-color-surface-alt, var(--fe-panel-soft, #f1f5f9));
+  line-height: 1;
+  min-width: 2.5rem;
+}
+.fe-archive-tl-card-date-month {
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--fe-color-accent, #0b5cff);
+  font-weight: 700;
+}
+.fe-archive-tl-card-date-day {
+  font-size: 1.25rem; font-weight: 700;
+  margin-top: 2px;
+}
+.fe-archive-tl-card-kind {
+  font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 0.15rem 0.55rem; border-radius: 999px;
+  background: rgba(11, 92, 255, 0.08);
+  color: var(--fe-color-accent, #0b5cff);
+}
+.fe-archive-tl-card-kind--announcement {
+  background: rgba(168, 85, 247, 0.1);
+  color: #7c3aed;
+}
+.fe-archive-tl-card-cover {
+  display: block; overflow: hidden; border-radius: 10px;
+  aspect-ratio: 16 / 9;
+}
+.fe-archive-tl-card-cover img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.fe-archive-tl-card-title {
+  margin: 0;
+  font-family: var(--fe-font-heading, var(--font-heading, "Fraunces", serif));
+  font-size: 1.1rem; line-height: 1.3;
+}
+.fe-archive-tl-card-title a {
+  color: inherit; text-decoration: none;
+}
+.fe-archive-tl-card-title a:hover { color: var(--fe-color-accent, #0b5cff); }
+.fe-archive-tl-card-summary { margin: 0; font-size: 0.92rem; line-height: 1.4; }
+.fe-archive-tl-card-meta { margin: 0; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.35rem; }
+.fe-archive-tl-card-meta svg { width: 14px; height: 14px; }
+
+@media (max-width: 720px) {
+  /* Collapse the timeline into a single left-aligned column on
+     phones so cards don't squeeze to <40 char wide strips. The spine
+     moves to the left edge and every item becomes a left-side card. */
+  .fe-archive-tl-spine { left: 1rem; transform: none; }
+  .fe-archive-tl-marker { margin-left: 0; }
+  .fe-archive-tl-item, .fe-archive-tl-item--left, .fe-archive-tl-item--right {
+    width: calc(100% - 2.5rem);
+    margin-left: 2.5rem; align-self: flex-start;
+  }
+  .fe-archive-tl-item::before { left: -1.5rem; right: auto; }
+  .fe-archive-tl-item::after  { left: calc(-1.5rem - 6px); right: auto; }
+}
+
+/* ───────────────────────────────────────────────────────────────────
+   Compact List layout — dense single-column rows. Each row is a single
+   clickable link with a date block, kind chip, title + summary.
+   ───────────────────────────────────────────────────────────────── */
+.fe-archive-cl { padding-top: 0.5rem; }
+.fe-archive-cl-year { margin: 1.75rem 0 0.75rem; }
+.fe-archive-cl-year-heading {
+  display: flex; align-items: baseline; gap: 0.6rem;
+  font-family: var(--fe-font-heading, var(--font-heading, "Fraunces", serif));
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--fe-color-border, rgba(15, 23, 42, 0.12));
+}
+.fe-archive-cl-year-count {
+  font-size: 0.8rem; font-weight: 600;
+  font-family: var(--fe-font-body, var(--font-body, system-ui, sans-serif));
+  color: var(--fe-color-text-muted, rgba(15, 23, 42, 0.55));
+  padding: 0.1rem 0.55rem; border-radius: 999px;
+  background: var(--fe-color-surface-alt, var(--fe-panel-soft, #f1f5f9));
+}
+.fe-archive-cl-list { list-style: none; margin: 0; padding: 0; }
+.fe-archive-cl-row {
+  border-bottom: 1px solid var(--fe-color-border, rgba(15, 23, 42, 0.08));
+}
+.fe-archive-cl-row:last-child { border-bottom: 0; }
+.fe-archive-cl-link {
+  display: grid;
+  grid-template-columns: 4.5rem auto 1fr auto;
+  align-items: center; gap: 0.85rem;
+  padding: 0.85rem 0.5rem;
+  color: inherit; text-decoration: none;
+  transition: background 120ms ease;
+}
+.fe-archive-cl-link:hover {
+  background: var(--fe-color-surface-alt, var(--fe-panel-soft, #f1f5f9));
+}
+.fe-archive-cl-date {
+  display: flex; flex-direction: column; align-items: center;
+  line-height: 1;
+  padding: 0.35rem 0.4rem;
+  border-radius: 8px;
+  background: var(--fe-color-surface-alt, var(--fe-panel-soft, #f1f5f9));
+}
+.fe-archive-cl-date-month {
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--fe-color-accent, #0b5cff);
+  font-weight: 700;
+}
+.fe-archive-cl-date-day { font-size: 1.15rem; font-weight: 700; margin-top: 2px; }
+.fe-archive-cl-date-year { font-size: 0.7rem; color: var(--fe-color-text-muted, rgba(15, 23, 42, 0.55)); margin-top: 2px; }
+.fe-archive-cl-kind {
+  font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 0.15rem 0.55rem; border-radius: 999px;
+  background: rgba(11, 92, 255, 0.08);
+  color: var(--fe-color-accent, #0b5cff);
+  white-space: nowrap;
+}
+.fe-archive-cl-kind--announcement {
+  background: rgba(168, 85, 247, 0.1);
+  color: #7c3aed;
+}
+.fe-archive-cl-body { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.fe-archive-cl-title { font-weight: 600; line-height: 1.3; }
+.fe-archive-cl-summary { font-size: 0.9rem; line-height: 1.4; }
+.fe-archive-cl-meta { font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.3rem; }
+.fe-archive-cl-meta svg { width: 13px; height: 13px; }
+.fe-archive-cl-arrow {
+  color: var(--fe-color-text-muted, rgba(15, 23, 42, 0.4));
+  transition: color 120ms ease, transform 120ms ease;
+}
+.fe-archive-cl-arrow svg { width: 16px; height: 16px; }
+.fe-archive-cl-link:hover .fe-archive-cl-arrow {
+  color: var(--fe-color-accent, #0b5cff);
+  transform: translateX(3px);
+}
+
+@media (max-width: 560px) {
+  .fe-archive-cl-link {
+    grid-template-columns: 3.5rem 1fr;
+    grid-template-rows: auto auto;
+    row-gap: 0.4rem;
+  }
+  .fe-archive-cl-kind { grid-column: 2; justify-self: start; }
+  .fe-archive-cl-body { grid-column: 2; }
+  .fe-archive-cl-date { grid-row: 1 / span 2; }
+  .fe-archive-cl-arrow { display: none; }
+}
+
+/* ───────────────────────────────────────────────────────────────────
+   Magazine layout — 3-up grid of editorial tiles with the very first
+   tile spanning two columns as a feature. Each tile is a clickable
+   link wrapping a cover, kind chip, date, title, and summary.
+   ───────────────────────────────────────────────────────────────── */
+.fe-archive-mag { padding-top: 1rem; }
+.fe-archive-mag-year { margin: 2rem 0; }
+.fe-archive-mag-year-heading {
+  display: flex; align-items: baseline; gap: 0.6rem;
+  margin: 0 0 1rem;
+}
+.fe-archive-mag-year-eyebrow {
+  font-size: 0.7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--fe-color-text-muted, rgba(15, 23, 42, 0.55));
+}
+.fe-archive-mag-year-num {
+  font-family: var(--fe-font-heading, var(--font-heading, "Fraunces", serif));
+  font-size: 1.75rem; line-height: 1;
+}
+.fe-archive-mag-year-count {
+  font-size: 0.8rem; font-weight: 600;
+  color: var(--fe-color-text-muted, rgba(15, 23, 42, 0.55));
+  padding: 0.1rem 0.55rem; border-radius: 999px;
+  background: var(--fe-color-surface-alt, var(--fe-panel-soft, #f1f5f9));
+}
+.fe-archive-mag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+.fe-archive-mag-tile {
+  background: var(--fe-color-surface, #fff);
+  border: 1px solid var(--fe-color-border, rgba(15, 23, 42, 0.1));
+  border-radius: 16px;
+  overflow: hidden;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+  display: flex;
+}
+.fe-archive-mag-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+}
+.fe-archive-mag-tile--feature {
+  grid-column: 1 / -1;
+}
+.fe-archive-mag-tile--feature .fe-archive-mag-tile-link {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  align-items: stretch;
+}
+.fe-archive-mag-tile--feature .fe-archive-mag-tile-cover {
+  aspect-ratio: auto;
+  min-height: 240px;
+}
+.fe-archive-mag-tile--feature .fe-archive-mag-tile-title {
+  font-size: clamp(1.4rem, 1rem + 1.4vw, 2rem);
+}
+@media (max-width: 720px) {
+  .fe-archive-mag-tile--feature .fe-archive-mag-tile-link { grid-template-columns: 1fr; }
+  .fe-archive-mag-tile--feature .fe-archive-mag-tile-cover { min-height: 0; aspect-ratio: 16 / 9; }
+}
+.fe-archive-mag-tile-link {
+  display: flex; flex-direction: column;
+  color: inherit; text-decoration: none;
+  width: 100%;
+}
+.fe-archive-mag-tile-cover {
+  display: block; overflow: hidden;
+  aspect-ratio: 16 / 9;
+  background: var(--fe-color-surface-alt, var(--fe-panel-soft, #f1f5f9));
+}
+.fe-archive-mag-tile-cover img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  transition: transform 200ms ease;
+}
+.fe-archive-mag-tile:hover .fe-archive-mag-tile-cover img { transform: scale(1.03); }
+.fe-archive-mag-tile-body {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  padding: 1rem 1.15rem 1.15rem;
+  flex: 1;
+}
+.fe-archive-mag-tile-meta {
+  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  font-size: 0.78rem;
+}
+.fe-archive-mag-tile-kind {
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 0.15rem 0.5rem; border-radius: 999px;
+  background: rgba(11, 92, 255, 0.08); color: var(--fe-color-accent, #0b5cff);
+}
+.fe-archive-mag-tile-kind--announcement {
+  background: rgba(168, 85, 247, 0.1); color: #7c3aed;
+}
+.fe-archive-mag-tile-date {
+  color: var(--fe-color-text-muted, rgba(15, 23, 42, 0.6));
+}
+.fe-archive-mag-tile-title {
+  font-family: var(--fe-font-heading, var(--font-heading, "Fraunces", serif));
+  font-size: 1.2rem; line-height: 1.25;
+}
+.fe-archive-mag-tile-summary { font-size: 0.92rem; line-height: 1.45; }
+
+/* Dark-mode parity — every new archive layout reads against the dark
+   page tones too. Lifts surfaces, softens borders, and tints the kind
+   chips so they stay legible. */
+html[data-theme="dark"] .fe-archive-tl-marker,
+html[data-theme="dark"] .fe-archive-tl-card,
+html[data-theme="dark"] .fe-archive-mag-tile,
+body.fe-frontend-force-dark .fe-archive-tl-marker,
+body.fe-frontend-force-dark .fe-archive-tl-card,
+body.fe-frontend-force-dark .fe-archive-mag-tile {
+  background: var(--fe-dm-surface, rgba(255, 255, 255, 0.05));
+  border-color: var(--fe-dm-border, rgba(255, 255, 255, 0.12));
+  color: var(--fe-dm-text, #f8fafc);
+}
+html[data-theme="dark"] .fe-archive-cl-year-heading,
+html[data-theme="dark"] .fe-archive-cl-row,
+body.fe-frontend-force-dark .fe-archive-cl-year-heading,
+body.fe-frontend-force-dark .fe-archive-cl-row {
+  border-color: var(--fe-dm-border, rgba(255, 255, 255, 0.12));
+}
+html[data-theme="dark"] .fe-archive-cl-date,
+html[data-theme="dark"] .fe-archive-tl-card-date,
+html[data-theme="dark"] .fe-archive-mag-year-count,
+html[data-theme="dark"] .fe-archive-cl-year-count,
+html[data-theme="dark"] .fe-archive-tl-marker-count,
+body.fe-frontend-force-dark .fe-archive-cl-date,
+body.fe-frontend-force-dark .fe-archive-tl-card-date,
+body.fe-frontend-force-dark .fe-archive-mag-year-count,
+body.fe-frontend-force-dark .fe-archive-cl-year-count,
+body.fe-frontend-force-dark .fe-archive-tl-marker-count {
+  background: var(--fe-dm-surface-alt, rgba(255, 255, 255, 0.08));
+  color: var(--fe-dm-text-muted, rgba(255, 255, 255, 0.65));
+}
+html[data-theme="dark"] .fe-archive-cl-link:hover,
+body.fe-frontend-force-dark .fe-archive-cl-link:hover {
+  background: var(--fe-dm-surface-alt, rgba(255, 255, 255, 0.08));
+}
+html[data-theme="dark"] .fe-archive-tl-spine,
+body.fe-frontend-force-dark .fe-archive-tl-spine {
+  background: var(--fe-dm-border, rgba(255, 255, 255, 0.12));
+}
+
+/* Archive pagination — numbered page links + infinite-scroll sentinel.
+   The sentinel is an invisible anchor an IntersectionObserver watches
+   to trigger the next-batch reveal in infinite mode; it just needs to
+   occupy a sliver of vertical space at the bottom of the list. */
+.fe-archive-load-sentinel {
+  height: 1px;
+  width: 100%;
+  margin-top: 1rem;
+}
+.fe-archive-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: center;
+  align-items: center;
+  margin: 2rem 0 0.5rem;
+}
+.fe-archive-page-btn {
+  font: inherit;
+  min-width: 2.25rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--fe-color-border, rgba(15, 23, 42, 0.12));
+  background: var(--fe-color-surface, #fff);
+  color: var(--fe-color-text, #0f172a);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+.fe-archive-page-btn:hover:not(:disabled):not(.is-active) {
+  background: var(--fe-color-surface-alt, var(--fe-panel-soft, #f1f5f9));
+}
+.fe-archive-page-btn.is-active {
+  background: var(--fe-color-accent, #0b5cff);
+  border-color: var(--fe-color-accent, #0b5cff);
+  color: var(--fe-color-accent-contrast, #fff);
+  cursor: default;
+}
+.fe-archive-page-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.fe-archive-page-gap {
+  padding: 0 0.25rem;
+  color: var(--fe-color-text-muted, rgba(15, 23, 42, 0.55));
+}
+html[data-theme="dark"] .fe-archive-page-btn,
+body.fe-frontend-force-dark .fe-archive-page-btn {
+  background: transparent;
+  border-color: var(--fe-dm-border, rgba(255, 255, 255, 0.16));
+  color: var(--fe-dm-text, #f8fafc);
+}
+html[data-theme="dark"] .fe-archive-page-btn:hover:not(:disabled):not(.is-active),
+body.fe-frontend-force-dark .fe-archive-page-btn:hover:not(:disabled):not(.is-active) {
+  background: var(--fe-dm-surface-alt, rgba(255, 255, 255, 0.05));
+}
+html[data-theme="dark"] .fe-archive-page-btn.is-active,
+body.fe-frontend-force-dark .fe-archive-page-btn.is-active {
+  background: var(--fe-color-accent, #0b5cff);
+  border-color: var(--fe-color-accent, #0b5cff);
+  color: var(--fe-color-accent-contrast, #fff);
+}
+html[data-theme="dark"] .fe-archive-page-gap,
+body.fe-frontend-force-dark .fe-archive-page-gap {
+  color: var(--fe-dm-text-muted, rgba(255, 255, 255, 0.55));
+}
+
 
 /* ===== Submission form (public /submissionform + global modal) =====
    Visual language mirrors the login-page Request Access modal:
@@ -7478,14 +8144,33 @@ body.fe-frontend-force-dark .fe-submission-modal-body {
 /* ===== Content pages (Pages admin → /<slug>) ─ Showcase layout =====
    Elegant single-column rendering for admin-authored content pages.
    Lives under .fe-pp ("page page") so the existing block-render CSS
-   for Zoom Tech and other rich-content surfaces stays untouched. */
-.fe-pp { padding: 80px 0 96px; }
+   for Zoom Tech and other rich-content surfaces stays untouched.
+
+   Top / bottom / horizontal padding all read CSS custom properties
+   the template stamps inline so admins can dial the page to
+   flush-against-header (0px) or extra-airy (200px+) per-page from
+   the page-settings card. Fallback values match the original
+   hard-coded numbers so pages saved before the controls existed
+   render unchanged. */
+.fe-pp {
+  padding-top: var(--fe-pp-pad-top, 80px);
+  padding-bottom: var(--fe-pp-pad-bottom, 96px);
+  padding-left: 0;
+  padding-right: 0;
+}
 /* Shell width is now driven by inline style on the element (boxed
    uses page.max_width, full uses no max-width with viewport-%
    padding) so each page can pick its own page-wide width formatting
    from the admin. The auto margins keep boxed mode centered when
-   the inline max-width applies. */
-.fe-pp-shell { margin-left: auto; margin-right: auto; padding-left: 16px; padding-right: 16px; }
+   the inline max-width applies. Horizontal padding reads from the
+   same per-page custom property as the article above so a single
+   `pad_x = 0` setting drops the gutter for a true edge-to-edge
+   layout (e.g. hero blocks that need to bleed). */
+.fe-pp-shell {
+  margin-left: auto; margin-right: auto;
+  padding-left: var(--fe-pp-pad-x, 16px);
+  padding-right: var(--fe-pp-pad-x, 16px);
+}
 .fe-pp-w-full .fe-pp-shell { padding-left: 0; padding-right: 0; }
 
 /* Hero: title + lead + image + CTA, all centered, generous whitespace. */
@@ -7578,7 +8263,12 @@ body.fe-frontend-force-dark .fe-submission-modal-body {
    sections just stack with consistent vertical breathing room.
    Container blocks inside a section can opt INTO chrome (border,
    shadow, padding) via their settings panel. */
-.fe-pp-section { margin-top: 32px; }
+/* Spacing between sections within a page. Reads a per-page custom
+   property so the admin can collapse the gap to 0 when blocks
+   should sit flush, or open it up for breathing room. First
+   section keeps margin-top: 0 so the article's pad-top isn't
+   doubled by a leading section gap. */
+.fe-pp-section { margin-top: var(--fe-pp-section-gap, 32px); }
 .fe-pp-section:first-of-type { margin-top: 0; }
 .fe-pp-section-title {
   /* Section titles only render when the admin set `sec.title`, and
@@ -7745,10 +8435,18 @@ html[data-theme="dark"] .fe-pp-list-arrows .fe-pp-list-mark {
   background: color-mix(in srgb, var(--fe-color-surface, #131a2c) 70%, #1a2236);
   color: var(--fe-dm-text, #cbd5e1);
 }
-html[data-theme="dark"] .fe-pp-list-pills > li {
-  background: color-mix(in srgb, var(--fe-color-surface, #131a2c) 70%, #1a2236);
-  border-color: var(--fe-dm-border, #1f2a40);
-  color: var(--fe-dm-text, #cbd5e1);
+/* Dark-mode pills — read from the dark-mode surface / border / text
+   tokens directly. The previous `color-mix(var(--fe-color-surface) …)`
+   mix used a LIGHT-mode token in dark mode (the admin's chosen surface
+   colour is usually near-white), so the resulting fill landed on a
+   light grey, not dark. Paired with `body.fe-frontend-force-dark` so
+   the admin-locked dark-mode toggle (e.g. dark sections on a light
+   page) gets the same treatment as system-driven dark mode. */
+html[data-theme="dark"] .fe-pp-list-pills > li,
+body.fe-frontend-force-dark .fe-pp-list-pills > li {
+  background: var(--fe-dm-surface, #131a33);
+  border-color: var(--fe-dm-border, #1f2a44);
+  color: var(--fe-dm-text, #e2e8f0);
 }
 
 /* Dark mode parity — surface, border, and shadow tokens already shift
@@ -7765,8 +8463,22 @@ html[data-theme="dark"] .fe-pp-step:hover {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
 }
 @media (max-width: 640px) {
-  .fe-pp { padding: 56px 0 72px; }
-  .fe-pp-section { margin-top: 24px; }
+  /* Honor the admin's `--fe-pp-pad-top` / `--fe-pp-pad-bottom` on
+     mobile too — the previous hardcoded `padding: 56px 0 72px`
+     defeated the inline vars (`pad_top: 0` from the page settings
+     stayed pinned at 56px on mobile). Tighter fallback values
+     (56 / 72) preserve the historic mobile-default look for pages
+     that haven't customised the vars. Horizontal padding stays 0 so
+     `.fe-pp-shell`'s own `--fe-pp-pad-x` is the only gutter driver.
+     Section gap is intentionally NOT overridden here — the desktop
+     rule `.fe-pp-section { margin-top: var(--fe-pp-section-gap, 32px) }`
+     carries through, so admins who set `section_gap: 0` see zero
+     margin on mobile too (the previous hardcoded `24px` defeated
+     that). */
+  .fe-pp {
+    padding-top: var(--fe-pp-pad-top, 56px);
+    padding-bottom: var(--fe-pp-pad-bottom, 72px);
+  }
   .fe-pp-step { grid-template-columns: 36px 1fr; gap: 14px; padding: 14px 16px; }
   .fe-pp-step-num { width: 30px; height: 30px; font-size: 0.875rem; }
 }
@@ -8016,20 +8728,71 @@ html[data-theme="dark"] .fe-pp {
    variable simply means "no change on hover". */
 .block-container {
   /* Smooth transitions across every property the hover recipe might
-     touch — kept short so hover feels responsive even on touch. */
+     touch — kept short so hover feels responsive even on touch.
+     `border-width` is included so the "border appears on hover"
+     pattern (rest 0 → hover N) animates rather than jump-cutting. */
   transition: background-color 180ms ease,
               border-color 180ms ease,
+              border-width 180ms ease,
               box-shadow 180ms ease,
               transform 180ms ease;
   /* Box-sizing parity so padding doesn't blow out the container's
      intended max-width. */
   box-sizing: border-box;
+  /* Padding reads from a CSS custom property the renderer stamps on
+     the instance (rather than `padding:` directly inline) so the
+     mobile media query can override it without an inline-style war. */
+  padding: var(--block-cont-padding, 1rem);
+  /* Background colour, border colour, and box-shadow all read from
+     inline-set variables so the `:hover` rules below can swap them.
+     Setting these as direct inline properties would have inline
+     specificity (1,0,0,0) and beat the hover rules' (0,0,2,0). The
+     variable-driven approach keeps inline as variable declarations
+     only, so the hover rules win on the cascade as soon as the admin
+     ticks one of the hover overrides. */
+  background-color: var(--block-cont-bg, transparent);
+  border-color: var(--block-cont-border-color, currentColor);
+  border-width: var(--block-cont-border-width, 0);
+  box-shadow: var(--block-cont-shadow, none);
+}
+/* Grid + flex containers consume the layout values from CSS custom
+   properties the renderer stamps on each instance, so the mobile
+   media query below can collapse multi-column layouts to a single
+   column without fighting inline-style specificity. */
+.block-container--grid {
+  grid-template-columns: var(--block-cont-grid-cols, repeat(2, 1fr));
+}
+.block-container--flex {
+  flex-direction: var(--block-cont-flex-dir, column);
+}
+/* Phone breakpoint — any grid container with two or more columns
+   collapses to a single column so two-column page-builder blocks
+   stack on phones rather than squeezing into 50%-wide strips.
+   Flex containers default to stacking column on phones (matches the
+   pre-mobile-override behaviour), but `--block-cont-flex-dir-mobile`
+   wins when the admin set Mobile direction in the editor — letting
+   them keep a row, reverse it, or pick column-reverse to surface the
+   bottom child first on phones. Padding likewise prefers
+   `--block-cont-padding-mobile` and falls back to the desktop value
+   when the admin left mobile padding blank. The 720px ceiling
+   matches the rest of the public site's mobile rules. */
+@media (max-width: 720px) {
+  .block-container--grid {
+    grid-template-columns: 1fr;
+  }
+  .block-container--flex {
+    flex-direction: var(--block-cont-flex-dir-mobile, column);
+  }
+  .block-container {
+    padding: var(--block-cont-padding-mobile, var(--block-cont-padding, 1rem));
+  }
 }
 /* Hover behaviour is opt-in per property — each `--hover-*` class is
    only added by the renderer when the admin actually configured that
    property, so an unset hover doesn't clobber the resting style. */
 .block-container--hover-bg:hover     { background-color: var(--block-cont-hover-bg); }
 .block-container--hover-border:hover { border-color: var(--block-cont-hover-border); }
+.block-container--hover-border-width:hover { border-width: var(--block-cont-hover-border-width); }
 .block-container--hover-shadow:hover { box-shadow: var(--block-cont-hover-shadow, var(--block-cont-shadow, none)); }
 .block-container--hover-lift:hover   { transform: translateY(-2px); }
 /* Direct children of a container honour its gap, but stand-alone
@@ -8340,6 +9103,30 @@ body.fe-frontend-force-dark .fe-contact-eyebrow {
    browsers without :has() (the host class can opt in manually). */
 :where(.fe-dynbg-host) { position: relative; isolation: isolate; }
 :where(.fe-dynbg-host) > :not(.fe-dynbg) { position: relative; z-index: 1; }
+/* The :where rule above promotes every direct child (other than the
+   `.fe-dynbg` layer itself) to `position: relative` so content paints
+   above the dynbg layer. That's correct for content blocks but BREAKS
+   absolutely-positioned overlays that also live as direct children —
+   the hero's particle <canvas>, background <video>, and frosty blob
+   container all want `position: absolute; inset: 0` to overlay the
+   section without taking flex flow space. When forced into flow,
+   `initLoginFX`'s `parent.getBoundingClientRect()` resize loop
+   inflates the canvas, which inflates the parent, which fires
+   ResizeObserver, which inflates the canvas — and the hero balloons
+   well past 100vh. Re-assert absolute positioning for those
+   overlays specifically. Higher specificity than the :where rule
+   above so we always win the cascade. */
+.fe-dynbg-host > .fe-hero-particles,
+.fe-dynbg-host > .fe-hero-video,
+.fe-dynbg-host > .fe-hero-bg {
+  position: absolute;
+  z-index: 0;
+}
+/* Particle canvas in particular should sit ABOVE the dynbg layer
+   but below content. Keep its z-index: 1 from `.fe-hero-particles`. */
+.fe-dynbg-host > .fe-hero-particles {
+  z-index: 1;
+}
 
 /* Page-level dynbg wrapper: when an admin sets a dynamic background
    on a list/index page (meetings list, events list, etc.), the inner
@@ -9019,3 +9806,262 @@ body.fe-frontend-force-dark .fe-site-index-row-link:hover {
   background: color-mix(in srgb, var(--fe-accent, #60a5fa) 14%, transparent);
   border-color: color-mix(in srgb, var(--fe-accent, #60a5fa) 35%, transparent);
 }
+
+/* ── Blog block on frontend custom Pages ──────────────────────── */
+.block-blog { margin: 1.4rem 0; }
+.block-blog-head { margin-bottom: 1.4rem; }
+.block-blog-title {
+  font-family: var(--tpl-heading-font, var(--fe-font-heading, inherit));
+  font-weight: 700; font-size: 1.6rem; line-height: 1.15;
+  margin: 0 0 .35rem; letter-spacing: -.01em;
+}
+.block-blog-sub {
+  margin: 0; color: var(--fe-color-muted, #6b7280);
+  font-size: 1rem; line-height: 1.55;
+}
+.block-blog-empty {
+  padding: 1rem; background: var(--fe-color-surface, #f3f4f6);
+  border-radius: 8px; text-align: center;
+}
+.block-blog-cats { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: .55rem; }
+.block-blog-cat-chip {
+  --blog-cat-color: var(--fe-color-accent, #2563eb);
+  color: var(--blog-cat-color);
+  background: color-mix(in srgb, var(--blog-cat-color) 14%, transparent);
+  padding: 2px 9px; border-radius: 6px;
+  font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+}
+.block-blog-more { margin-top: 1.4rem; text-align: right; }
+.block-blog-more-link {
+  color: var(--fe-color-accent, #2563eb); font-weight: 600; text-decoration: none;
+  font-size: .92rem;
+}
+.block-blog-more-link:hover { text-decoration: underline; }
+
+.block-blog-cards { display: grid; }
+.block-blog-card {
+  background: var(--fe-color-bg, #fff);
+  border: 1px solid var(--fe-color-border, #e5e7eb);
+  border-radius: 12px; overflow: hidden;
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.block-blog-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--fe-color-accent, #2563eb) 30%, var(--fe-color-border, #e5e7eb));
+  box-shadow: 0 12px 30px -12px rgba(15,23,42,.15);
+}
+.block-blog-card.is-featured { box-shadow: inset 3px 0 0 var(--fe-color-accent, #2563eb); }
+.block-blog-card-link { display: block; color: inherit; text-decoration: none; }
+.block-blog-card-art { aspect-ratio: 16 / 10; overflow: hidden; }
+.block-blog-card-art img { width: 100%; height: 100%; object-fit: cover; transition: transform .4s ease; }
+.block-blog-card:hover .block-blog-card-art img { transform: scale(1.04); }
+.block-blog-card-body { padding: 1rem 1.2rem 1.2rem; }
+.block-blog-card-title {
+  font-family: var(--tpl-heading-font, var(--fe-font-heading, inherit));
+  font-weight: 700; font-size: 1.1rem; line-height: 1.25;
+  margin: 0 0 .5rem;
+}
+.block-blog-card-summary { margin: 0 0 .7rem; color: var(--fe-color-muted, #6b7280); font-size: .9rem; line-height: 1.55; }
+.block-blog-card-meta { display: flex; flex-wrap: wrap; gap: .5rem; color: var(--fe-color-muted, #6b7280); font-size: .78rem; }
+.block-blog-card-meta > span + span::before { content: "·"; margin-right: .5rem; opacity: .55; }
+@media (max-width: 720px) { .block-blog-cards { grid-template-columns: 1fr !important; } }
+
+.block-blog-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 1.1rem; }
+.block-blog-list-item {
+  background: var(--fe-color-bg, #fff);
+  border: 1px solid var(--fe-color-border, #e5e7eb);
+  border-radius: 10px; overflow: hidden;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+.block-blog-list-item:hover {
+  border-color: color-mix(in srgb, var(--fe-color-accent, #2563eb) 30%, var(--fe-color-border, #e5e7eb));
+  box-shadow: 0 6px 18px -8px rgba(15,23,42,.15);
+}
+.block-blog-list-link {
+  display: grid; grid-template-columns: 180px 1fr; gap: 1rem;
+  color: inherit; text-decoration: none; align-items: center;
+}
+.block-blog-list-link:not(:has(.block-blog-list-art)) { grid-template-columns: 1fr; padding: 1rem 1.2rem; }
+@media (max-width: 600px) { .block-blog-list-link { grid-template-columns: 1fr; } }
+.block-blog-list-art { aspect-ratio: 4 / 3; overflow: hidden; }
+.block-blog-list-art img { width: 100%; height: 100%; object-fit: cover; }
+.block-blog-list-body { padding: 1rem 1.2rem; }
+.block-blog-list-title {
+  font-family: var(--tpl-heading-font, var(--fe-font-heading, inherit));
+  font-weight: 700; font-size: 1.1rem; line-height: 1.25;
+  margin: 0 0 .4rem;
+}
+.block-blog-list-summary { margin: 0 0 .55rem; color: var(--fe-color-muted, #6b7280); font-size: .92rem; line-height: 1.55; }
+.block-blog-list-meta { display: flex; flex-wrap: wrap; gap: .5rem; color: var(--fe-color-muted, #6b7280); font-size: .78rem; }
+.block-blog-list-meta > span + span::before { content: "·"; margin-right: .5rem; opacity: .55; }
+
+.block-blog-headlines { list-style: none; padding: 0; margin: 0; }
+.block-blog-headline {
+  border-bottom: 1px solid var(--fe-color-border, #e5e7eb);
+  padding: .9rem 0;
+}
+.block-blog-headline:last-child { border-bottom: 0; }
+.block-blog-headline a { color: inherit; text-decoration: none; display: flex; flex-direction: column; gap: 4px; }
+.block-blog-headline-date {
+  text-transform: uppercase; letter-spacing: .12em;
+  font-size: .72rem; color: var(--fe-color-muted, #6b7280);
+  font-weight: 600;
+}
+.block-blog-headline-title {
+  font-family: var(--tpl-heading-font, var(--fe-font-heading, inherit));
+  font-weight: 700; font-size: 1.18rem; line-height: 1.25;
+}
+.block-blog-headline a:hover .block-blog-headline-title { color: var(--fe-color-accent, #2563eb); }
+.block-blog-headline-summary { color: var(--fe-color-muted, #6b7280); font-size: .95rem; line-height: 1.5; }
+
+/* ── Fellowships Index (/fellowships) ───────────────────────────────
+   Two layouts share these styles:
+     - Sidebar (default): inherits .fe-mlist-* shell + rail + pill list
+       from the meetings/library/archive lineage.
+     - Compact: top filter strip + dense single-column rows.
+   Card + chip + sort styles below sit on top of the shared shell so
+   admins can pick either layout without losing the chips / hover. */
+.fe-mlist-sort {
+  display: flex; align-items: center; gap: 8px;
+  margin: 12px 0;
+}
+.fe-mlist-sort-label {
+  font-size: .82rem; color: var(--fe-color-muted, #6b7280);
+  text-transform: uppercase; letter-spacing: .08em; font-weight: 600;
+}
+.fe-mlist-sort select {
+  flex: 1; min-width: 0;
+  padding: 6px 10px; border-radius: 8px;
+  border: 1px solid var(--fe-color-border, #e5e7eb);
+  background: var(--fe-color-surface, #fff);
+  color: inherit; font-size: .92rem;
+  font-family: var(--fe-font-body, inherit);
+}
+
+.fe-fellowships-stack { display: grid; gap: 14px; }
+
+.fe-fellowships-card {
+  background: var(--fe-color-surface, #fff);
+  border: 1px solid var(--fe-color-border, #e5e7eb);
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: grid; gap: 8px;
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+.fe-fellowships-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.10);
+}
+.fe-fellowships-card-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  justify-content: space-between;
+}
+.fe-fellowships-card-title {
+  margin: 0;
+  font-family: var(--tpl-heading-font, var(--fe-font-heading, inherit));
+  font-size: 1.12rem; line-height: 1.25; font-weight: 700;
+}
+.fe-fellowships-card-chip {
+  display: inline-flex; align-items: center;
+  padding: 3px 10px;
+  font-size: .72rem; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fe-color-accent, #2563eb) 14%, transparent);
+  color: var(--fe-color-accent, #2563eb);
+  border: 1px solid color-mix(in srgb, var(--fe-color-accent, #2563eb) 30%, transparent);
+}
+.fe-fellowships-card-chip--virtual {
+  background: color-mix(in srgb, #10b981 14%, transparent);
+  color: #047857;
+  border-color: color-mix(in srgb, #10b981 30%, transparent);
+}
+.fe-fellowships-card-where {
+  margin: 0; font-size: .92rem;
+}
+.fe-fellowships-card-cta { margin: 0; }
+.fe-fellowships-card-cta a {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-weight: 600; color: var(--fe-color-accent, #2563eb);
+  text-decoration: none;
+}
+.fe-fellowships-card-cta a:hover { text-decoration: underline; }
+.fe-fellowships-card-cta a svg { width: 14px; height: 14px; }
+
+/* Dark-mode — fellowships card surface reads from the Card Dark
+   design token so admins control the swatch from Settings → Design
+   rather than wrangling per-component overrides. Border + hover
+   shadow follow the lineage the rest of the dark-mode cards use
+   (transparent-ish white border, deeper shadow on lift). The sort
+   <select> rides the same token so the dropdown sits on the same
+   surface as the cards instead of the page background. */
+html[data-theme="dark"] .fe-fellowships-card {
+  background: var(--fe-color-card-dark, #131a33);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+html[data-theme="dark"] .fe-fellowships-card:hover {
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+html[data-theme="dark"] .fe-mlist-sort select {
+  background: var(--fe-color-card-dark, #131a33);
+  border-color: rgba(255, 255, 255, 0.10);
+  color: var(--fe-color-text, #e2e8f0);
+}
+/* Dropdown <option> elements are rendered by the browser chrome on
+   most platforms and don't inherit the select's bg in dark mode, so
+   set it explicitly so the open list isn't a blinding white pane. */
+html[data-theme="dark"] .fe-mlist-sort select option {
+  background: var(--fe-color-card-dark, #131a33);
+  color: var(--fe-color-text, #e2e8f0);
+}
+
+/* Compact-list layout */
+.fe-fellowships-compact-head { margin-bottom: 16px; }
+.fe-fellowships-compact-filters {
+  display: grid; gap: 12px;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  align-items: end;
+  margin-bottom: 12px;
+}
+@media (max-width: 720px) {
+  .fe-fellowships-compact-filters { grid-template-columns: 1fr; }
+}
+.fe-fellowships-compact-pills {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  list-style: none; padding: 0; margin: 0 0 14px;
+}
+.fe-fellowships-compact-section { margin-bottom: 18px; }
+.fe-fellowships-compact-section-heading {
+  display: flex; align-items: baseline; gap: 10px;
+  font-family: var(--tpl-heading-font, var(--fe-font-heading, inherit));
+  font-size: 1.05rem; font-weight: 700;
+  margin: 0 0 8px;
+}
+.fe-fellowships-compact-rows {
+  list-style: none; padding: 0; margin: 0;
+  border-top: 1px solid var(--fe-color-border, #e5e7eb);
+}
+.fe-fellowships-compact-row {
+  display: grid; gap: 12px;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  padding: 12px 6px;
+  border-bottom: 1px solid var(--fe-color-border, #e5e7eb);
+}
+.fe-fellowships-compact-row-info { display: grid; gap: 2px; min-width: 0; }
+.fe-fellowships-compact-row-name { font-weight: 600; }
+.fe-fellowships-compact-row-where { font-size: .85rem; }
+.fe-fellowships-compact-row-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--fe-color-accent, #2563eb); text-decoration: none; font-weight: 600;
+  font-size: .9rem;
+}
+.fe-fellowships-compact-row-link:hover { text-decoration: underline; }
+.fe-fellowships-compact-row-link svg { width: 14px; height: 14px; }
+
+/* Admin Fellowships Index card (Settings → Global) — toggle styles */
+.fellowships-tbl input[type="text"],
+.fellowships-tbl input[type="url"] { width: 100%; }
+.fellowships-tbl tr.is-virtual .fellowship-cell-region-field { opacity: 0; pointer-events: none; }
+.fellowships-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.fellowship-virtual-toggle { display: inline-flex; align-items: center; }

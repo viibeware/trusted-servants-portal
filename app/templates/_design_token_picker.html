@@ -1,0 +1,401 @@
+{# Shared design-token colour picker.
+
+   Drop-in partial: include once per page and every <input type="color">
+   on the page automatically grows a 🎨 palette button next to it. Click
+   the button → opens a popover listing every site colour token (the
+   palette defined under Settings → Design); click a token → writes its
+   resolved hex into the colour input and dispatches an `input` event
+   so any live-preview JS sees the change.
+
+   Skip rules — the auto-attach pass leaves an input alone when:
+     • The input carries `data-no-token-picker`.
+     • A sibling element already advertises a token target via
+       `data-token-target` or has the be-color-token-popover hookup
+       (i.e. it's a content-page or block-editor input that owns its
+       own token wiring with full `token:<key>` round-trip).
+     • The input is already inside an element with class
+       `be-color-cluster` / `be-color-text` (block-editor wires its
+       own picker via attachTokenButton()).
+
+   To opt out for a single input: add ``data-no-token-picker``.
+
+   This partial is safe to include multiple times per page — the JS
+   guards against re-mounting via a window-level flag.
+#}
+{%- set _design_resolved = resolve_design(site) if site else {} -%}
+{%- set _color_tokens_global = [] -%}
+{%- for f in design_fields if f.kind == 'color' -%}
+  {%- set _ = _color_tokens_global.append({'key': f.key,
+                                           'label': f.label,
+                                           'group': f.get('group') if f is mapping else f.group,
+                                           'hex': _design_resolved.get(f.key) if _design_resolved else ''}) -%}
+{%- endfor -%}
+<div class="fe-page-bg-token-popover dt-shared-token-popover" id="dt-shared-token-popover" hidden
+     role="dialog" aria-label="Design token picker">
+  <div class="fe-page-bg-token-popover-head">
+    <h4>Design tokens</h4>
+    <button type="button" class="icon-btn" data-dt-popover-close
+            aria-label="Close">×</button>
+  </div>
+  <p class="muted smaller">Pick a colour token. Updating the palette under <b>Settings → Design</b> propagates to every page that references it. (Inputs without text-companion fields capture the resolved hex at pick time — they don't track future palette edits.)</p>
+  <div class="fe-page-bg-token-grid">
+    {% for tok in _color_tokens_global %}
+    <button type="button" class="fe-page-bg-token-tile"
+            data-dt-token-key="{{ tok.key }}"
+            data-dt-token-hex="{{ tok.hex }}"
+            title="{{ tok.label }} · {{ tok.hex }}">
+      <span class="fe-page-bg-token-swatch"
+            style="background: {{ tok.hex }};"></span>
+      <span class="fe-page-bg-token-meta">
+        <span class="fe-page-bg-token-label">{{ tok.label }}</span>
+        <span class="fe-page-bg-token-hex muted smaller">{{ tok.hex }}</span>
+      </span>
+    </button>
+    {% endfor %}
+  </div>
+</div>
+{# Maps the JS reads:
+   • tspDesignColorTokens — key → resolved hex (already populated by
+     the page-edit screen; this partial sets it too so other admin
+     pages get the lookup for free).
+   • tspDesignColorTokenLabels — key → human label so the "Token: X"
+     chip can show "Brand" instead of "color_brand". #}
+<script>
+  (function () {
+    if (!window.tspDesignColorTokens || !Object.keys(window.tspDesignColorTokens).length) {
+      window.tspDesignColorTokens = {
+        {%- for tok in _color_tokens_global %}
+        {{ tok.key|tojson }}: {{ tok.hex|tojson }}{% if not loop.last %},{% endif %}
+        {%- endfor %}
+      };
+    }
+    if (!window.tspDesignColorTokenLabels || !Object.keys(window.tspDesignColorTokenLabels).length) {
+      window.tspDesignColorTokenLabels = {
+        {%- for tok in _color_tokens_global %}
+        {{ tok.key|tojson }}: {{ tok.label|tojson }}{% if not loop.last %},{% endif %}
+        {%- endfor %}
+      };
+    }
+  })();
+</script>
+
+<script>
+(function () {
+  if (window.__tspDtSharedBound) return;
+  window.__tspDtSharedBound = true;
+
+  var popover = document.getElementById('dt-shared-token-popover');
+  if (!popover) return;
+  var activeInput = null;
+  var activeAnchor = null;
+
+  function open(input, anchor) {
+    activeInput = input;
+    activeAnchor = anchor;
+    popover.hidden = false;
+    var r = anchor.getBoundingClientRect();
+    popover.style.position = 'fixed';
+    popover.style.top = (r.bottom + 6) + 'px';
+    var maxLeft = window.innerWidth - popover.offsetWidth - 16;
+    popover.style.left = Math.max(8, Math.min(r.left, maxLeft)) + 'px';
+  }
+  function close() {
+    popover.hidden = true;
+    activeInput = null;
+    activeAnchor = null;
+  }
+  popover.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (e.target.closest('[data-dt-popover-close]')) {
+      close();
+      return;
+    }
+    var tile = e.target.closest('[data-dt-token-key]');
+    if (!tile || !activeInput) return;
+    var hex = tile.dataset.dtTokenHex || '';
+    if (!hex) return;
+    activeInput.value = hex;
+    // Inputs may have a paired text companion that the on-page editor
+    // wants to keep in sync. Dispatch both `input` and `change` so any
+    // listener bound to either event fires.
+    activeInput.dispatchEvent(new Event('input', { bubbles: true }));
+    activeInput.dispatchEvent(new Event('change', { bubbles: true }));
+    close();
+  });
+  document.addEventListener('click', function (e) {
+    if (popover.hidden) return;
+    if (popover.contains(e.target)) return;
+    if (activeAnchor && activeAnchor.contains(e.target)) return;
+    close();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !popover.hidden) close();
+  });
+
+  // ── Auto-attach palette button to every <input type="color"> ──
+  // Skip:
+  //   • Inputs that explicitly opt out via data-no-token-picker.
+  //   • Inputs whose surrounding cluster already wires its own
+  //     token picker (.be-color-cluster from the block editor and
+  //     [data-token-target] anchors on the content-page editor).
+  //   • Inputs we've already attached to (the data-dt-attached
+  //     marker is set on first run).
+  function shouldAttach(input) {
+    if (input.dataset.dtAttached) return false;
+    if (input.hasAttribute('data-no-token-picker')) return false;
+    // Walk up ancestors looking for a wrapper that already owns its
+    // own token picker. Stop at the first cluster ancestor (3 levels
+    // is enough for every existing layout — closer scoping avoids
+    // over-skipping when a single content-page edit screen contains
+    // both token-aware AND plain colour inputs).
+    var parent = input.parentElement;
+    var hops = 0;
+    while (parent && parent !== document.body && hops < 4) {
+      if (parent.classList) {
+        if (parent.classList.contains('be-color-cluster')) return false;
+        if (parent.classList.contains('be-color-text'))    return false;
+        if (parent.hasAttribute('data-token-pair'))        return false;
+      }
+      // A sibling button with `data-token-target` means the local
+      // wrapper owns its own picker — don't double-wire.
+      if (parent.querySelector) {
+        var sibBtn = parent.querySelector(':scope > [data-token-target]');
+        if (sibBtn) return false;
+      }
+      parent = parent.parentElement;
+      hops++;
+    }
+    return true;
+  }
+
+  // Find a palette token whose resolved hex matches a given value.
+  // Returns the token key (e.g. "color_brand") or null. Case-insensitive
+  // and tolerant of short-form hex (`#abc` → `#aabbcc`).
+  function _expandHex(v) {
+    v = (v || '').trim().toLowerCase();
+    if (!v) return '';
+    if (v.length === 4 && v[0] === '#') {
+      return '#' + v[1] + v[1] + v[2] + v[2] + v[3] + v[3];
+    }
+    return v;
+  }
+  function matchHexToToken(hex) {
+    var tokens = window.tspDesignColorTokens || {};
+    var target = _expandHex(hex);
+    if (!target) return null;
+    for (var key in tokens) {
+      if (_expandHex(tokens[key]) === target) return key;
+    }
+    return null;
+  }
+  function tokenLabel(key) {
+    return (window.tspDesignColorTokenLabels || {})[key] || key;
+  }
+
+  function attach(input) {
+    input.dataset.dtAttached = '1';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm dt-shared-token-btn';
+    btn.title = 'Pick a design token';
+    btn.setAttribute('aria-label', 'Open design palette');
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" '
+      + 'fill="none" stroke="currentColor" stroke-width="2" '
+      + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<circle cx="13.5" cy="6.5" r=".5"></circle>'
+      + '<circle cx="17.5" cy="10.5" r=".5"></circle>'
+      + '<circle cx="8.5" cy="7.5" r=".5"></circle>'
+      + '<circle cx="6.5" cy="12.5" r=".5"></circle>'
+      + '<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"></path>'
+      + '</svg>';
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (popover.hidden || activeInput !== input) {
+        open(input, btn);
+      } else {
+        close();
+      }
+    });
+    var hexEl = document.createElement('span');
+    hexEl.className = 'dt-hex-caption';
+    hexEl.title = 'Current hex value';
+    var chipEl = document.createElement('span');
+    chipEl.className = 'dt-token-chip';
+    chipEl.title = 'Hex matches this design-palette token. The value is stored as a frozen hex — palette edits won\'t propagate unless you re-pick.';
+    chipEl.hidden = true;
+    function refresh() {
+      var v = (input.value || '').toLowerCase();
+      hexEl.textContent = v || '—';
+      var k = matchHexToToken(v);
+      if (k) {
+        chipEl.textContent = '◈ ' + tokenLabel(k);
+        chipEl.dataset.dtChipToken = k;
+        chipEl.hidden = false;
+      } else {
+        chipEl.textContent = '';
+        chipEl.removeAttribute('data-dt-chip-token');
+        chipEl.hidden = true;
+      }
+    }
+    input.addEventListener('input', refresh);
+    input.addEventListener('change', refresh);
+    // Insert immediately after the input. Order: input → 🎨 → hex → chip.
+    var anchor = input;
+    [btn, hexEl, chipEl].forEach(function (el) {
+      anchor.insertAdjacentElement('afterend', el);
+      anchor = el;
+    });
+    refresh();
+  }
+
+  // ── Token-aware text-input badge ───────────────────────────────
+  // Inputs that store `token:<key>` (page-edit background, future
+  // editors) already track palette bindings persistently. We surface
+  // a stronger "Bound to: <Name>" chip beside them so admins can
+  // tell the difference between "matches the palette hex" and
+  // "actually bound to the palette".
+  function attachTokenTextField(input) {
+    if (input.dataset.dtTextAttached) return;
+    input.dataset.dtTextAttached = '1';
+    var chip = document.createElement('span');
+    chip.className = 'dt-token-chip dt-token-chip-bound';
+    chip.title = 'This field is bound to a design-palette token. Future palette edits propagate live.';
+    chip.hidden = true;
+    function refresh() {
+      var v = (input.value || '').trim();
+      var m = v.match(/^token:([a-z0-9_]+)$/i);
+      if (m) {
+        chip.textContent = '◈ Bound: ' + tokenLabel(m[1]);
+        chip.hidden = false;
+      } else if (v) {
+        // Plain hex — fall through to a "matches token" hint if it
+        // coincides with a palette colour.
+        var k = matchHexToToken(v);
+        if (k) {
+          chip.textContent = '◈ ' + tokenLabel(k);
+          chip.classList.remove('dt-token-chip-bound');
+          chip.hidden = false;
+          return;
+        }
+        chip.hidden = true;
+      } else {
+        chip.hidden = true;
+      }
+      chip.classList.add('dt-token-chip-bound');
+    }
+    input.addEventListener('input', refresh);
+    input.addEventListener('change', refresh);
+    input.insertAdjacentElement('afterend', chip);
+    refresh();
+  }
+
+  function scan(root) {
+    root = root || document;
+    var colorNodes = root.querySelectorAll('input[type="color"]');
+    colorNodes.forEach(function (input) {
+      if (shouldAttach(input)) attach(input);
+    });
+    // Token-aware text inputs surface their own "Bound to" chip. The
+    // content-page editor marks each wrapper with `data-token-pair`
+    // — find the text input inside and attach. Skip the swatch
+    // input (which is type="color" and handled by the loop above).
+    var pairs = root.querySelectorAll('[data-token-pair]');
+    pairs.forEach(function (wrap) {
+      var texts = wrap.querySelectorAll('input[type="text"]');
+      texts.forEach(function (t) { attachTokenTextField(t); });
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { scan(document); });
+  } else {
+    scan(document);
+  }
+  // Re-scan when admin UIs swap content into modals / iframes (the
+  // page-edit modal, the homepage hero modal, etc.). Cheap MutationObserver
+  // on body so dynamically-injected color inputs pick up the picker
+  // without per-screen wiring.
+  try {
+    var mo = new MutationObserver(function (muts) {
+      muts.forEach(function (m) {
+        m.addedNodes && m.addedNodes.forEach(function (node) {
+          if (node.nodeType !== 1) return;
+          if (node.matches && node.matches('input[type="color"]')) {
+            if (shouldAttach(node)) attach(node);
+          } else if (node.querySelectorAll) {
+            scan(node);
+          }
+        });
+      });
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  } catch (e) { /* fine, static scan covers the common case */ }
+})();
+</script>
+
+<style>
+  /* Shared 🎨 button — sized to match `.btn-sm` so it lines up with
+     the existing Clear/Reset buttons that flank colour inputs in
+     several admin templates. The popover reuses .fe-page-bg-token-*
+     styles already defined in app.css. */
+  .dt-shared-token-btn {
+    padding: 4px 8px;
+    line-height: 1;
+    margin-left: 6px;
+    vertical-align: middle;
+    color: var(--muted);
+  }
+  .dt-shared-token-btn:hover { color: var(--brand); }
+  .dt-shared-token-btn svg { display: block; }
+  /* Position the shared popover above the document so it can escape
+     overflow:hidden ancestors (modals, side panels). */
+  .dt-shared-token-popover {
+    position: fixed;
+    z-index: 10000;
+  }
+  /* Hex caption — always visible next to every colour input the
+     shared picker attaches to. Reads the input's current value
+     live; "—" when the input is empty. Tabular numerics keep
+     digit columns aligned across rows. */
+  .dt-hex-caption {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: var(--panel-2, var(--panel));
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: .72rem;
+    font-variant-numeric: tabular-nums;
+    text-transform: lowercase;
+    vertical-align: middle;
+    white-space: nowrap;
+    user-select: all;     /* cmd-click to select hex */
+    cursor: text;
+  }
+  /* Token chip — appears whenever the colour input's value matches a
+     palette token. The chip's diamond glyph echoes the
+     `token:` storage form used by the page-edit editor; a bound chip
+     (live binding via `token:<key>` text storage) reads in the brand
+     colour to distinguish it from a passive "hex matches" chip. */
+  .dt-token-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-left: 6px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--brand) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--brand) 30%, transparent);
+    color: var(--brand);
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .02em;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .dt-token-chip[hidden] { display: none; }
+  .dt-token-chip-bound {
+    background: color-mix(in srgb, var(--brand) 22%, transparent);
+    border-color: color-mix(in srgb, var(--brand) 55%, transparent);
+  }
+</style>

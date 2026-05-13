@@ -1,0 +1,115 @@
+{# Per-page meetings-list block edit modal — verbatim copy of the
+   homepage's `editor_meetings()` macro markup (lines 903-989 of
+   frontend_homepage.html), adapted to read from a `vals` dict shim
+   instead of `block_content._meetings`. The shim mirrors the
+   homepage's `_ms` dict shape (MEETINGS_DEFAULTS merged with the
+   block's data), so the markup is character-for-character identical.
+
+   Differences from homepage:
+   - No `<form>` wrapper — values flow through JS into the active
+     meetings block's `data` and save with the parent page-edit form
+     via `blocks_json`.
+   - Each input carries `data-meetings-field="<key>"` for two-way
+     binding (the homepage version's `name="meetings_<key>"` would
+     post to `/frontend/save`, which is wrong for the per-page path).
+   - Sticky Done footer at the bottom of the scrolling panel.
+
+   Caller passes:
+     vals — dict with keys mirroring MEETINGS_DEFAULTS
+#}
+<div class="modal fe-page-edit-modal fe-page-edit-modal--wide" id="page-meetings-edit-modal" aria-hidden="true" data-page-meetings-modal>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel fe-page-edit-modal-panel" role="dialog" aria-modal="true">
+    <button type="button" class="icon-btn fe-page-edit-modal-close" data-close
+            aria-label="Close">{{ icon('x') }}</button>
+<section class="card">
+  <div class="card-head">
+    <h2>Meetings list</h2>
+    <span class="muted smaller">Pulls live from the admin DB. Filter + presentation are configured below.</span>
+  </div>
+  <label>Section heading
+    <input type="text" data-meetings-field="heading" value="{{ vals.heading or '' }}" placeholder="Upcoming Meetings">
+  </label>
+  <label>Intro line
+    <input type="text" data-meetings-field="intro" value="{{ vals.intro or '' }}" placeholder="A quick look at what's on the schedule…">
+  </label>
+  <div class="hero-bg-grid">
+    <div class="nav-megalink-field">
+      <span class="nav-megalink-field-lbl">Filter</span>
+      <select data-meetings-field="filter">
+        {% for _v, _lbl in [
+          ('upcoming_today', 'Today — upcoming only (drop off as the day progresses)'),
+          ('today_all',      'Today — all meetings'),
+          ('next_24h',       'Next 24 hours'),
+          ('next_7_days',    'Next 7 days'),
+          ('this_week',      'This week (Mon–Sun)'),
+          ('all',            'All meetings'),
+        ] %}
+        <option value="{{ _v }}" {% if (vals.filter or 'upcoming_today') == _v %}selected{% endif %}>{{ _lbl }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="nav-megalink-field hero-slider-field">
+      <span class="nav-megalink-field-lbl">Max meetings <output data-slider-out>{{ vals.max_count or 6 }}</output></span>
+      <input type="range" data-meetings-field="max_count" min="1" max="30" step="1"
+             value="{{ vals.max_count or 6 }}" data-slider-input>
+    </div>
+    <div class="nav-megalink-field hero-slider-field">
+      <span class="nav-megalink-field-lbl">Schedule lines per card <output data-slider-out>{{ vals.show_first_n or 3 }}</output></span>
+      <input type="range" data-meetings-field="show_first_n" min="1" max="7" step="1"
+             value="{{ vals.show_first_n or 3 }}" data-slider-input>
+    </div>
+    <div class="nav-megalink-field">
+      <span class="nav-megalink-field-lbl">Animation</span>
+      <select data-meetings-field="animation">
+        {% for _v, _lbl in [('fade','Fade in'), ('slide','Slide up + fade'), ('none','None')] %}
+        <option value="{{ _v }}" {% if (vals.animation or 'fade') == _v %}selected{% endif %}>{{ _lbl }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="nav-megalink-field hero-slider-field">
+      <span class="nav-megalink-field-lbl">Stagger <output data-slider-out>{{ vals.stagger_ms or 60 }}</output>ms</span>
+      <input type="range" data-meetings-field="stagger_ms" min="0" max="200" step="10"
+             value="{{ vals.stagger_ms or 60 }}" data-slider-input>
+    </div>
+  </div>
+  <li class="special-page-row" style="list-style:none; margin: 1rem 0 0;">
+    <div class="special-page-info">
+      <div class="u-name">Group by day</div>
+      <p class="muted small">When the filter spans multiple days, group cards under a day heading.</p>
+    </div>
+    <label class="mode-toggle">
+      <input type="checkbox" data-meetings-field="group_by_day" value="1" {% if vals.group_by_day %}checked{% endif %}>
+      <span class="mode-track"><span class="mode-thumb"></span></span>
+    </label>
+  </li>
+  <li class="special-page-row" style="list-style:none; margin: 0;">
+    <div class="special-page-info">
+      <div class="u-name">Show meeting type chip</div>
+      <p class="muted small">Small badge for In Person / Online / Hybrid.</p>
+    </div>
+    <label class="mode-toggle">
+      <input type="checkbox" data-meetings-field="show_type_chip" value="1" {% if vals.show_type_chip %}checked{% endif %}>
+      <span class="mode-track"><span class="mode-thumb"></span></span>
+    </label>
+  </li>
+  <li class="special-page-row" style="list-style:none; margin: 0 0 1rem;">
+    <div class="special-page-info">
+      <div class="u-name">Show schedule lines</div>
+      <p class="muted small">Day-and-time bullets under each meeting name.</p>
+    </div>
+    <label class="mode-toggle">
+      <input type="checkbox" data-meetings-field="show_schedule" value="1" {% if vals.show_schedule %}checked{% endif %}>
+      <span class="mode-track"><span class="mode-thumb"></span></span>
+    </label>
+  </li>
+  <label>Empty-state message
+    <input type="text" data-meetings-field="empty_message" value="{{ vals.empty_message or '' }}" placeholder="No meetings scheduled — check back soon.">
+  </label>
+
+  <div class="form-actions hero-unified-actions">
+    <button type="button" class="btn btn-primary" data-close>Done</button>
+  </div>
+</section>
+  </div>{# /modal-panel #}
+</div>{# /page-meetings-edit-modal #}

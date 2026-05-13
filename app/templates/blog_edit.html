@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% set _is_new = post is none %}
+{% set _p = post %}
+{% block heading %}{{ 'New blog post' if _is_new else 'Edit blog post' }}{% endblock %}
+{% block heading_help %}{% if _is_new %}Compose a blog post — title, summary, body, featured image, author byline. Tag with categories and tags so the right frontend block / page picks it up.{% else %}Update the post.{% endif %}{% endblock %}
+{% block top_actions %}
+  <a class="btn" href="{{ url_for('main.blog_index') }}">← All posts</a>
+  {% if _p and _p.is_draft %}<span class="post-chip post-chip-draft post-chip-header">Draft</span>{% endif %}
+  {% if _p and _p.is_archived %}<span class="post-chip post-chip-header">Archived</span>{% endif %}
+  {% if _p and not _p.is_archived %}
+  <form method="post" action="{{ url_for('main.blog_archive', bid=_p.id) }}" style="display:inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn">Archive</button>
+  </form>
+  {% elif _p and _p.is_archived %}
+  <form method="post" action="{{ url_for('main.blog_unarchive', bid=_p.id) }}" style="display:inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn">Restore</button>
+  </form>
+  {% endif %}
+  {% if _is_new %}
+    <button type="submit" form="blog-edit-form" name="action" value="draft" class="btn">Save as draft</button>
+    <button type="submit" form="blog-edit-form" name="action" value="publish" class="btn btn-primary">Publish post</button>
+  {% elif _p and _p.is_draft %}
+    <button type="submit" form="blog-edit-form" name="action" value="draft" class="btn">Save draft</button>
+    <button type="submit" form="blog-edit-form" name="action" value="publish" class="btn btn-primary">Publish</button>
+  {% else %}
+    <button type="submit" form="blog-edit-form" class="btn btn-primary">Save post</button>
+    {% if _p %}
+    <form method="post" action="{{ url_for('main.blog_unpublish', bid=_p.id) }}" style="display:inline"
+          onsubmit="return confirm('Move this published post back to drafts? It will disappear from the public site until republished.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn" title="Move to Drafts">Move to Drafts</button>
+    </form>
+    {% endif %}
+  {% endif %}
+  {% if _p %}
+  <form method="post" action="{{ url_for('main.blog_delete', bid=_p.id) }}" style="display:inline"
+        onsubmit="return confirm('Delete this post permanently? Featured image will be cleaned up.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-danger">Delete</button>
+  </form>
+  {% endif %}
+{% endblock %}
+{% block content %}
+<form id="blog-edit-form" class="form post-form" method="post"
+      action="{{ url_for('main.blog_save') }}" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if _p %}<input type="hidden" name="post_id" value="{{ _p.id }}">{% endif %}
+
+  {# ── Title + body ─────────────────────────────────────────── #}
+  <section class="card">
+    <div class="card-head">
+      <h2>Post</h2>
+      <span class="muted smaller">Title sits at the top of the public detail page; body is the long-form content. Markdown supported.</span>
+    </div>
+
+    <label>Title
+      <input type="text" name="title" required maxlength="255"
+             value="{{ (_p.title if _p else '') or '' }}"
+             placeholder="Notes from the literature committee">
+    </label>
+    {% if current_user.is_authenticated and current_user.can_edit_frontend() %}
+    <label>Public URL
+      <span class="muted small" style="display:block; margin: 2px 0 4px;">
+        Only the slug is editable — the public post lives at <code>/blog/&lt;slug&gt;</code>. Leave blank to derive from the title. Lowercase letters, numbers, and hyphens only. If another post already uses this slug we'll append <code>-2</code>, <code>-3</code>, etc. on save.
+      </span>
+      <div class="slug-input-row">
+        <span class="slug-input-prefix" aria-hidden="true">/blog/</span>
+        <input type="text" name="slug" class="slug-input-field"
+               value="{{ (_p.slug if (_p and _p.slug) else '') or '' }}"
+               placeholder="{{ _p.public_slug if _p else 'auto-derived from title' }}"
+               pattern="[a-z0-9-]*" maxlength="200">
+      </div>
+    </label>
+    {% if _p %}
+    {% set post = _p %}
+    {% include "_slug_history.html" ignore missing %}
+    {% endif %}
+    {% endif %}
+    <label>Summary <span class="muted small">(short blurb shown in lists, link previews, and the top of the post)</span>
+      <textarea name="summary" rows="2"
+                placeholder="One or two sentences — what's this post about?">{{ (_p.summary if _p else '') or '' }}</textarea>
+    </label>
+    <label>Body <span class="muted small">(full content, Markdown supported)</span>
+      <textarea name="body" rows="14"
+                placeholder="The full body of the post. Markdown supported.">{{ (_p.body if _p else '') or '' }}</textarea>
+    </label>
+  </section>
+
+  {# ── Categories + tags ─────────────────────────────────────── #}
+  <section class="card">
+    <div class="card-head">
+      <h2>Categories &amp; tags</h2>
+      <span class="muted smaller">Pick one or more categories to file the post under. Tags are free-form topic labels — the frontend block can scope a list to either.</span>
+    </div>
+    {% if categories %}
+    <div class="blog-tax-grid">
+      {% for c in categories %}
+      <label class="blog-tax-pill">
+        <input type="checkbox" name="category_ids" value="{{ c.id }}"
+               {% if _p and c in _p.categories %}checked{% endif %}>
+        <span class="blog-tax-pill-body" {% if c.color %}style="--blog-cat-color: {{ c.color }};"{% endif %}>
+          {% if c.color %}<span class="blog-tax-swatch" style="background: {{ c.color }};"></span>{% endif %}
+          <span class="blog-tax-name">{{ c.name }}</span>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted small">No categories yet. <a href="{{ url_for('main.blog_categories') }}">Create one</a> to start filing posts.</p>
+    {% endif %}
+
+    <div class="blog-tax-tags">
+      <label>Existing tags <span class="muted small">(hold ⌘/Ctrl to multi-select)</span>
+        <select name="tag_ids" multiple size="6" class="blog-tag-select">
+          {% for t in tags %}
+          <option value="{{ t.id }}" {% if _p and t in _p.tags %}selected{% endif %}>#{{ t.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Add new tags <span class="muted small">(comma-separated; new ones are auto-created)</span>
+        <input type="text" name="tag_names_new" placeholder="recovery, h&i, literature">
+      </label>
+    </div>
+  </section>
+
+  {# ── Featured image ─────────────────────────────────────────── #}
+  <section class="card">
+    <div class="card-head">
+      <h2>Featured image</h2>
+      <span class="muted smaller">Displayed at the top of the post, in list cards, and in link-preview cards. PNG, JPG, or WebP.</span>
+    </div>
+    <div class="og-image-row">
+      <div class="og-image-preview">
+        {% if _p and _p.featured_image_filename %}
+        <img src="{{ url_for('public.blog_post_featured_image', bid=_p.id) }}" alt="Featured image">
+        <label class="check fe-logo-clear-label">
+          <input type="checkbox" name="clear_featured_image" value="1"><span>Remove current image</span>
+        </label>
+        {% else %}
+        <div class="og-image-empty muted small">No image uploaded yet.</div>
+        {% endif %}
+      </div>
+      <div class="og-image-fields">
+        <label>Replace image
+          <input type="file" name="featured_image" accept="image/png,image/jpeg,image/webp">
+        </label>
+      </div>
+    </div>
+  </section>
+
+  {# ── Author byline ─────────────────────────────────────────── #}
+  <section class="card">
+    <div class="card-head">
+      <h2>Author</h2>
+      <span class="muted smaller">Optional byline shown publicly. The bio appears in the author card on the detail page.</span>
+    </div>
+    <label>Author name
+      <input type="text" name="author_name" maxlength="120"
+             value="{{ (_p.author_name if _p else '') or '' }}"
+             placeholder="J. Doe">
+    </label>
+    <label>Author bio <span class="muted small">(short paragraph, plain text)</span>
+      <textarea name="author_bio" rows="3"
+                placeholder="A few sentences about the author.">{{ (_p.author_bio if _p else '') or '' }}</textarea>
+    </label>
+  </section>
+
+  {# ── Publication settings ─────────────────────────────────────── #}
+  <section class="card">
+    <div class="card-head">
+      <h2>Publication</h2>
+      <span class="muted smaller">Date displayed under the title (also drives newest-first ordering). Featured / pinned posts surface at the top of lists.</span>
+    </div>
+    <div class="form-row">
+      <label>Publish date
+        <input type="datetime-local" name="published_at"
+               value="{% if _p and _p.published_at %}{{ _p.published_at.strftime('%Y-%m-%dT%H:%M') }}{% endif %}">
+      </label>
+      <label>Reading time <span class="muted small">(minutes; blank = auto)</span>
+        <input type="number" name="reading_minutes" min="1" max="999"
+               value="{{ (_p.reading_minutes if _p else '') or '' }}">
+      </label>
+    </div>
+    <label class="check">
+      <input type="checkbox" name="is_pinned" value="1" {% if _p and _p.is_pinned %}checked{% endif %}>
+      <span>Pin to top of lists</span>
+    </label>
+    <label class="check">
+      <input type="checkbox" name="is_featured" value="1" {% if _p and _p.is_featured %}checked{% endif %}>
+      <span>Featured (highlighted in magazine layouts)</span>
+    </label>
+    <label class="check">
+      <input type="checkbox" name="allow_comments" value="1" {% if not _p or _p.allow_comments %}checked{% endif %}>
+      <span>Allow comments</span>
+    </label>
+  </section>
+</form>
+
+<style>
+  .blog-tax-grid {
+    display: flex; flex-wrap: wrap; gap: .55rem; margin-bottom: 1rem;
+  }
+  .blog-tax-pill { margin: 0; }
+  .blog-tax-pill input { position: absolute; opacity: 0; pointer-events: none; }
+  .blog-tax-pill-body {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 14px; border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--panel-2, var(--panel));
+    cursor: pointer; transition: all .15s ease;
+    font-size: .9rem;
+  }
+  .blog-tax-pill input:checked + .blog-tax-pill-body {
+    background: color-mix(in srgb, var(--blog-cat-color, var(--accent)) 18%, transparent);
+    border-color: color-mix(in srgb, var(--blog-cat-color, var(--accent)) 50%, transparent);
+    color: var(--blog-cat-color, var(--accent));
+    font-weight: 600;
+  }
+  .blog-tax-swatch {
+    width: 14px; height: 14px; border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.15);
+  }
+  .blog-tax-tags {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+  }
+  @media (max-width: 720px) { .blog-tax-tags { grid-template-columns: 1fr; } }
+  .blog-tag-select { width: 100%; min-height: 7rem; }
+</style>
+{% endblock %}

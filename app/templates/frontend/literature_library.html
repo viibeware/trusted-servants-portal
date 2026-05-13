@@ -153,6 +153,32 @@
   var noMatch = results.querySelector('[data-library-no-match]');
   var activeLib = 'all';
 
+  // Mirrors the meetings-list entrance animation: replay a staggered
+  // slide-in on every visible item card after the rail filter changes
+  // so the list eases into its new shape instead of jumping. The class
+  // is stripped on animationend so the next click can re-trigger it.
+  function animateIn() {
+    var visible = [];
+    sections.forEach(function (sec) {
+      if (sec.hidden) return;
+      sec.querySelectorAll('.fe-library-item').forEach(function (c) {
+        if (!c.hidden) visible.push(c);
+      });
+    });
+    visible.forEach(function (c) { c.classList.remove('is-entering'); });
+    if (visible[0]) void results.offsetWidth;
+    visible.forEach(function (c, i) {
+      c.style.setProperty('--fe-card-stagger', Math.min(i * 60, 1800) + 'ms');
+      c.classList.add('is-entering');
+    });
+  }
+  results.addEventListener('animationend', function (e) {
+    if (e.target.classList && e.target.classList.contains('is-entering')) {
+      e.target.classList.remove('is-entering');
+      e.target.style.removeProperty('--fe-card-stagger');
+    }
+  });
+
   // Same punctuation strip the server uses to build the per-item
   // search blob, so apostrophes / question marks / commas in the
   // query don't unmatch a perfectly-good blob token.
@@ -165,7 +191,7 @@
       .filter(Boolean);
   }
 
-  function applyFilter(value) {
+  function applyFilter(value, animate) {
     activeLib = value;
     var query = tokens();
     var hasQuery = query.length > 0;
@@ -200,6 +226,11 @@
         ? 'No items match your search.'
         : 'No items match your filters.';
     }
+
+    // Replay only on user-driven filter changes; passing animate=false
+    // (initial paint or pure search keystrokes) skips it so typing
+    // doesn't restage the list on every character.
+    if (animate !== false) animateIn();
   }
 
   pills.forEach(function (btn) {
@@ -225,13 +256,13 @@
         });
         activeLib = 'all';
       }
-      applyFilter(activeLib);
+      applyFilter(activeLib, false);
     });
     searchInput.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && searchInput.value) {
         e.preventDefault();
         searchInput.value = '';
-        applyFilter(activeLib);
+        applyFilter(activeLib, false);
       }
     });
   }

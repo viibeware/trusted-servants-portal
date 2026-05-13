@@ -18,20 +18,79 @@
   {%- set _disp = d.display or 'flex' -%}
   {%- set _ = _styles.append('display: ' ~ _disp) -%}
   {%- if _disp == 'grid' -%}
-    {%- set _ = _styles.append('grid-template-columns: ' ~ (d.grid_columns or 'repeat(2, 1fr)')) -%}
+    {# Grid columns ride on a CSS custom property so the mobile media
+       query in frontend.css can collapse the container to a single
+       column on phones without fighting inline-style specificity.
+       Default (two columns) is also encoded as the var() fallback in
+       CSS so containers without an explicit grid_columns value still
+       degrade correctly on small viewports. #}
+    {%- set _ = _styles.append('--block-cont-grid-cols: ' ~ (d.grid_columns or 'repeat(2, 1fr)')) -%}
   {%- else -%}
-    {%- set _ = _styles.append('flex-direction: ' ~ (d.direction or 'column')) -%}
+    {# Flex direction ditto — the same mobile breakpoint flips row-
+       direction containers to stack vertically. Wrap stays inline as
+       a per-instance opt-in. `mobile_direction` (when set to one of
+       row / column / row-reverse / column-reverse) layers a second
+       var the mobile media query prefers over the default column
+       collapse, so admins can keep a row, reverse it, or surface the
+       bottom child first on phones. #}
+    {%- set _ = _styles.append('--block-cont-flex-dir: ' ~ (d.direction or 'column')) -%}
+    {%- set _mdir = (d.get('mobile_direction') or '') | string | trim -%}
+    {%- if _mdir in ('row', 'row-reverse', 'column', 'column-reverse') -%}
+      {%- set _ = _styles.append('--block-cont-flex-dir-mobile: ' ~ _mdir) -%}
+    {%- endif -%}
     {%- if d.wrap %}{%- set _ = _styles.append('flex-wrap: wrap') -%}{%- endif -%}
   {%- endif -%}
   {%- set _ = _styles.append('justify-content: ' ~ (d.justify or 'flex-start')) -%}
   {%- set _ = _styles.append('align-items: ' ~ (d.align or 'stretch')) -%}
   {%- set _ = _styles.append('gap: ' ~ (d.gap or '1rem')) -%}
-  {%- set _ = _styles.append('padding: ' ~ (d.padding or '1rem')) -%}
-  {%- if d.bg_color %}{%- set _ = _styles.append('background-color: ' ~ (d.bg_color|css_color)) -%}{%- endif -%}
+  {# Padding emitted as a CSS var (not a direct `padding:` declaration)
+     so the mobile media query can override it without an inline-style
+     specificity war. `padding_mobile` adds a second var the mobile
+     breakpoint prefers; blank means "mobile padding = desktop". #}
+  {%- set _ = _styles.append('--block-cont-padding: ' ~ (d.padding or '1rem')) -%}
+  {%- set _padm = (d.get('padding_mobile') or '') | string | trim -%}
+  {%- if _padm -%}{%- set _ = _styles.append('--block-cont-padding-mobile: ' ~ _padm) -%}{%- endif -%}
+  {# Background / border-color / shadow are emitted as INLINE CSS
+     VARIABLES, not direct properties. A global `.block-container`
+     rule in frontend.css reads the variables for the rest state.
+     Direct properties would have inline specificity (1,0,0,0) and
+     defeat the `:hover` rules; the variable-driven approach lets
+     `.block-container--hover-bg:hover { background-color: ... }`
+     win when the admin configured hover overrides. #}
+  {%- if d.bg_color %}{%- set _ = _styles.append('--block-cont-bg: ' ~ (d.bg_color|css_color)) -%}{%- endif -%}
   {%- if d.get('bg_color_dark') %}{%- set _ = _styles.append('--tsp-bg-dm: ' ~ (d.get('bg_color_dark')|css_color)) -%}{%- endif -%}
+  {# Border — per-side widths fall back to uniform `border_width` when
+     the override field is empty. Width + style stay inline as direct
+     properties (no hover override for those); colour goes into the
+     `--block-cont-border-color` variable so hover can swap it. #}
   {%- set _bw = (d.border_width if d.border_width is not none else 0) | int -%}
-  {%- if _bw and (d.border_style or 'solid') != 'none' -%}
-    {%- set _ = _styles.append('border: ' ~ _bw ~ 'px ' ~ (d.border_style or 'solid') ~ ' ' ~ ((d.border_color|css_color) or 'currentColor')) -%}
+  {%- if (d.border_style or 'solid') != 'none' -%}
+    {%- set _bwt_raw = d.get('border_w_top') -%}
+    {%- set _bwr_raw = d.get('border_w_right') -%}
+    {%- set _bwb_raw = d.get('border_w_bottom') -%}
+    {%- set _bwl_raw = d.get('border_w_left') -%}
+    {%- set _bwt = (_bwt_raw if _bwt_raw not in (none, '') else _bw) | int -%}
+    {%- set _bwr = (_bwr_raw if _bwr_raw not in (none, '') else _bw) | int -%}
+    {%- set _bwb = (_bwb_raw if _bwb_raw not in (none, '') else _bw) | int -%}
+    {%- set _bwl = (_bwl_raw if _bwl_raw not in (none, '') else _bw) | int -%}
+    {%- set _bmax = [_bwt, _bwr, _bwb, _bwl] | max -%}
+    {# Emit border-style + border-width even when all rest-state widths
+       are 0, as long as a hover override is set — otherwise the hover
+       rule swaps `border-width` but there's no `border-style` to paint
+       (default `border-style: none` makes a 1px border invisible). #}
+    {%- set _has_hover_bw = d.get('hover_border_width') not in (none, '') -%}
+    {%- if _bmax or _has_hover_bw -%}
+      {%- set _bstyle = d.border_style or 'solid' -%}
+      {%- set _ = _styles.append('border-style: ' ~ _bstyle) -%}
+      {# border-width emits as a VARIABLE, not a direct property —
+         inline `border-width:` has specificity 1,0,0,0 and would
+         defeat the `:hover` rule that swaps it (which has 0,0,2,0).
+         The `.block-container` rule in frontend.css reads the var. #}
+      {%- set _ = _styles.append('--block-cont-border-width: ' ~ _bwt ~ 'px ' ~ _bwr ~ 'px ' ~ _bwb ~ 'px ' ~ _bwl ~ 'px') -%}
+      {%- if d.border_color -%}
+        {%- set _ = _styles.append('--block-cont-border-color: ' ~ (d.border_color|css_color)) -%}
+      {%- endif -%}
+    {%- endif -%}
   {%- endif -%}
   {%- if d.get('border_color_dark') %}{%- set _ = _styles.append('--tsp-border-dm: ' ~ (d.get('border_color_dark')|css_color)) -%}{%- endif -%}
   {%- set _br = (d.border_radius if d.border_radius is not none else 0) | int -%}
@@ -43,10 +102,24 @@
       {%- set _ = _styles.append('margin-left: auto; margin-right: auto') -%}
     {%- endif -%}
   {%- endif -%}
+  {# Height + min-height — only emitted when the admin filled the field
+     in. `height: 100%` is the common pattern for letting a container
+     fill its grid cell so flex children can space-between to the
+     bottom. Blank = auto-size to content. #}
+  {%- set _h = (d.get('height') or '') | string | trim -%}
+  {%- if _h -%}{%- set _ = _styles.append('height: ' ~ _h) -%}{%- endif -%}
+  {%- set _mh = (d.get('min_height') or '') | string | trim -%}
+  {%- if _mh -%}{%- set _ = _styles.append('min-height: ' ~ _mh) -%}{%- endif -%}
   {%- set _shadow = _PP_CONT_SHADOW.get(d.shadow or 'none', 'none') -%}
-  {%- set _ = _styles.append('--block-cont-shadow: ' ~ _shadow ~ '; box-shadow: var(--block-cont-shadow)') -%}
+  {%- if _shadow != 'none' -%}
+    {%- set _ = _styles.append('--block-cont-shadow: ' ~ _shadow) -%}
+  {%- endif -%}
   {%- if d.hover_bg_color %}{%- set _ = _styles.append('--block-cont-hover-bg: ' ~ d.hover_bg_color) -%}{%- endif -%}
   {%- if d.hover_border_color %}{%- set _ = _styles.append('--block-cont-hover-border: ' ~ d.hover_border_color) -%}{%- endif -%}
+  {%- set _hbw_raw = d.get('hover_border_width') -%}
+  {%- if _hbw_raw not in (none, '') -%}
+    {%- set _ = _styles.append('--block-cont-hover-border-width: ' ~ (_hbw_raw | int) ~ 'px') -%}
+  {%- endif -%}
   {%- if d.hover_shadow -%}
     {%- set _hs = _PP_CONT_SHADOW.get(d.hover_shadow, '') -%}
     {%- if _hs %}{%- set _ = _styles.append('--block-cont-hover-shadow: ' ~ _hs) -%}{%- endif -%}
@@ -232,6 +305,59 @@
       {%- if d.get('name') %}{{ icon(d.get('name')) }}{%- endif %}
       {%- if d.get('url') %}</a>{%- endif %}
     </div>
+  {%- elif t == 'hero' -%}
+    {# Per-page hero — content + background + buttons all come from
+       the block's own `data`. The partial reuses the site hero's
+       `.fe-hero` CSS recipe so the block looks like part of the same
+       design family without any new stylesheet, but it ignores
+       SiteSetting entirely (the homepage still uses _hero.html for
+       its site-wide hero). #}
+    {%- include "frontend/blocks/hero_block.html" -%}
+  {%- elif t == 'meetings' -%}
+    {# Live meetings list. The shared homepage partial reads its
+       config from `block_content._meetings` and its rows from
+       `meetings_groups`; the page route pre-resolved both per
+       block.id in `pp_meetings_groups_by_id`. The `with` scope
+       handed the partial just those two vars so multiple meetings
+       blocks on the same page each get their own filtered list. #}
+    {%- with block_content = {'_meetings': d},
+             meetings_groups = (pp_meetings_groups_by_id or {}).get(b.id, []) -%}
+      {%- include "frontend/blocks/meetings.html" -%}
+    {%- endwith -%}
+  {%- elif t == 'events' -%}
+    {# Live upcoming-events list — same pattern as the meetings
+       block. Page route hydrates `pp_events_list_by_id` so each
+       instance can carry its own max_count / display toggles. #}
+    {%- with block_content = {'_events': d},
+             events_list = (pp_events_list_by_id or {}).get(b.id, []) -%}
+      {%- include "frontend/blocks/events.html" -%}
+    {%- endwith -%}
+  {%- elif t == 'features' -%}
+    {# Features cards grid. The homepage's shared partial reads its
+       config from `block_content.features`; we re-shape the per-page
+       block's data into that same dict so the public render is
+       byte-for-byte identical to the homepage section (same heading
+       chrome, same .fe-features-grid, same on-brand icon colour). #}
+    {%- with block_content = {'features': d} -%}
+      {%- include "frontend/blocks/features.html" -%}
+    {%- endwith -%}
+  {%- elif t == 'faq' -%}
+    {# FAQ accordion. The shared partial reads `block_content.faq` as
+       the flat list of items; we re-shape `block.data.items` into
+       that key. Per-page heading + subheading flow through the
+       optional `faq_heading` / `faq_subheading` keys; the partial
+       falls back to the homepage's hardcoded strings when these are
+       empty, so cleared values still produce a valid section-head.
+       The accordion toggle handler in frontend/base.html is
+       document-level — works on any FAQ block, homepage or per-page,
+       without extra wiring. #}
+    {%- with block_content = {
+              'faq': d.get('items') or [],
+              'faq_heading': d.get('heading'),
+              'faq_subheading': d.get('subheading'),
+            } -%}
+      {%- include "frontend/blocks/faq.html" -%}
+    {%- endwith -%}
   {%- elif t == 'container' -%}
     {# Nested container — recursive render. Children flow through
        pp_block again so the styling stays consistent with the rest
@@ -241,6 +367,7 @@
     {%- set _hover_classes = [] -%}
     {%- if d.hover_bg_color %}{%- set _ = _hover_classes.append('block-container--hover-bg') -%}{%- endif -%}
     {%- if d.hover_border_color %}{%- set _ = _hover_classes.append('block-container--hover-border') -%}{%- endif -%}
+    {%- if d.get('hover_border_width') not in (none, '') %}{%- set _ = _hover_classes.append('block-container--hover-border-width') -%}{%- endif -%}
     {%- if d.hover_shadow and _PP_CONT_SHADOW.get(d.hover_shadow, '') %}{%- set _ = _hover_classes.append('block-container--hover-shadow') -%}{%- endif -%}
     {%- if d.hover_lift %}{%- set _ = _hover_classes.append('block-container--hover-lift') -%}{%- endif -%}
     {%- set _ppc_active = d.get('bg_dynamic_key') or d.get('bg_dynbg_overlay') -%}
@@ -390,6 +517,16 @@
 {%- if page.subheading_font -%}
   {%- set _ = _style_parts.append("--fe-pp-subheading-font: " ~ font_stack(page.subheading_font)) -%}
 {%- endif -%}
+{# Page-shell spacing custom properties — let the admin dial top /
+   bottom / side padding + section gap. Always emit so a deliberate
+   `0` overrides the CSS fallback. Default values match the prior
+   hard-coded numbers (80 / 96 / 16 / 32) so old pages render the
+   same on first read. #}
+{%- set _ = _style_parts.append("--fe-pp-pad-top: " ~ ((page.pad_top if page.pad_top is not none else 80)|int) ~ "px") -%}
+{%- set _ = _style_parts.append("--fe-pp-pad-bottom: " ~ ((page.pad_bottom if page.pad_bottom is not none else 96)|int) ~ "px") -%}
+{%- set _ = _style_parts.append("--fe-pp-pad-x: " ~ ((page.pad_x if page.pad_x is not none else 16)|int) ~ "px") -%}
+{%- set _ = _style_parts.append("--fe-pp-section-gap: " ~ ((page.section_gap if page.section_gap is not none else 32)|int) ~ "px") -%}
+{%- set _ = _style_parts.append("--fe-pp-block-margin-y: " ~ ((page.block_margin_y if page.block_margin_y is not none else 12)|int) ~ "px") -%}
 {%- set _bg_style = (_style_parts | join('; ')) -%}
 {%- set _heading_align = (page.heading_align or 'auto') -%}
 

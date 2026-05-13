@@ -24,6 +24,25 @@
   </div>
 </div>
 
+{% if stale_acf_stash %}
+<section class="card wp-stale-card" role="alert">
+  <div class="card-head">
+    <h2>{{ icon('alert-triangle') }} Stale wizard — ACF data not captured</h2>
+  </div>
+  <p>
+    This wizard token was created before the ACF auto-mapping was
+    added, so the stash carries no custom-field data. Committing here
+    will import the rows <b>without</b> event start/end times,
+    location, Zoom credentials, or contact info.
+  </p>
+  <p class="data-card-actions">
+    <a class="btn btn-primary" href="{{ url_for('main.wp_import_start', embed=1 if embed else None) }}">
+      {{ icon('refresh-cw') }} Reconnect to WordPress (recommended)
+    </a>
+  </p>
+</section>
+{% endif %}
+
 {% set c = preview.counts %}
 <section class="card wp-counts-card">
   <div class="card-head">
@@ -42,17 +61,66 @@
       <div class="wp-count-num">{{ c.events }}</div>
       <div class="wp-count-label">Event{% if c.events != 1 %}s{% endif %}</div>
     </div>
+    <div class="wp-count wp-count-blog">
+      <div class="wp-count-num">{{ c.blog }}</div>
+      <div class="wp-count-label">Blog post{% if c.blog != 1 %}s{% endif %}</div>
+    </div>
     <div class="wp-count wp-count-skipped">
       <div class="wp-count-num">{{ c.skipped }}</div>
       <div class="wp-count-label">Skipped</div>
     </div>
+    {% if c.archived %}
+    <div class="wp-count wp-count-archived">
+      <div class="wp-count-num">{{ c.archived }}</div>
+      <div class="wp-count-label">Archived</div>
+    </div>
+    {% endif %}
+    {% if c.drafts %}
+    <div class="wp-count wp-count-drafts">
+      <div class="wp-count-num">{{ c.drafts }}</div>
+      <div class="wp-count-label">Draft{% if c.drafts != 1 %}s{% endif %}</div>
+    </div>
+    {% endif %}
     {% if c.renamed %}
     <div class="wp-count wp-count-warning">
       <div class="wp-count-num">{{ c.renamed }}</div>
       <div class="wp-count-label">Slug renamed</div>
     </div>
     {% endif %}
+    {% if c.inline_images_downloaded %}
+    <div class="wp-count wp-count-images">
+      <div class="wp-count-num">{{ c.inline_images_downloaded }}</div>
+      <div class="wp-count-label">Inline image{% if c.inline_images_downloaded != 1 %}s{% endif %}</div>
+    </div>
+    {% endif %}
+    {% if c.acf_fields_applied %}
+    <div class="wp-count wp-count-acf"
+         title="ACF custom fields auto-mapped onto event/announcement columns (start/end times, location, Zoom, contact, website, …)">
+      <div class="wp-count-num">{{ c.acf_fields_applied }}</div>
+      <div class="wp-count-label">ACF field{% if c.acf_fields_applied != 1 %}s{% endif %}
+        {% if c.acf_rows_enriched %}<small style="display:block; opacity:.7;">across {{ c.acf_rows_enriched }} post{% if c.acf_rows_enriched != 1 %}s{% endif %}</small>{% endif %}
+      </div>
+    </div>
+    {% endif %}
   </div>
+  {% if c.blog %}
+  <div class="wp-blog-tax-summary">
+    <div class="wp-blog-tax-row">
+      <span class="wp-blog-tax-label">Categories</span>
+      <span class="wp-blog-tax-value">
+        <b>{{ c.blog_categories_matched }}</b> matched existing
+        {% if c.blog_categories_created %}· <b>{{ c.blog_categories_created }}</b> would be created{% endif %}
+      </span>
+    </div>
+    <div class="wp-blog-tax-row">
+      <span class="wp-blog-tax-label">Tags</span>
+      <span class="wp-blog-tax-value">
+        <b>{{ c.blog_tags_matched }}</b> matched existing
+        {% if c.blog_tags_created %}· <b>{{ c.blog_tags_created }}</b> would be created{% endif %}
+      </span>
+    </div>
+  </div>
+  {% endif %}
 </section>
 
 {% if preview.warnings %}
@@ -68,13 +136,36 @@
 </section>
 {% endif %}
 
+{# Single form wraps the preview table AND the IMPORT-confirm row so
+   per-row archive checkboxes and the bulk select-all can be POSTed
+   together with the IMPORT keyword. The action target is the same
+   dry-run URL — POST commits, GET re-renders the preview. #}
+{% set _create_rows = preview.rows | rejectattr('target', 'equalto', 'skip') | list %}
+<form method="post" action="{{ url_for('main.wp_import_dry_run', token=token) }}"
+      id="wp-commit-form" class="form" data-wp-fetch-form data-wp-fetch-mode="import">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+
 <section class="card wp-preview-card">
   <div class="card-head">
     <h2>{{ icon('list') }} What would be created</h2>
     <span class="muted smaller">{{ preview.rows|length }} row{% if preview.rows|length != 1 %}s{% endif %} planned</span>
+    {% if _create_rows %}
+    <div class="wp-archive-bulk">
+      <span class="muted smaller">Archive on import:</span>
+      <button type="button" class="btn btn-sm" data-archive-bulk="all">All</button>
+      <button type="button" class="btn btn-sm" data-archive-bulk="none">None</button>
+      <button type="button" class="btn btn-sm" data-archive-bulk="wp"
+              title="Match the WP status — flag posts that were trash/archived in WordPress">From WP status</button>
+    </div>
+    {% endif %}
   </div>
-  {% set _create_rows = preview.rows | rejectattr('target', 'equalto', 'skip') | list %}
   {% if _create_rows %}
+  <p class="muted small wp-archive-help">
+    Tick <b>Archive on import</b> for any post that should land in the
+    target's <i>Archived</i> tab instead of going live. Use the bulk
+    buttons above to apply to every visible row at once.
+  </p>
   <div class="wp-preview-table-wrap">
     <table class="tbl wp-preview-table">
       <thead>
@@ -82,26 +173,69 @@
           <th>Title</th>
           <th>Target</th>
           <th>Slug</th>
+          <th>Categories &amp; tags</th>
           <th>Image</th>
+          <th class="wp-archive-th">Archive</th>
         </tr>
       </thead>
       <tbody>
         {% for r in _create_rows %}
+        {% set _post = r.id is none and (preview.rows | selectattr('title', 'equalto', r.title) | first) %}
         <tr>
           <td>
             <span class="wp-preview-title">{{ r.title }}</span>
+            {% if r.wp_status and r.wp_status != 'publish' %}
+            <span class="post-chip wp-status-chip" title="WordPress status">WP: {{ r.wp_status }}</span>
+            {% endif %}
+            {% if r.is_draft %}
+            <span class="post-chip post-chip-draft" title="WordPress status was draft/private/pending — will land in Drafts">draft</span>
+            {% endif %}
             {% if r.was_renamed %}
             <span class="post-chip post-chip-warning" title="Slug already taken — auto-suffixed on save">renamed</span>
+            {% endif %}
+            {% if r.acf_applied %}
+            <details class="wp-acf-details">
+              <summary>
+                <span class="post-chip wp-acf-chip">
+                  ACF · {{ r.acf_applied|length }} field{% if r.acf_applied|length != 1 %}s{% endif %}
+                </span>
+              </summary>
+              <dl class="wp-acf-map">
+                {% for f in r.acf_applied %}
+                <div><dt>{{ f.col }}</dt><dd>{{ f.value }}</dd></div>
+                {% endfor %}
+              </dl>
+            </details>
             {% endif %}
           </td>
           <td><span class="wp-target-pill wp-target-pill--{{ r.target }} is-active">{{ target_labels[r.target] }}</span></td>
           <td><code class="wp-slug">{{ r.slug or '—' }}</code></td>
+          <td>
+            {% if r.target == 'blog' and (r.categories or r.tags) %}
+            <div class="wp-preview-tax">
+              {% for c in r.categories %}<span class="wp-cat-chip">{{ c }}</span>{% endfor %}
+              {% for t in r.tags %}<span class="wp-tag-chip">#{{ t }}</span>{% endfor %}
+            </div>
+            {% else %}
+            <span class="muted smaller">—</span>
+            {% endif %}
+          </td>
           <td>
             {% if r.image_status == 'would-download' %}
             <span class="post-chip">{{ icon('download') }} Will download</span>
             {% else %}
             <span class="muted smaller">—</span>
             {% endif %}
+          </td>
+          <td class="wp-archive-cell">
+            {%- set _wp_was_archived = r.wp_status and (r.wp_status|lower == 'trash' or 'archive' in (r.wp_status|lower)) -%}
+            <label class="wp-archive-toggle" title="Land this row in the target's Archived tab">
+              <input type="checkbox" name="archive:{{ r.key }}" value="1"
+                     data-archive-checkbox
+                     data-wp-archived="{{ '1' if _wp_was_archived else '0' }}"
+                     {% if r.is_archived %}checked{% endif %}>
+              <span>Archive</span>
+            </label>
           </td>
         </tr>
         {% endfor %}
@@ -132,24 +266,25 @@
     <span>Ready to import</span>
   </div>
   <p class="muted small data-card-lead">
-    Featured images will be downloaded and deduplicated by content hash;
-    duplicate slugs will auto-suffix with <code>-2</code>, <code>-3</code>, etc.
-    The original WordPress posts won't be touched. Type <code>IMPORT</code> below
-    to commit.
+    Featured images <em>and inline body images</em> will be downloaded and deduplicated
+    by content hash; <code>&lt;img src&gt;</code>/<code>srcset</code> URLs in the body
+    are rewritten to point at the local copies so the imported posts no longer depend
+    on the source WordPress site. Duplicate slugs auto-suffix with <code>-2</code>,
+    <code>-3</code>, etc. The original WordPress posts won't be touched. Type
+    <code>IMPORT</code> below to commit.
+    <span data-archive-summary class="wp-archive-summary"></span>
   </p>
-  <form method="post" action="{{ url_for('main.wp_import_dry_run', token=token) }}"
-        class="form wp-confirm-form" data-wp-fetch-form data-wp-fetch-mode="import">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+  <div class="wp-confirm-form">
     <label>Type <code>IMPORT</code> to confirm
       <input type="text" name="confirm" placeholder="IMPORT" autocomplete="off" required pattern="IMPORT">
     </label>
     <div class="data-card-actions">
       <button type="submit" class="btn btn-primary">{{ icon('check') }} Run import</button>
     </div>
-  </form>
+  </div>
 </section>
 {% endif %}
+</form>
 
 <style>
   .wp-counts-grid {
@@ -160,7 +295,7 @@
   .wp-count {
     border-radius: 12px;
     padding: 1rem 1.1rem;
-    background: var(--surface-alt, rgba(0,0,0,.04));
+    background: var(--panel-2, rgba(0,0,0,.04));
     border: 1px solid var(--border, rgba(0,0,0,.08));
     text-align: center;
   }
@@ -175,40 +310,89 @@
   .wp-count-label {
     font-size: .85rem;
     margin-top: .35rem;
-    color: var(--text-soft, rgba(0,0,0,.6));
+    color: var(--muted, rgba(0,0,0,.6));
     letter-spacing: .04em;
   }
   .wp-count-stories       { background: #fef3c7; border-color: #fcd34d; color: #78350f; }
   .wp-count-announcements { background: #dbeafe; border-color: #93c5fd; color: #1e3a8a; }
   .wp-count-events        { background: #dcfce7; border-color: #86efac; color: #166534; }
+  .wp-count-blog          { background: #fce7f3; border-color: #f9a8d4; color: #9d174d; }
   .wp-count-skipped       { background: #f3f4f6; border-color: #d1d5db; color: #4b5563; }
+  .wp-count-archived      { background: #f1f5f9; border-color: #94a3b8; color: #334155; }
+  .wp-count-drafts        { background: #fef3c7; border-color: #fcd34d; color: #78350f; }
+  .wp-count-images        { background: #ecfeff; border-color: #67e8f9; color: #155e75; }
   .wp-count-warning       { background: #fef3c7; border-color: #f59e0b; color: #78350f; }
+  .wp-count-acf           { background: #ede9fe; border-color: #c4b5fd; color: #5b21b6; }
   [data-theme="dark"] .wp-count-stories       { background: #4a3008; border-color: #b45309; color: #fde68a; }
   [data-theme="dark"] .wp-count-announcements { background: #14264e; border-color: #2563eb; color: #bfdbfe; }
   [data-theme="dark"] .wp-count-events        { background: #14391f; border-color: #15803d; color: #bbf7d0; }
+  [data-theme="dark"] .wp-count-blog          { background: #4a1e3a; border-color: #be185d; color: #fbcfe8; }
   [data-theme="dark"] .wp-count-skipped       { background: #2a2d34; border-color: #4b5563; color: #d1d5db; }
+  [data-theme="dark"] .wp-count-archived      { background: #1e293b; border-color: #475569; color: #cbd5e1; }
+  [data-theme="dark"] .wp-count-drafts        { background: #4a3008; border-color: #b45309; color: #fde68a; }
+  [data-theme="dark"] .wp-count-images        { background: #083344; border-color: #0e7490; color: #a5f3fc; }
   [data-theme="dark"] .wp-count-warning       { background: #4a3008; border-color: #b45309; color: #fde68a; }
+  [data-theme="dark"] .wp-count-acf           { background: #2e1065; border-color: #7c3aed; color: #ddd6fe; }
+
+  .wp-blog-tax-summary {
+    margin-top: 1rem;
+    padding: .75rem 1rem;
+    background: var(--panel-2, rgba(0,0,0,.04));
+    border-radius: 8px;
+    display: grid;
+    gap: .35rem;
+  }
+  .wp-blog-tax-row {
+    display: flex; flex-wrap: wrap; gap: .9rem;
+    font-size: .9rem;
+  }
+  .wp-blog-tax-label {
+    text-transform: uppercase; letter-spacing: .14em;
+    font-size: .68rem; font-weight: 700;
+    color: var(--muted, rgba(0,0,0,.6));
+    min-width: 88px;
+  }
+  .wp-preview-tax {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    max-width: 320px;
+  }
+  .wp-cat-chip {
+    background: var(--panel-2, rgba(0,0,0,.05));
+    border: 1px solid var(--border, rgba(0,0,0,.08));
+    color: var(--muted, rgba(0,0,0,.7));
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: .68rem;
+  }
+  .wp-tag-chip {
+    background: #fce7f3; border: 1px solid #f9a8d4; color: #9d174d;
+    border-radius: 4px; padding: 1px 7px;
+    font-size: .66rem; font-style: italic;
+  }
+  [data-theme="dark"] .wp-tag-chip {
+    background: #4a1e3a; border-color: #be185d; color: #fbcfe8;
+  }
 
   .wp-warn-card .card-head h2 { color: #b45309; }
   .wp-warn-list { margin: 0; padding-left: 1.25rem; line-height: 1.65; }
 
   .wp-preview-table-wrap { overflow-x: auto; }
-  .wp-preview-table th { font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--text-soft); }
+  .wp-preview-table th { font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
   .wp-preview-table td { vertical-align: middle; }
   .wp-preview-title { font-weight: 500; }
-  .wp-slug { font-size: .82rem; color: var(--text-soft, rgba(0,0,0,.6)); }
+  .wp-slug { font-size: .82rem; color: var(--muted, rgba(0,0,0,.6)); }
 
   .wp-skipped-details { margin-top: 1rem; }
   .wp-skipped-details summary {
     cursor: pointer;
-    color: var(--text-soft, rgba(0,0,0,.6));
+    color: var(--muted, rgba(0,0,0,.6));
     font-size: .92rem;
     padding: .35rem 0;
   }
   .wp-skipped-list {
     margin: .5rem 0 0;
     padding: .75rem 1.25rem;
-    background: var(--surface-alt, rgba(0,0,0,.03));
+    background: var(--panel-2, rgba(0,0,0,.03));
     border-radius: 8px;
     line-height: 1.6;
   }
@@ -251,8 +435,11 @@
   .wp-confirm-form { max-width: 440px; }
   .wp-confirm-form input { font-family: 'JetBrains Mono', ui-monospace, monospace; }
   /* Compact the sticky footer a bit so it doesn't dominate the modal,
-     and give it a bit more breathing room on the top edge. */
-  .wp-confirm-card { padding-top: 2rem; padding-bottom: 1.1rem; }
+     and give it a bit more breathing room on the top edge. The
+     extra bottom padding keeps the IMPORT input from kissing the
+     iframe's bottom edge in embed mode. */
+  .wp-confirm-card { padding-top: 2rem; padding-bottom: 2.25rem; }
+  body.embed .wp-confirm-card { padding-bottom: 2.5rem; }
   .wp-confirm-card .data-card-head { margin-top: 2rem; margin-bottom: .5rem; }
   .wp-confirm-card .data-card-lead { margin-bottom: .75rem; font-size: .88rem; }
   /* On the dry-run page, place the IMPORT input + Run-import button
@@ -302,10 +489,151 @@
   .wp-target-pill--stories.is-active       { background: #fef3c7; color: #78350f; }
   .wp-target-pill--announcements.is-active { background: #dbeafe; color: #1e3a8a; }
   .wp-target-pill--events.is-active        { background: #dcfce7; color: #166534; }
+  .wp-target-pill--blog.is-active          { background: #fce7f3; color: #9d174d; }
   [data-theme="dark"] .wp-target-pill--stories.is-active       { background: #4a3008; color: #fde68a; }
   [data-theme="dark"] .wp-target-pill--announcements.is-active { background: #14264e; color: #bfdbfe; }
   [data-theme="dark"] .wp-target-pill--events.is-active        { background: #14391f; color: #bbf7d0; }
+  [data-theme="dark"] .wp-target-pill--blog.is-active          { background: #4a1e3a; color: #fbcfe8; }
+
+  /* Archive controls — header bulk buttons, per-row checkbox cell,
+     summary text rendered live as the admin checks rows. */
+  .wp-archive-bulk {
+    display: flex; align-items: center; gap: .35rem;
+    margin-left: auto; flex-wrap: wrap;
+  }
+  .wp-archive-help { margin: 0 0 1rem; }
+  .wp-archive-th { width: 7rem; text-align: center !important; }
+  .wp-archive-cell { text-align: center; }
+  .wp-archive-toggle {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel-2, var(--panel));
+    cursor: pointer; user-select: none;
+    font-size: .82rem; transition: background .15s, border-color .15s;
+  }
+  .wp-archive-toggle:hover { border-color: var(--brand); }
+  .wp-archive-toggle input { margin: 0; }
+  .wp-archive-toggle:has(input:checked) {
+    background: #f1f5f9; border-color: #94a3b8; color: #334155; font-weight: 600;
+  }
+  [data-theme="dark"] .wp-archive-toggle:has(input:checked) {
+    background: #1e293b; border-color: #475569; color: #cbd5e1;
+  }
+  .wp-status-chip {
+    background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: .68rem;
+  }
+  [data-theme="dark"] .wp-status-chip {
+    background: #1e293b; border-color: #475569; color: #94a3b8;
+  }
+  .wp-stale-card {
+    background: #fef3c7; border: 1px solid #f59e0b; color: #78350f;
+  }
+  .wp-stale-card .card-head h2 { color: #b45309; }
+  .wp-stale-card p { margin: 0 0 .75rem; line-height: 1.5; }
+  .wp-stale-card .data-card-actions { margin: 0; }
+  [data-theme="dark"] .wp-stale-card {
+    background: #4a3008; border-color: #b45309; color: #fde68a;
+  }
+  [data-theme="dark"] .wp-stale-card .card-head h2 { color: #fbbf24; }
+  .wp-acf-chip {
+    background: #ede9fe; border: 1px solid #c4b5fd; color: #5b21b6;
+    font-size: .68rem; font-weight: 600;
+  }
+  [data-theme="dark"] .wp-acf-chip {
+    background: #2e1065; border-color: #7c3aed; color: #ddd6fe;
+  }
+  /* Per-row ACF disclosure — closed by default; clicking the chip
+     opens a small key-value map so admins can verify each value
+     before committing. Uses native <details>/<summary>. */
+  .wp-acf-details { display: inline-block; vertical-align: middle; }
+  .wp-acf-details > summary {
+    list-style: none; cursor: pointer; display: inline-block;
+  }
+  .wp-acf-details > summary::-webkit-details-marker { display: none; }
+  .wp-acf-details > summary::after {
+    content: " ▾"; opacity: .55; font-size: .7em;
+  }
+  .wp-acf-details[open] > summary::after { content: " ▴"; }
+  .wp-acf-map {
+    margin: .5rem 0 0;
+    padding: .6rem .75rem;
+    background: var(--panel-2, rgba(0,0,0,.03));
+    border: 1px solid var(--border, rgba(0,0,0,.08));
+    border-radius: 6px;
+    display: grid; gap: .25rem;
+    max-width: 540px;
+    font-size: .82rem;
+    line-height: 1.35;
+  }
+  .wp-acf-map > div {
+    display: grid;
+    grid-template-columns: 11rem 1fr;
+    gap: .5rem;
+    align-items: baseline;
+  }
+  .wp-acf-map dt {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: .76rem;
+    color: var(--muted, rgba(0,0,0,.6));
+    margin: 0;
+  }
+  .wp-acf-map dd {
+    margin: 0;
+    color: var(--text);
+    word-break: break-word;
+  }
+  .wp-archive-summary {
+    color: var(--muted);
+    font-style: italic;
+    font-size: .85rem;
+  }
+  .wp-archive-summary.has-archives {
+    color: #475569; font-weight: 600; font-style: normal;
+  }
+  [data-theme="dark"] .wp-archive-summary.has-archives { color: #cbd5e1; }
 </style>
+
+<script>
+(function () {
+  // Per-row archive controls. The bulk buttons (`data-archive-bulk`)
+  // flip every visible checkbox at once; the summary text in the
+  // confirm-card updates live so admins see "N posts will be
+  // archived" before they type IMPORT.
+  var checkboxes = document.querySelectorAll('[data-archive-checkbox]');
+  var summary = document.querySelector('[data-archive-summary]');
+  function updateSummary() {
+    if (!summary) return;
+    var n = 0;
+    checkboxes.forEach(function (c) { if (c.checked) n++; });
+    if (n === 0) {
+      summary.textContent = '';
+      summary.classList.remove('has-archives');
+    } else {
+      summary.textContent = '· ' + n + ' post' + (n === 1 ? '' : 's') +
+        ' will land in the Archived tab.';
+      summary.classList.add('has-archives');
+    }
+  }
+  checkboxes.forEach(function (c) {
+    c.addEventListener('change', updateSummary);
+  });
+  document.querySelectorAll('[data-archive-bulk]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var mode = btn.dataset.archiveBulk;
+      checkboxes.forEach(function (c) {
+        if (mode === 'all')      c.checked = true;
+        else if (mode === 'none') c.checked = false;
+        else if (mode === 'wp')   c.checked = c.dataset.wpArchived === '1';
+      });
+      updateSummary();
+    });
+  });
+  updateSummary();
+})();
+</script>
 
 {% include "_wp_fetch_overlay.html" %}
 {% endblock %}

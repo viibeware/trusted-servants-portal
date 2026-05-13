@@ -3,13 +3,22 @@
    animated body wrapper instead of native <details> so we get a smooth
    expand/collapse. Question through safe_html (single-line); answer
    through markdown_block (lists, headings, etc. work without leading
-   blank lines). #}
+   blank lines).
+
+   Heading + subheading: the homepage doesn't pass `faq_heading` /
+   `faq_subheading` in `block_content`, so both fall back to the
+   original hardcoded strings (zero diff for the homepage). The
+   per-page FAQ block (pp_block in frontend/page.html) passes
+   admin-edited values through these keys so the page-builder can
+   override the wording per block. #}
 {% set _faq = (block_content.faq if block_content else []) %}
-<section class="fe-section fe-faq" aria-label="Frequently asked questions">
+{% set _faq_heading = (block_content.get('faq_heading') if block_content else '') or 'Frequently asked questions' %}
+{% set _faq_subheading = (block_content.get('faq_subheading') if block_content else '') or 'Common questions from people who are about to attend their first meeting.' %}
+<section class="fe-section fe-faq" aria-label="{{ _faq_heading }}">
   <div class="fe-container">
     <div class="fe-section-head">
-      <h2>Frequently asked questions</h2>
-      <p>Common questions from people who are about to attend their first meeting.</p>
+      <h2>{{ _faq_heading | safe_html }}</h2>
+      <p>{{ _faq_subheading | safe_html }}</p>
     </div>
     <div class="fe-faq-list" data-faq-list>
       {% for q in _faq %}

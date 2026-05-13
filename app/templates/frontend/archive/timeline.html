@@ -1,0 +1,76 @@
+{# Timeline layout — vertical spine with each year as a marker; cards
+   alternate left/right of the spine. Compact filter strip up top. #}
+<section class="fe-section fe-archive fe-archive--timeline fe-mlist--w-{{ list_width_mode }}" id="archive">
+  <div class="{% if list_width_mode == 'boxed' %}fe-container{% else %}fe-mlist-fullwrap{% endif %} fe-mlist-shell"
+       {% if list_width_mode == 'boxed' %}style="max-width: {{ list_max_width }}px;"
+       {%- elif list_padding_pct %}style="padding-left: {{ list_padding_pct }}vw; padding-right: {{ list_padding_pct }}vw;"{% endif %}>
+    {% include "frontend/archive/_top_filter_strip.html" %}
+
+    <div class="fe-archive-tl" data-archive-results
+         data-archive-pagination-mode="{{ archive_pagination_mode }}"
+         data-archive-page-size="{{ archive_page_size }}">
+      {% if not archive_items %}
+      <p class="fe-mlist-empty muted">Nothing in the archive yet.</p>
+      {% else %}
+      <div class="fe-archive-tl-spine" aria-hidden="true"></div>
+      {% for bucket in year_buckets %}
+      <section class="fe-archive-tl-year"
+               data-archive-year-section="{{ bucket.year }}">
+        <h2 class="fe-archive-tl-marker">
+          <span class="fe-archive-tl-marker-dot" aria-hidden="true"></span>
+          <span class="fe-archive-tl-marker-year">{{ bucket.year }}</span>
+          <span class="fe-archive-tl-marker-count">{{ bucket['items']|length }}</span>
+        </h2>
+        <ol class="fe-archive-tl-list">
+          {% for it in bucket['items'] %}
+          <li class="fe-events-archive-card-wrap fe-archive-tl-item{% if loop.index0 % 2 == 0 %} fe-archive-tl-item--left{% else %} fe-archive-tl-item--right{% endif %}"
+              data-archive-search="{{ search_blobs.get(it.post.id, '') }}"
+              data-archive-year="{{ it.year }}"
+              data-archive-kind="{{ it.kind }}">
+            {%- set _p = it.post -%}
+            {%- set _date = it.sort_at -%}
+            {%- set _url = post_url(_p) -%}
+            <div class="fe-archive-tl-card">
+              <div class="fe-archive-tl-card-head">
+                {% if _date %}
+                <span class="fe-archive-tl-card-date">
+                  <span class="fe-archive-tl-card-date-month">{{ _date.strftime('%b') }}</span>
+                  <span class="fe-archive-tl-card-date-day">{{ _date.strftime('%-d') }}</span>
+                </span>
+                {% endif %}
+                <span class="fe-archive-tl-card-kind fe-archive-tl-card-kind--{{ it.kind }}">
+                  {{ 'Event' if it.kind == 'event' else 'Announcement' }}
+                </span>
+              </div>
+              {% if _p.featured_image_filename %}
+              <a class="fe-archive-tl-card-cover" href="{{ _url }}" tabindex="-1" aria-hidden="true">
+                <img src="{{ url_for('public.post_featured_image', pid=_p.id) }}"
+                     alt="" loading="lazy">
+              </a>
+              {% endif %}
+              <h3 class="fe-archive-tl-card-title">
+                <a href="{{ _url }}">{{ _p.title }}</a>
+              </h3>
+              {% if _p.summary %}
+              <p class="fe-archive-tl-card-summary muted">{{ _p.summary|truncate(180, True, '…') }}</p>
+              {% endif %}
+              {% if it.kind == 'event' and _p.location_name %}
+              <p class="fe-archive-tl-card-meta muted">
+                <span aria-hidden="true">{{ icon('map-pin') }}</span>
+                {{ _p.location_name }}
+              </p>
+              {% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ol>
+      </section>
+      {% endfor %}
+      <p class="fe-mlist-empty muted" data-archive-no-match hidden>No items match your filters.</p>
+      <div class="fe-archive-load-sentinel" data-archive-load-sentinel hidden aria-hidden="true"></div>
+      <nav class="fe-archive-pagination" data-archive-pagination
+           aria-label="Archive pages" hidden></nav>
+      {% endif %}
+    </div>
+  </div>
+</section>

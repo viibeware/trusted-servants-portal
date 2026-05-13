@@ -62,6 +62,12 @@ def _coerce_leaf(raw):
     label = (raw.get("label") or "").strip()
     url   = (raw.get("url") or "").strip()
     icon  = (raw.get("icon") or "").strip()
+    # Optional admin-defined hover tooltip. When set, the public renderer
+    # stamps it on the rendered element's `title` attribute (and on
+    # `aria-label` for icon-only items so screen readers also get the
+    # richer text). Empty string = no override; the public renderer
+    # falls through to the existing label / aria-label behaviour.
+    tooltip = (raw.get("tooltip") or "").strip()[:200]
     new_tab = bool(raw.get("open_in_new_tab"))
     if kind in ("link", "button") and (not label or not url):
         return None
@@ -70,7 +76,8 @@ def _coerce_leaf(raw):
     if kind == "icon" and not icon:
         return None
     return {"kind": kind, "label": label, "url": url,
-            "icon": icon, "open_in_new_tab": new_tab}
+            "icon": icon, "tooltip": tooltip,
+            "open_in_new_tab": new_tab}
 
 
 def _has_theme_toggle(items):
@@ -206,19 +213,21 @@ def parse_form_items(form, side):
     payload and return the normalised item list. Indices line up across
     fields so item N's kind matches item N's label etc."""
     prefix = f"utility_{side}_"
-    kinds   = form.getlist(prefix + "kind[]")
-    labels  = form.getlist(prefix + "label[]")
-    urls    = form.getlist(prefix + "url[]")
-    icons   = form.getlist(prefix + "icon[]")
+    kinds    = form.getlist(prefix + "kind[]")
+    labels   = form.getlist(prefix + "label[]")
+    urls     = form.getlist(prefix + "url[]")
+    icons    = form.getlist(prefix + "icon[]")
+    tooltips = form.getlist(prefix + "tooltip[]")
     new_tabs = set(form.getlist(prefix + "open_in_new_tab[]"))
-    n = max(len(kinds), len(labels), len(urls), len(icons))
+    n = max(len(kinds), len(labels), len(urls), len(icons), len(tooltips))
     items = []
     for i in range(n):
         item = {
-            "kind":  kinds[i] if i < len(kinds) else "",
-            "label": labels[i] if i < len(labels) else "",
-            "url":   urls[i] if i < len(urls) else "",
-            "icon":  icons[i] if i < len(icons) else "",
+            "kind":    kinds[i] if i < len(kinds) else "",
+            "label":   labels[i] if i < len(labels) else "",
+            "url":     urls[i] if i < len(urls) else "",
+            "icon":    icons[i] if i < len(icons) else "",
+            "tooltip": tooltips[i] if i < len(tooltips) else "",
             "open_in_new_tab": str(i) in new_tabs,
         }
         coerced = _coerce_item(item)

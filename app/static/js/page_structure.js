@@ -211,15 +211,69 @@
                         justify: 'flex-start', align: 'stretch', wrap: false,
                         grid_columns: 'repeat(2, 1fr)', gap: '0',
                         padding: '0', width_mode: 'full', max_width: 0,
-                        bg_color: '', border_width: 0, border_style: 'solid',
+                        bg_color: '', border_width: 0,
+                        border_w_top: '', border_w_right: '',
+                        border_w_bottom: '', border_w_left: '',
+                        border_style: 'solid',
                         border_color: '', border_radius: 0, shadow: 'none',
                         hover_bg_color: '', hover_border_color: '',
+                        hover_border_width: '',
                         hover_shadow: '', hover_lift: false, blocks: [] }),
     toc_sidebar: () => ({ title: 'On this page', max_level: 3,
                           sticky: true, sticky_offset: 96 }),
     icon:      () => ({ name: '', size: 32,
                         color: '', color_dark: '', color_dark_mode: 'same',
                         align: 'center', url: '', new_tab: false }),
+    // Homepage section blocks — mirror block_editor.js's blankBlock()
+    // defaults so palette drops produce identical payloads regardless
+    // of entry point. Hero has no per-block config (reads live from
+    // SiteSetting); meetings + events copy the MEETINGS_DEFAULTS /
+    // EVENTS_DEFAULTS constants from blocks.py.
+    hero:      () => ({
+      heading: 'New hero', subheading: '', eyebrow: '',
+      tagline_enabled: true,
+      heading_font: 'fraunces', heading_size_pct: 100,
+      heading_grad_start: '#0f172a', heading_grad_end: '#374151',
+      subheading_font: 'inter', subheading_size_pct: 100,
+      subheading_color: '#475569',
+      text_dynamic: false,
+      height_vh_desktop: 0, height_vh_mobile: 0,
+      bg_style: 'solid',
+      bg_color: '', bg_color_2: '', bg_gradient_angle: 180,
+      bg_image_src: '', bg_image_mode: 'cover', bg_image_scale: 100,
+      bg_hue: 225, bg_hue_2: 170, bg_blur: 80, bg_opacity: 45,
+      bg_randomize: false,
+      bg_sinewave_colors: ['#16c2ba', '#1883d5', '#5a1ce5', '#0a3eb5'],
+      bg_video_src: '', bg_video_speed: 100,
+      bg_dynamic_key: '', bg_dynbg_config_json: '',
+      particle_enabled: false, particle_effect: 'stars',
+      particle_speed: 100, particle_size: 100,
+      buttons: [],
+    }),
+    meetings:  () => ({ heading: 'Upcoming Meetings',
+                        intro: "A quick look at what's on the schedule.",
+                        filter: 'upcoming_today',
+                        max_count: 6,
+                        group_by_day: false,
+                        show_type_chip: true,
+                        show_schedule: true,
+                        show_first_n: 3,
+                        empty_message: 'No meetings scheduled — check back soon.',
+                        animation: 'fade',
+                        stagger_ms: 60 }),
+    events:    () => ({ heading: 'Upcoming Events',
+                        intro: '',
+                        max_count: 6,
+                        empty_message: 'No upcoming events — check back soon.',
+                        animation: 'fade',
+                        stagger_ms: 60,
+                        show_image: true,
+                        show_summary: true,
+                        show_location: true }),
+    features:  () => ({ heading: 'What we offer',
+                        subheading: 'Everything a fellowship needs to stay connected and welcoming.',
+                        items: [] }),
+    faq:       () => ({ heading: '', subheading: '', items: [] }),
     split:     () => ({ /* split is a layout primitive, not a block */ }),
     split3:    () => ({ /* three-column variant of split — same story */ }),
   };
@@ -425,7 +479,19 @@
     const wrap = document.createElement('div');
     wrap.className = 'fe-page-structure-block fe-page-structure-block--' + type
                   + ' is-clickable is-draggable';
-    wrap.setAttribute('data-open-modal', 'page-layout-edit-modal');
+    // Hero, Meetings, and Events blocks open dedicated modals
+    // (verbatim copies of the homepage modals), not the generic
+    // BlockEditor modal — mirrors the server-side `page_pill` macro in
+    // `_frontend_structure_card.html` so freshly-dragged pills route
+    // the same way as server-rendered ones.
+    let _openModal;
+    if (type === 'hero')          _openModal = 'page-hero-edit-modal';
+    else if (type === 'meetings') _openModal = 'page-meetings-edit-modal';
+    else if (type === 'events')   _openModal = 'page-events-edit-modal';
+    else if (type === 'features') _openModal = 'page-features-edit-modal';
+    else if (type === 'faq')      _openModal = 'page-faq-edit-modal';
+    else                          _openModal = 'page-layout-edit-modal';
+    wrap.setAttribute('data-open-modal', _openModal);
     wrap.setAttribute('data-page-block-id', payload.id);
     wrap.setAttribute('data-block-type', type);
     wrap.setAttribute('data-block-payload', JSON.stringify(payload));
@@ -1651,7 +1717,7 @@
     lottie:      ['Lottie',       'play-circle'],
     intergroup_member: ['Intergroup Member', 'users'],
     intergroup_member_roster: ['Officer Roster', 'users'],
-    library:     ['Library',        'book-open'],
+    library:     ['Library',      'book-open'],
     code:        ['Code',         'code'],
     callout:     ['Callout',      'alert-triangle'],
     list:        ['List',         'list'],
@@ -1659,5 +1725,10 @@
     toc_sidebar: ['Wiki sidebar', 'list'],
     split:       ['Two-panel',    'columns'],
     split3:      ['Three-panel',  'layout-grid'],
+    hero:        ['Hero',           'image'],
+    meetings:    ['Meetings',       'calendar-clock'],
+    events:      ['Events',         'calendar'],
+    features:    ['Features',       'layout-grid'],
+    faq:         ['FAQ',            'help-circle'],
   };
 })();

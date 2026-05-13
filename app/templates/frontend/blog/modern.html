@@ -1,0 +1,305 @@
+{% extends "frontend/base.html" %}
+{% block title %}{{ post.title }} · {{ frontend_title }}{% endblock %}
+{% block content %}
+{%- set _dynbg_active = tpl_dynbg_key or tpl_dynbg_overlay -%}
+<div class="fe-page-dynbg-host{% if _dynbg_active %} fe-dynbg-host{% endif %}"{% if tpl_style %} style="{{ tpl_style }}"{% endif %}>
+{% if _dynbg_active %}{% with dynbg_key=tpl_dynbg_key, dynbg_config=tpl_dynbg_config %}{% include "frontend/_dynbg_apply.html" %}{% endwith %}{% endif %}
+
+<article class="fe-blog-post fe-blog-post-modern">
+  {% if post.featured_image_filename %}
+  <div class="fe-blog-post-hero" data-lightbox-scope>
+    <img src="{{ url_for('public.blog_post_featured_image', bid=post.id, thumb=1600) }}"
+         data-lightbox-src="{{ url_for('public.blog_post_featured_image', bid=post.id) }}"
+         alt="{{ post.title }}" loading="eager">
+  </div>
+  {% endif %}
+
+  <div class="fe-container fe-blog-post-shell">
+    <header class="fe-blog-post-head">
+      <a class="fe-blog-post-back" href="{{ url_for('frontend.blog_list') }}">← All posts</a>
+
+      {% if post.categories %}
+      <div class="fe-blog-post-cats">
+        {% for c in post.categories %}
+        <a class="fe-blog-post-cat-chip" {% if c.color %}style="--blog-cat-color: {{ c.color }};"{% endif %}
+           href="{{ url_for('frontend.blog_list', category=c.slug) }}">{{ c.name }}</a>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <h1 class="fe-blog-post-title">{{ post.title }}</h1>
+
+
+      <div class="fe-blog-post-meta">
+        {% if post.author_name %}
+        <div class="fe-blog-post-author">
+          <div class="fe-blog-post-author-avatar" aria-hidden="true">{{ post.author_name[:1] }}</div>
+          <div class="fe-blog-post-author-info">
+            <span class="fe-blog-post-author-name">{{ post.author_name }}</span>
+            <span class="fe-blog-post-author-meta">
+              {% if post.display_date %}<time>{{ post.display_date.strftime('%B %-d, %Y') }}</time>{% endif %}
+              {% if post.reading_minutes %}<span>· {{ post.reading_minutes }} min read</span>{% endif %}
+            </span>
+          </div>
+        </div>
+        {% else %}
+        <div class="fe-blog-post-meta-flat">
+          {% if post.display_date %}<time>{{ post.display_date.strftime('%B %-d, %Y') }}</time>{% endif %}
+          {% if post.reading_minutes %}<span>· {{ post.reading_minutes }} min read</span>{% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </header>
+
+    <div class="fe-blog-post-body" data-lightbox-scope>
+      {{ (post.body or '')|markdown }}
+    </div>
+
+    {% if post.tags %}
+    <div class="fe-blog-post-tags">
+      <span class="fe-blog-post-tags-label">Tags</span>
+      {% for t in post.tags %}
+      <a class="fe-blog-post-tag" href="{{ url_for('frontend.blog_list', tag=t.slug) }}">#{{ t.name }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if post.author_name and post.author_bio %}
+    <aside class="fe-blog-post-author-card">
+      <div class="fe-blog-post-author-card-avatar">{{ post.author_name[:1] }}</div>
+      <div class="fe-blog-post-author-card-body">
+        <h3 class="fe-blog-post-author-card-name">{{ post.author_name }}</h3>
+        <p class="fe-blog-post-author-card-bio">{{ post.author_bio }}</p>
+      </div>
+    </aside>
+    {% endif %}
+
+    {% if related %}
+    <section class="fe-blog-post-related">
+      <h2 class="fe-blog-post-related-title">Continue reading</h2>
+      <ul class="fe-blog-post-related-list" role="list">
+        {% for r in related %}
+        <li>
+          <a class="fe-blog-post-related-card" href="{{ url_for('frontend.blog_post_detail', slug=r.public_slug) }}">
+            {% if r.featured_image_filename %}
+            <div class="fe-blog-post-related-art">
+              <img src="{{ url_for('public.blog_post_featured_image', bid=r.id, thumb=400) }}" alt="" loading="lazy">
+            </div>
+            {% endif %}
+            <div class="fe-blog-post-related-body">
+              {% if r.categories %}
+              <span class="fe-blog-post-related-cat" {% if r.categories[0].color %}style="--blog-cat-color: {{ r.categories[0].color }};"{% endif %}>{{ r.categories[0].name }}</span>
+              {% endif %}
+              <h3 class="fe-blog-post-related-name">{{ r.title }}</h3>
+              {% if r.display_date %}<time class="fe-blog-post-related-date">{{ r.display_date.strftime('%b %-d, %Y') }}</time>{% endif %}
+            </div>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+  </div>
+</article>
+</div>
+
+<style>
+  .fe-blog-post-modern {
+    --blog-bg: var(--fe-color-bg, #ffffff);
+    --blog-ink: var(--fe-color-text, #0f172a);
+    --blog-ink-soft: var(--fe-color-muted, #64748b);
+    --blog-rule: var(--fe-color-border, #e5e7eb);
+    --blog-accent: var(--fe-color-accent, #2563eb);
+    --blog-surface: var(--fe-color-surface, #f9fafb);
+    background: var(--blog-bg); color: var(--blog-ink);
+  }
+  [data-theme="dark"] .fe-blog-post-modern {
+    --blog-bg: #0a0e1a;
+    --blog-ink: #e5e7eb;
+    --blog-ink-soft: #9ca3af;
+    --blog-rule: #1f2937;
+    --blog-surface: #111827;
+  }
+  .fe-blog-post-hero {
+    width: 100%;
+    height: clamp(280px, 50vh, 540px);
+    overflow: hidden;
+    background: var(--blog-surface);
+  }
+  .fe-blog-post-hero img {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+  .fe-blog-post-shell {
+    max-width: 760px;
+    padding-top: clamp(2.5rem, 5vw, 4rem);
+    padding-bottom: clamp(4rem, 8vw, 6rem);
+  }
+  .fe-blog-post-back {
+    display: inline-block; margin-bottom: 2rem;
+    color: var(--blog-ink-soft); text-decoration: none;
+    font-size: .9rem; font-weight: 500;
+    transition: color .15s ease;
+  }
+  .fe-blog-post-back:hover { color: var(--blog-accent); }
+  .fe-blog-post-cats { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1.4rem; }
+  .fe-blog-post-cat-chip {
+    --blog-cat-color: var(--blog-accent);
+    color: var(--blog-cat-color);
+    background: color-mix(in srgb, var(--blog-cat-color) 14%, transparent);
+    padding: 4px 12px; border-radius: 999px;
+    font-size: .72rem; font-weight: 700; letter-spacing: .04em;
+    text-decoration: none; text-transform: uppercase;
+  }
+  .fe-blog-post-cat-chip:hover { background: color-mix(in srgb, var(--blog-cat-color) 22%, transparent); }
+  .fe-blog-post-title {
+    font-family: var(--tpl-heading-font, var(--fe-font-heading, 'Fraunces', Georgia, serif));
+    font-weight: 600; font-size: clamp(2.4rem, 5.5vw, 4rem);
+    line-height: 1.05; margin: 0 0 1.4rem;
+    letter-spacing: -.02em;
+  }
+  .fe-blog-post-deck {
+    color: var(--blog-ink-soft);
+    font-size: 1.25rem; line-height: 1.55;
+    margin: 0 0 2rem; font-weight: 400;
+    font-family: var(--tpl-body-font, var(--fe-font-body, 'Inter', system-ui, sans-serif));
+  }
+  .fe-blog-post-author { display: flex; gap: 14px; align-items: center; }
+  .fe-blog-post-author-avatar {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--blog-accent), color-mix(in srgb, var(--blog-accent) 50%, var(--blog-ink)));
+    color: #fff; display: grid; place-items: center;
+    font-weight: 700; font-size: 1.1rem;
+  }
+  .fe-blog-post-author-info { display: flex; flex-direction: column; }
+  .fe-blog-post-author-name { font-weight: 600; }
+  .fe-blog-post-author-meta { color: var(--blog-ink-soft); font-size: .85rem; }
+  .fe-blog-post-meta-flat { color: var(--blog-ink-soft); font-size: .92rem; }
+  .fe-blog-post-meta {
+    margin-bottom: 2.5rem; padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--blog-rule);
+  }
+  .fe-blog-post-body {
+    font-family: var(--tpl-body-font, var(--fe-font-body, 'Inter', system-ui, sans-serif));
+    font-size: 1.12rem; line-height: 1.75;
+    color: var(--blog-ink);
+  }
+  .fe-blog-post-body > *:first-child { margin-top: 0; }
+  .fe-blog-post-body p { margin: 0 0 1.4rem; }
+  .fe-blog-post-body h2 {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    font-weight: 600; font-size: 1.85rem; line-height: 1.2;
+    margin: 2.6rem 0 1rem; letter-spacing: -.01em;
+  }
+  .fe-blog-post-body h3 {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    font-weight: 600; font-size: 1.4rem;
+    margin: 2rem 0 .8rem;
+  }
+  .fe-blog-post-body a { color: var(--blog-accent); text-decoration: underline; text-underline-offset: 3px; }
+  .fe-blog-post-body img {
+    max-width: 100%; height: auto; border-radius: 10px;
+    margin: 1.6rem 0;
+  }
+  .fe-blog-post-body blockquote {
+    border-left: 4px solid var(--blog-accent);
+    padding: .25rem 0 .25rem 1.5rem;
+    margin: 1.8rem 0;
+    color: var(--blog-ink-soft);
+    font-style: italic; font-size: 1.16rem;
+  }
+  .fe-blog-post-body code {
+    background: var(--blog-surface);
+    padding: 2px 6px; border-radius: 4px;
+    font-size: .9em;
+  }
+  .fe-blog-post-body pre {
+    background: var(--blog-surface);
+    border: 1px solid var(--blog-rule);
+    border-radius: 8px; padding: 1rem 1.2rem;
+    overflow-x: auto; margin: 1.6rem 0;
+  }
+  .fe-blog-post-body pre code { background: transparent; padding: 0; }
+  .fe-blog-post-body ul, .fe-blog-post-body ol { padding-left: 1.6rem; margin: 0 0 1.4rem; }
+  .fe-blog-post-body li { margin-bottom: .35rem; }
+  .fe-blog-post-tags {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    margin: 3rem 0 0; padding-top: 1.5rem;
+    border-top: 1px solid var(--blog-rule);
+  }
+  .fe-blog-post-tags-label {
+    color: var(--blog-ink-soft); font-size: .82rem;
+    text-transform: uppercase; letter-spacing: .14em; font-weight: 600;
+    margin-right: 6px;
+  }
+  .fe-blog-post-tag {
+    color: var(--blog-ink-soft);
+    background: var(--blog-surface);
+    border: 1px solid var(--blog-rule);
+    padding: 3px 10px; border-radius: 6px;
+    font-size: .82rem; text-decoration: none;
+    transition: all .15s ease;
+  }
+  .fe-blog-post-tag:hover { color: var(--blog-accent); border-color: var(--blog-accent); }
+  .fe-blog-post-author-card {
+    display: flex; gap: 1.2rem; align-items: start;
+    margin-top: 3rem; padding: 1.5rem;
+    background: var(--blog-surface);
+    border: 1px solid var(--blog-rule);
+    border-radius: 12px;
+  }
+  .fe-blog-post-author-card-avatar {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--blog-accent), color-mix(in srgb, var(--blog-accent) 50%, var(--blog-ink)));
+    color: #fff; display: grid; place-items: center;
+    font-weight: 700; font-size: 1.6rem; flex-shrink: 0;
+  }
+  .fe-blog-post-author-card-name {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    margin: 0 0 .55rem; font-size: 1.1rem; font-weight: 600;
+  }
+  .fe-blog-post-author-card-bio {
+    margin: 0; color: var(--blog-ink-soft);
+    line-height: 1.6;
+  }
+  .fe-blog-post-related {
+    margin-top: 4rem; padding-top: 2.5rem;
+    border-top: 1px solid var(--blog-rule);
+  }
+  .fe-blog-post-related-title {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    font-weight: 600; font-size: 1.5rem;
+    margin: 0 0 1.5rem;
+  }
+  .fe-blog-post-related-list {
+    list-style: none; padding: 0; margin: 0;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+    gap: 1.2rem;
+  }
+  .fe-blog-post-related-card {
+    display: block; color: inherit; text-decoration: none;
+    background: var(--blog-surface);
+    border: 1px solid var(--blog-rule);
+    border-radius: 10px; overflow: hidden;
+    transition: transform .2s ease, border-color .2s ease;
+  }
+  .fe-blog-post-related-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--blog-accent) 30%, var(--blog-rule));
+  }
+  .fe-blog-post-related-art { aspect-ratio: 16 / 10; overflow: hidden; }
+  .fe-blog-post-related-art img { width: 100%; height: 100%; object-fit: cover; }
+  .fe-blog-post-related-body { padding: .9rem 1.1rem 1rem; }
+  .fe-blog-post-related-cat {
+    --blog-cat-color: var(--blog-accent);
+    color: var(--blog-cat-color); font-size: .65rem;
+    text-transform: uppercase; letter-spacing: .08em; font-weight: 700;
+  }
+  .fe-blog-post-related-name {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    margin: .35rem 0; font-size: 1.02rem; line-height: 1.3;
+    font-weight: 600;
+  }
+  .fe-blog-post-related-date { color: var(--blog-ink-soft); font-size: .78rem; }
+</style>
+{% include "frontend/_lightbox.html" %}
+{% endblock %}

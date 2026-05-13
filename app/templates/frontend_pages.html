@@ -116,24 +116,37 @@
           </tr>
         </thead>
         <tbody data-fe-pages-tbody>
+          {%- set _hp_id = site.homepage_page_id if site else None -%}
           {% for p in pages %}
           {%- set _status = 'draft' if not p.is_published else ('private' if p.is_private else 'published') -%}
           {%- set _layout_label = 'Wiki' if p.template == 'wiki' else 'Standard' -%}
           {%- set _updated = p.updated_at -%}
+          {%- set _is_hp = (p.id == _hp_id) -%}
           <tr data-page-id="{{ p.id }}"
               data-sort-title="{{ (p.title or '')|lower }}"
               data-sort-slug="{{ (p.slug or '')|lower }}"
               data-sort-layout="{{ _layout_label|lower }}"
               data-sort-status="{{ _status }}"
-              data-sort-updated="{{ _updated.timestamp()|int if _updated else 0 }}">
+              data-sort-updated="{{ _updated.timestamp()|int if _updated else 0 }}"
+              {% if _is_hp %}class="is-homepage"{% endif %}>
             <td class="fe-pages-check-col">
               <label class="fe-pages-check">
                 <input type="checkbox" form="fe-pages-bulk-form" name="page_ids"
                        value="{{ p.id }}" data-fe-pages-check>
               </label>
             </td>
-            <td><a href="{{ url_for('main.frontend_page_edit', page_id=p.id) }}">{{ p.title }}</a></td>
-            <td class="nowrap"><code>/{{ p.slug }}</code></td>
+            <td>
+              <a href="{{ url_for('main.frontend_page_edit', page_id=p.id) }}">{{ p.title }}</a>
+              {%- if _is_hp %}
+                <span class="chip chip-homepage" title="This page renders at the public `/` root">
+                  {{ icon('home') }} Homepage
+                </span>
+              {%- endif %}
+            </td>
+            <td class="nowrap">
+              {%- if _is_hp %}<code>/</code>
+              {%- else %}<code>/{{ p.slug }}</code>{%- endif %}
+            </td>
             <td><span class="chip">{{ _layout_label }}</span></td>
             <td>
               {% if _status == 'draft' %}
@@ -146,13 +159,24 @@
             </td>
             <td class="nowrap muted">{{ _updated.strftime('%Y-%m-%d') if _updated else '' }}</td>
             <td class="row-actions">
-              <a class="btn btn-sm" href="{{ url_for('frontend.page_detail', slug=p.slug) }}" target="_blank" rel="noopener">View</a>
+              {%- if _is_hp %}
+                <a class="btn btn-sm" href="{{ url_for('frontend.index') }}" target="_blank" rel="noopener">View</a>
+              {%- else %}
+                <a class="btn btn-sm" href="{{ url_for('frontend.page_detail', slug=p.slug) }}" target="_blank" rel="noopener">View</a>
+              {%- endif %}
               <a class="btn btn-sm" href="{{ url_for('main.frontend_page_edit', page_id=p.id) }}">Edit</a>
-              <form method="post" action="{{ url_for('main.frontend_page_delete', page_id=p.id) }}"
-                    onsubmit="return confirm('Delete this page? This cannot be undone.');">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-              </form>
+              {%- if not _is_hp %}
+                <form method="post" action="{{ url_for('main.frontend_page_set_homepage', page_id=p.id) }}"
+                      onsubmit="return confirm('Make “{{ p.title|e }}” the homepage? It will render at the public `/` root and the previous homepage becomes a regular page.');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm" title="Designate as homepage">Make homepage</button>
+                </form>
+                <form method="post" action="{{ url_for('main.frontend_page_delete', page_id=p.id) }}"
+                      onsubmit="return confirm('Delete this page? This cannot be undone.');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                </form>
+              {%- endif %}
             </td>
           </tr>
           {% endfor %}

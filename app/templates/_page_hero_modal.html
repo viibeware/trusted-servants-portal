@@ -1,0 +1,494 @@
+{# Per-page hero block edit modal — verbatim copy of the homepage's
+   hero modal markup, adapted to read from a `vals` proxy object
+   instead of `site` directly. The proxy mirrors `SiteSetting.frontend_hero_*`
+   attribute names so the markup is identical to the homepage.
+
+   Differences from homepage:
+   - No `<form action>` — values flow through JS into the block's
+     data, then saved with the page-edit form via blocks_json.
+   - No FrontendHeroButton table — buttons live inside the block's
+     `data.buttons` array and are managed by a JS list editor.
+   - All `url_for('public.site_hero_bg_image')` references swap to
+     `vals.bg_image_url` (the block's own /pub/<filename>).
+
+   Caller passes:
+     vals — proxy with .frontend_hero_*  attributes
+     buttons — list of dicts (block.data.buttons)
+     bg_image_url — string URL for the bg image preview (or '')
+     bg_video_url — string URL for the bg video preview (or '')
+#}
+<div class="modal fe-page-edit-modal fe-page-edit-modal--wide" id="page-hero-edit-modal" aria-hidden="true" data-page-hero-modal>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel fe-page-edit-modal-panel" role="dialog" aria-modal="true">
+    <button type="button" class="icon-btn fe-page-edit-modal-close" data-close
+            aria-label="Close">{{ icon('x') }}</button>
+<section class="card hero-unified">
+  <div class="card-head">
+    <h2>Hero</h2>
+    <span class="muted smaller">Heading, background, and call-to-action buttons for this page's hero.</span>
+  </div>
+
+  {% set _pv_font = vals.frontend_hero_heading_font or 'fraunces' %}
+  {% set _pv_size = vals.frontend_hero_heading_size or 100 %}
+  {% set _pv_grad_s = vals.frontend_hero_heading_grad_start or '#0f172a' %}
+  {% set _pv_grad_e = vals.frontend_hero_heading_grad_end or '#374151' %}
+  {% set _pv_sub_font = vals.frontend_hero_subheading_font or 'inter' %}
+  {% set _pv_sub_size = vals.frontend_hero_subheading_size or 100 %}
+  {% set _pv_sub_color = vals.frontend_hero_subheading_color %}
+  {% set _pv_bg_style = vals.frontend_hero_bg_style or 'frosty' %}
+  {% set _pv_hue_a = vals.frontend_hero_bg_hue or 225 %}
+  {% set _pv_hue_b = vals.frontend_hero_bg_hue_2 or 170 %}
+  {% set _pv_blur = vals.frontend_hero_bg_blur or 80 %}
+  {% set _pv_op = (vals.frontend_hero_bg_opacity or 45) / 100 %}
+  {% set _pv_g1 = vals.frontend_hero_bg_color or '#ffffff' %}
+  {% set _pv_g2 = vals.frontend_hero_bg_color_2 or '#e0e7ff' %}
+  {% set _pv_gang = vals.frontend_hero_bg_gradient_angle or 180 %}
+  {% set _pv_tagline_on = vals.frontend_tagline_enabled %}
+  {% set _pv_tagline = vals.frontend_tagline or 'A recovery fellowship portal.' %}
+  {% set _pv_heading_txt = vals.frontend_hero_heading or 'You are not alone.' %}
+  {% set _pv_sub_txt = vals.frontend_hero_subheading or 'Find meetings, connect with your community, and take the next step in your recovery journey.' %}
+  {% set _pv_hero_style = '' %}
+  {% if _pv_bg_style == 'solid' and vals.frontend_hero_bg_color %}
+    {% set _pv_hero_style = 'background: ' ~ vals.frontend_hero_bg_color ~ ';' %}
+  {% elif _pv_bg_style == 'gradient' %}
+    {% set _pv_hero_style = 'background: linear-gradient(' ~ _pv_gang ~ 'deg, ' ~ _pv_g1 ~ ', ' ~ _pv_g2 ~ ');' %}
+  {% elif _pv_bg_style == 'image' and bg_image_url %}
+    {% set _pv_im_mode = vals.frontend_hero_bg_image_mode or 'cover' %}
+    {% set _pv_im_scale = vals.frontend_hero_bg_image_scale or 100 %}
+    {% if _pv_im_mode == 'tile' %}
+      {% set _pv_hero_style = 'background: url(' ~ bg_image_url ~ ') repeat; background-size: ' ~ _pv_im_scale ~ 'px ' ~ _pv_im_scale ~ 'px;' %}
+    {% else %}
+      {% set _pv_hero_style = 'background: url(' ~ bg_image_url ~ ') center/cover no-repeat;' %}
+    {% endif %}
+  {% endif %}
+
+  <div class="hero-full-preview-clip">
+    <p class="hero-full-preview-label muted smaller">Live preview</p>
+    {# Inline the same design-token CSS variables the public `<body>`
+       carries so `.fe-btn-primary` etc. resolve to the admin's chosen
+       tokens (instead of the in-CSS fallbacks like `var(--fe-ink)`). #}
+    <div class="hero-full-preview frontend-body" style="{{ design_css_vars(site) }}">
+      <section class="fe-hero fe-hero-bg-{{ _pv_bg_style }}" id="hero-preview-section"
+               {% if _pv_hero_style %}style="{{ _pv_hero_style }}"{% endif %}>
+        <div class="fe-hero-bg" id="hero-preview-bg" aria-hidden="true"
+             {% if _pv_bg_style != 'frosty' %}hidden{% endif %}
+             style="--fe-blob-hue-a: {{ _pv_hue_a }}; --fe-blob-hue-b: {{ _pv_hue_b }}; --fe-blob-blur: {{ _pv_blur }}px; --fe-blob-op: {{ _pv_op }};">
+          <div class="fe-hero-blob fe-hero-blob-a"></div>
+          <div class="fe-hero-blob fe-hero-blob-b"></div>
+          <div class="fe-hero-blob fe-hero-blob-c"></div>
+        </div>
+        <canvas class="fe-hero-particles" id="hero-preview-particles" aria-hidden="true"
+                {% if not vals.frontend_hero_particle_enabled %}hidden{% endif %}></canvas>
+        <video class="fe-hero-video" id="hero-preview-video" muted autoplay loop playsinline
+               {% if not bg_video_url or _pv_bg_style != 'video' %}hidden{% endif %}>
+          {% if bg_video_url %}
+          <source src="{{ bg_video_url }}">
+          {% endif %}
+        </video>
+        <div class="fe-container fe-hero-inner">
+          <p class="fe-hero-eyebrow" id="hero-preview-eyebrow"
+             {% if not _pv_tagline_on or not _pv_tagline %}hidden{% endif %}>{{ _pv_tagline }}</p>
+          <h1 class="fe-hero-heading fe-hero-heading-{{ _pv_font }}" id="hero-preview-heading"
+              style="--fe-hero-h-size: {{ _pv_size / 100 }}; --fe-hero-h-grad-s: {{ _pv_grad_s }}; --fe-hero-h-grad-e: {{ _pv_grad_e }};">{{ _pv_heading_txt }}</h1>
+          <p class="fe-hero-sub fe-hero-sub-{{ _pv_sub_font }}" id="hero-preview-sub"
+             style="--fe-hero-sub-size: {{ _pv_sub_size / 100 }};{% if _pv_sub_color %} --fe-hero-sub-color: {{ _pv_sub_color }};{% endif %}">{{ _pv_sub_txt }}</p>
+          {# Preview CTA — emptied on the server and re-populated by
+             `page_hero_modal.js::syncPreview` from the active block's
+             current `buttons` array. Server-rendering placeholder
+             buttons would lie about the block's state until the JS
+             repaints, which is exactly what we want to avoid. #}
+          <div class="fe-hero-cta" id="hero-preview-cta"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="hero-section-grid">
+  {# No <form> wrapper for the per-page hero — values save with the
+     enclosing page-edit form, not via a hero-specific endpoint. The
+     wrapper div carries the same `hero-grid-form` class so the
+     existing `display: contents` rule lays out the columns the same way. #}
+  <div class="hero-grid-form">
+
+    <div class="hero-text-col">
+    <h3 class="hero-sub-heading">Text</h3>
+    <label>Heading
+      <input type="text" data-hero-field="heading" id="hero-heading-input" value="{{ vals.frontend_hero_heading or '' }}" placeholder="You are not alone.">
+    </label>
+    <label>Subheading
+      <textarea data-hero-field="subheading" rows="8" style="min-height: 240px;" placeholder="Find meetings, connect with your community…">{{ vals.frontend_hero_subheading or '' }}</textarea>
+    </label>
+    <label>Tagline <span class="muted small">(rendered as a small pill above the heading)</span>
+      <input type="text" data-hero-field="frontend_tagline" value="{{ vals.frontend_tagline or '' }}" placeholder="A recovery fellowship portal.">
+    </label>
+    <li class="special-page-row" style="list-style:none; margin: 1rem 0;">
+      <div class="special-page-info">
+        <div class="u-name">Show tagline in hero</div>
+        <p class="muted small">Toggle the eyebrow pill above the heading on or off.</p>
+      </div>
+      <label class="mode-toggle">
+        <input type="checkbox" data-hero-field="frontend_tagline_enabled" value="1"
+               {% if vals.frontend_tagline_enabled %}checked{% endif %}>
+        <span class="mode-track"><span class="mode-thumb"></span></span>
+      </label>
+    </li>
+
+    {%- set _hf = vals.frontend_hero_heading_font or 'fraunces' -%}
+    {%- set _sf = vals.frontend_hero_subheading_font or 'inter' -%}
+    {%- set _ss = vals.frontend_hero_subheading_size or 100 -%}
+    <div class="hero-typo-grid">
+      <fieldset class="hero-typo-group">
+        <legend>Heading</legend>
+        <div class="nav-megalink-field">
+          <span class="nav-megalink-field-lbl">Font family</span>
+          <div class="nav-megalink-seg">
+            <label class="nav-megalink-seg-opt">
+              <input type="radio" data-hero-field="frontend_hero_heading_font" value="fraunces" {% if _hf == 'fraunces' %}checked{% endif %}>
+              <span>Fraunces · serif</span>
+            </label>
+            <label class="nav-megalink-seg-opt">
+              <input type="radio" data-hero-field="frontend_hero_heading_font" value="inter" {% if _hf == 'inter' %}checked{% endif %}>
+              <span>Inter · sans</span>
+            </label>
+          </div>
+        </div>
+        <div class="nav-megalink-field hero-slider-field">
+          <span class="nav-megalink-field-lbl">Size <output data-slider-out>{{ _pv_size }}</output>%</span>
+          <input type="range" data-hero-field="frontend_hero_heading_size" min="50" max="200" step="5"
+                 value="{{ _pv_size }}" data-slider-input>
+        </div>
+        <div class="hero-typo-color-row">
+          <div class="nav-megalink-field">
+            <span class="nav-megalink-field-lbl">Gradient start <span class="muted smaller">(light)</span></span>
+            <input type="color" class="nav-megalink-color-input"
+                   data-hero-field="frontend_hero_heading_grad_start"
+                   value="{{ _pv_grad_s }}">
+          </div>
+          <div class="nav-megalink-field">
+            <span class="nav-megalink-field-lbl">Gradient end <span class="muted smaller">(light)</span></span>
+            <input type="color" class="nav-megalink-color-input"
+                   data-hero-field="frontend_hero_heading_grad_end"
+                   value="{{ _pv_grad_e }}">
+          </div>
+        </div>
+        <div class="hero-typo-color-row">
+          <div class="nav-megalink-field">
+            <span class="nav-megalink-field-lbl">Gradient start <span class="muted smaller">(dark)</span></span>
+            <input type="color" class="nav-megalink-color-input"
+                   data-hero-field="frontend_hero_heading_grad_start_dark"
+                   value="{{ vals.frontend_hero_heading_grad_start_dark or '#ffffff' }}">
+          </div>
+          <div class="nav-megalink-field">
+            <span class="nav-megalink-field-lbl">Gradient end <span class="muted smaller">(dark)</span></span>
+            <input type="color" class="nav-megalink-color-input"
+                   data-hero-field="frontend_hero_heading_grad_end_dark"
+                   value="{{ vals.frontend_hero_heading_grad_end_dark or '#94a3b8' }}">
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="hero-typo-group">
+        <legend>Subheading</legend>
+        <div class="nav-megalink-field">
+          <span class="nav-megalink-field-lbl">Font family</span>
+          <div class="nav-megalink-seg">
+            <label class="nav-megalink-seg-opt">
+              <input type="radio" data-hero-field="frontend_hero_subheading_font" value="fraunces" {% if _sf == 'fraunces' %}checked{% endif %}>
+              <span>Fraunces · serif</span>
+            </label>
+            <label class="nav-megalink-seg-opt">
+              <input type="radio" data-hero-field="frontend_hero_subheading_font" value="inter" {% if _sf == 'inter' %}checked{% endif %}>
+              <span>Inter · sans</span>
+            </label>
+          </div>
+        </div>
+        <div class="nav-megalink-field hero-slider-field">
+          <span class="nav-megalink-field-lbl">Size <output data-slider-out>{{ _ss }}</output>%</span>
+          <input type="range" data-hero-field="frontend_hero_subheading_size" min="50" max="200" step="5"
+                 value="{{ _ss }}" data-slider-input>
+        </div>
+        <div class="hero-typo-color-row">
+          <div class="nav-megalink-field">
+            <span class="nav-megalink-field-lbl">Text colour <span class="muted smaller">(light)</span></span>
+            <input type="color" class="nav-megalink-color-input"
+                   data-hero-field="frontend_hero_subheading_color"
+                   value="{{ _pv_sub_color or '#475569' }}">
+          </div>
+          <div class="nav-megalink-field">
+            <span class="nav-megalink-field-lbl">Text colour <span class="muted smaller">(dark)</span></span>
+            <input type="color" class="nav-megalink-color-input"
+                   data-hero-field="frontend_hero_subheading_color_dark"
+                   value="{{ vals.frontend_hero_subheading_color_dark or '#94a3b8' }}">
+          </div>
+        </div>
+      </fieldset>
+    </div>
+
+    <li class="special-page-row" style="list-style:none; margin: 1rem 0;">
+      <div class="special-page-info">
+        <div class="u-name">Dynamic text colors</div>
+        <p class="muted small">Auto-pick contrasting heading + subheading colors based on the background's lightness. Overrides the heading gradient and subheading colour above when on.</p>
+      </div>
+      <label class="mode-toggle">
+        <input type="checkbox" data-hero-field="frontend_hero_text_dynamic" value="1"
+               {% if vals.frontend_hero_text_dynamic %}checked{% endif %}>
+        <span class="mode-track"><span class="mode-thumb"></span></span>
+      </label>
+    </li>
+
+    {% set _hh_d = vals.frontend_hero_height_vh_desktop or 0 %}
+    {% set _hh_m = vals.frontend_hero_height_vh_mobile or 0 %}
+    <div class="hero-heading-opts hero-heading-grad-row">
+      <div class="nav-megalink-field hero-slider-field">
+        <span class="nav-megalink-field-lbl">Desktop height
+          <output data-hero-height-out>{% if _hh_d %}{{ _hh_d }}vh{% else %}Auto{% endif %}</output>
+        </span>
+        <input type="range" data-hero-field="frontend_hero_height_vh_desktop" min="0" max="200" step="5"
+               value="{{ _hh_d }}" data-hero-height-input>
+      </div>
+      <div class="nav-megalink-field hero-slider-field">
+        <span class="nav-megalink-field-lbl">Mobile height
+          <output data-hero-height-out>{% if _hh_m %}{{ _hh_m }}vh{% else %}Auto{% endif %}</output>
+        </span>
+        <input type="range" data-hero-field="frontend_hero_height_vh_mobile" min="0" max="200" step="5"
+               value="{{ _hh_m }}" data-hero-height-input>
+      </div>
+    </div>
+    <p class="muted smaller" style="margin: 4px 2px 0;">Set 0 to keep the natural padding-based height. Higher values stretch the hero to that share of the viewport.</p>
+    </div>{# /hero-text-col #}
+
+    <div class="hero-bg-col">
+    <h3 class="hero-sub-heading">Background</h3>
+    <p class="muted smaller hero-sub-help">Pick a style, tweak it, or upload an image.</p>
+    {% set _bs = vals.frontend_hero_bg_style or 'frosty' %}
+    <div class="nav-megalink-field">
+      <span class="nav-megalink-field-lbl">Style</span>
+      <div class="nav-megalink-seg">
+        {% for _k, _lbl in [('frosty','Frosty'), ('solid','Solid'), ('gradient','Gradient'), ('image','Image'), ('sinewave','Sinewave'), ('video','Video'), ('dynamic','Dynamic')] %}
+        <label class="nav-megalink-seg-opt">
+          <input type="radio" data-hero-field="frontend_hero_bg_style" value="{{ _k }}"
+                 data-bg-style-radio {% if _bs == _k %}checked{% endif %}>
+          <span>{{ _lbl }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="hero-bg-panels">
+      <div class="hero-bg-panel" data-bg-panel="frosty" {% if _bs != 'frosty' %}hidden{% endif %}>
+        <p class="muted smaller">Animated blurred colour blobs over a light wash — the original frosty look.</p>
+        <div class="hero-bg-grid">
+          <div class="nav-megalink-field hero-slider-field">
+            <span class="nav-megalink-field-lbl">Primary hue <output data-slider-out>{{ _pv_hue_a }}</output>°</span>
+            <input type="range" data-hero-field="frontend_hero_bg_hue" min="0" max="360" step="5"
+                   value="{{ _pv_hue_a }}" data-slider-input>
+          </div>
+          <div class="nav-megalink-field hero-slider-field">
+            <span class="nav-megalink-field-lbl">Accent hue <output data-slider-out>{{ _pv_hue_b }}</output>°</span>
+            <input type="range" data-hero-field="frontend_hero_bg_hue_2" min="0" max="360" step="5"
+                   value="{{ _pv_hue_b }}" data-slider-input>
+          </div>
+          <div class="nav-megalink-field hero-slider-field">
+            <span class="nav-megalink-field-lbl">Blur <output data-slider-out>{{ _pv_blur }}</output>px</span>
+            <input type="range" data-hero-field="frontend_hero_bg_blur" min="0" max="200" step="5"
+                   value="{{ _pv_blur }}" data-slider-input>
+          </div>
+          <div class="nav-megalink-field hero-slider-field">
+            <span class="nav-megalink-field-lbl">Intensity <output data-slider-out>{{ vals.frontend_hero_bg_opacity or 45 }}</output>%</span>
+            <input type="range" data-hero-field="frontend_hero_bg_opacity" min="0" max="100" step="5"
+                   value="{{ vals.frontend_hero_bg_opacity or 45 }}" data-slider-input>
+          </div>
+        </div>
+        <li class="special-page-row" style="list-style:none; margin-top: 12px;">
+          <div class="special-page-info">
+            <div class="u-name">Randomize on every page load</div>
+            <p class="muted small">Picks fresh hues each time the page renders so it never looks the same twice.</p>
+          </div>
+          <label class="mode-toggle">
+            <input type="checkbox" data-hero-field="frontend_hero_bg_randomize" value="1"
+                   {% if vals.frontend_hero_bg_randomize %}checked{% endif %}>
+            <span class="mode-track"><span class="mode-thumb"></span></span>
+          </label>
+        </li>
+      </div>
+
+      <div class="hero-bg-panel" data-bg-panel="solid" {% if _bs != 'solid' %}hidden{% endif %}>
+        <p class="muted smaller">A single flat colour behind the hero.</p>
+        <div class="nav-megalink-field">
+          <span class="nav-megalink-field-lbl">Background color</span>
+          <input type="color" class="nav-megalink-color-input"
+                 data-hero-field="frontend_hero_bg_color"
+                 value="{{ vals.frontend_hero_bg_color or '#f6f7fb' }}">
+        </div>
+      </div>
+
+      <div class="hero-bg-panel" data-bg-panel="gradient" {% if _bs != 'gradient' %}hidden{% endif %}>
+        <p class="muted smaller">A two-colour linear gradient at a chosen angle.</p>
+        <div class="hero-bg-grid">
+          <div class="nav-megalink-field">
+            <span class="nav-megalink-field-lbl">Start color</span>
+            <input type="color" class="nav-megalink-color-input"
+                   data-hero-field="frontend_hero_bg_color"
+                   value="{{ vals.frontend_hero_bg_color or '#ffffff' }}">
+          </div>
+          <div class="nav-megalink-field">
+            <span class="nav-megalink-field-lbl">End color</span>
+            <input type="color" class="nav-megalink-color-input"
+                   data-hero-field="frontend_hero_bg_color_2"
+                   value="{{ vals.frontend_hero_bg_color_2 or '#e0e7ff' }}">
+          </div>
+          <div class="nav-megalink-field hero-slider-field">
+            <span class="nav-megalink-field-lbl">Angle <output data-slider-out>{{ _pv_gang }}</output>°</span>
+            <input type="range" data-hero-field="frontend_hero_bg_gradient_angle" min="0" max="360" step="5"
+                   value="{{ _pv_gang }}" data-slider-input>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-bg-panel" data-bg-panel="image" {% if _bs != 'image' %}hidden{% endif %}>
+        <p class="muted smaller">Upload a photo, illustration, or SVG. Use <b>Tile</b> for repeating patterns and the scale slider to size a single repeat.</p>
+        <div class="hero-bg-image-preview" id="hero-image-preview" {% if not bg_image_url %}hidden{% endif %}>
+          <img src="{{ bg_image_url or '' }}" alt="Current hero background" id="hero-image-preview-img">
+          <button type="button" class="btn btn-sm" id="hero-image-clear">Remove</button>
+        </div>
+        <label>Upload image <span class="muted small">(PNG, JPG, or SVG)</span>
+          <input type="file" id="hero-image-upload" accept="image/*">
+        </label>
+        <div class="hero-bg-grid">
+          <div class="nav-megalink-field">
+            <span class="nav-megalink-field-lbl">Display mode</span>
+            {% set _im = vals.frontend_hero_bg_image_mode or 'cover' %}
+            <div class="nav-megalink-seg">
+              <label class="nav-megalink-seg-opt">
+                <input type="radio" data-hero-field="frontend_hero_bg_image_mode" value="cover" {% if _im == 'cover' %}checked{% endif %}>
+                <span>Cover</span>
+              </label>
+              <label class="nav-megalink-seg-opt">
+                <input type="radio" data-hero-field="frontend_hero_bg_image_mode" value="tile" {% if _im == 'tile' %}checked{% endif %}>
+                <span>Tile</span>
+              </label>
+            </div>
+          </div>
+          <div class="nav-megalink-field hero-slider-field">
+            <span class="nav-megalink-field-lbl">Scale <output data-slider-out>{{ vals.frontend_hero_bg_image_scale or 100 }}</output>%</span>
+            <input type="range" data-hero-field="frontend_hero_bg_image_scale" min="10" max="400" step="5"
+                   value="{{ vals.frontend_hero_bg_image_scale or 100 }}" data-slider-input>
+          </div>
+        </div>
+      </div>
+
+      {% set _sw_defaults = ['#16c2ba', '#1883d5', '#5a1ce5', '#0a3eb5'] %}
+      {% set _sw = vals.frontend_hero_sinewave_colors_list or [] %}
+      <div class="hero-bg-panel" data-bg-panel="sinewave" {% if _bs != 'sinewave' %}hidden{% endif %}>
+        <p class="muted smaller">A flowing multi-color sine-wave gradient. Pick 2–4 colors below; leave a slot blank to drop it.</p>
+        <div class="hero-bg-grid">
+          {% for i in range(1, 5) %}
+          <div class="nav-megalink-field">
+            <span class="nav-megalink-field-lbl">Color {{ i }}</span>
+            <input type="color" class="nav-megalink-color-input"
+                   data-hero-field="frontend_hero_sinewave_c{{ i }}"
+                   value="{{ _sw[i-1] if _sw and _sw|length >= i else _sw_defaults[i-1] }}"
+                   data-sinewave-input>
+          </div>
+          {% endfor %}
+          <div class="nav-megalink-field hero-reset-field">
+            <span class="nav-megalink-field-lbl">Palette</span>
+            <button type="button" class="btn btn-sm" data-sinewave-randomize>Random palette</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-bg-panel" data-bg-panel="video" {% if _bs != 'video' %}hidden{% endif %}>
+        <p class="muted smaller">Upload a short MP4/WebM clip. The video plays muted, autoplays, and fills the hero edge-to-edge.</p>
+        <div class="hero-bg-image-preview" id="hero-video-preview" {% if not bg_video_url %}hidden{% endif %}>
+          <video src="{{ bg_video_url or '' }}" muted autoplay loop playsinline
+                 style="max-width: 220px; max-height: 120px; border-radius: 6px;" id="hero-video-preview-video"></video>
+          <button type="button" class="btn btn-sm" id="hero-video-clear">Remove</button>
+        </div>
+        <label>Upload video <span class="muted small">(MP4 or WebM)</span>
+          <input type="file" id="hero-video-upload" accept="video/mp4,video/webm,video/quicktime">
+        </label>
+        <div class="hero-bg-grid">
+          <div class="nav-megalink-field">
+            <span class="nav-megalink-field-lbl">Speed</span>
+            {% set _vsp = vals.frontend_hero_bg_video_speed or 100 %}
+            <select data-hero-field="frontend_hero_bg_video_speed">
+              {% for _v, _lbl in [(50,'0.5×'), (100,'1×'), (150,'1.5×'), (200,'2×'), (300,'3×')] %}
+              <option value="{{ _v }}" {% if _vsp == _v %}selected{% endif %}>{{ _lbl }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-bg-panel" data-bg-panel="dynamic" {% if _bs != 'dynamic' %}hidden{% endif %}>
+        <p class="muted smaller">Pick a CSS-driven backdrop from the dynamic-background library — animated blobs, mesh gradients, starfields, and more. Each preset is dark-mode aware and adapts to your brand colour.</p>
+        {# Card-style trigger that opens the shared `#dynbg-picker-modal`,
+           same pattern the homepage hero / page-bg / container blocks
+           use elsewhere in the builder. The hidden inputs the macro
+           emits (`name="bg_dynamic_key"` + `bg_dynbg_config_json`)
+           also carry our `data-hero-field` so the page-hero modal's
+           two-way binding picks them up like any other input. #}
+        {% from "_dynbg_picker.html" import dynbg_trigger with context %}
+        {{ dynbg_trigger(field_name='bg_dynamic_key',
+                       current=vals.frontend_hero_bg_dynamic_key,
+                       config_field='bg_dynbg_config_json',
+                       config=(vals.frontend_hero_bg_dynbg_config_json or None),
+                       button_id='page-hero-bg-dynamic-trigger') }}
+      </div>
+    </div>
+
+    <h3 class="hero-sub-heading" style="margin-top: 1.5rem;">Particle overlay</h3>
+    <li class="special-page-row" style="list-style:none; margin: 1rem 0;">
+      <div class="special-page-info">
+        <div class="u-name">Show particles</div>
+        <p class="muted small">Animated particle layer above the background.</p>
+      </div>
+      <label class="mode-toggle">
+        <input type="checkbox" data-hero-field="frontend_hero_particle_enabled" value="1"
+               {% if vals.frontend_hero_particle_enabled %}checked{% endif %}>
+        <span class="mode-track"><span class="mode-thumb"></span></span>
+      </label>
+    </li>
+    <div class="hero-bg-grid">
+      <div class="nav-megalink-field">
+        <span class="nav-megalink-field-lbl">Effect</span>
+        <select data-hero-field="frontend_hero_particle_effect">
+          {% set _peff = vals.frontend_hero_particle_effect or 'stars' %}
+          {% for _e in ['network','stars','fireflies','bubbles','snow','waves','orbits','rain'] %}
+          <option value="{{ _e }}" {% if _peff == _e %}selected{% endif %}>{{ _e|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="nav-megalink-field hero-slider-field">
+        <span class="nav-megalink-field-lbl">Speed <output data-slider-out>{{ vals.frontend_hero_particle_speed or 100 }}</output>%</span>
+        <input type="range" data-hero-field="frontend_hero_particle_speed" min="10" max="300" step="5"
+               value="{{ vals.frontend_hero_particle_speed or 100 }}" data-slider-input>
+      </div>
+      <div class="nav-megalink-field hero-slider-field">
+        <span class="nav-megalink-field-lbl">Size <output data-slider-out>{{ vals.frontend_hero_particle_size or 100 }}</output>%</span>
+        <input type="range" data-hero-field="frontend_hero_particle_size" min="25" max="400" step="5"
+               value="{{ vals.frontend_hero_particle_size or 100 }}" data-slider-input>
+      </div>
+    </div>
+
+    </div>{# /hero-bg-col #}
+
+  </div>{# /.hero-grid-form (no <form>) #}
+
+  <div class="hero-buttons-col">
+    <h3 class="hero-sub-heading">
+      Call-to-action buttons
+      <button type="button" class="btn btn-sm btn-primary hero-sub-add" id="hero-button-add">+ Add button</button>
+    </h3>
+    <p class="muted small hero-sub-help">Rendered under the hero subheading. Each row can carry its own icons + custom colours.</p>
+    <div id="hero-buttons-list"></div>
+  </div>{# /hero-buttons-col #}
+  </div>{# /hero-section-grid #}
+
+  <div class="form-actions hero-unified-actions">
+    <button type="button" class="btn btn-primary" data-close>Done</button>
+  </div>
+</section>
+  </div>{# /modal-panel #}
+</div>{# /page-hero-edit-modal #}

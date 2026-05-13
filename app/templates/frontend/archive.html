@@ -1,130 +1,59 @@
 {% extends "frontend/base.html" %}
 {% block title %}Archive · {{ frontend_title }}{% endblock %}
+{# Dispatcher for the unified /archive page. Each layout under
+   frontend/archive/<key>.html receives the same archive_items /
+   year_buckets / search_blobs / archive_counts payload and lays down
+   the same data-attribute hooks so the shared filter + pagination JS
+   below works across every variant. Layout key is picked on the
+   admin Templates page (SiteSetting.frontend_archive_template). #}
 {% block content %}
-{# Unified archive page — past announcements + events combined. Sticky
-   filter rail on the left (live search + type checkboxes + per-year
-   pills) over a card grid on the right that mixes both kinds. Each
-   card is wrapped in a <div data-archive-search data-archive-year
-   data-archive-kind> so the JS can filter by any combination of search
-   token / year pill / type checkbox. #}
-<section class="fe-section fe-mlist fe-mlist-sidebar fe-events fe-archive fe-mlist--w-{{ list_width_mode }}" id="archive">
-  <div class="{% if list_width_mode == 'boxed' %}fe-container{% else %}fe-mlist-fullwrap{% endif %} fe-mlist-shell"
-       {% if list_width_mode == 'boxed' %}style="max-width: {{ list_max_width }}px;"
-       {%- elif list_padding_pct %}style="padding-left: {{ list_padding_pct }}vw; padding-right: {{ list_padding_pct }}vw;"{% endif %}>
-    <div class="fe-mlist-grid">
-      <aside class="fe-mlist-rail" data-archive-rail>
-        <header class="fe-mlist-head">
-          <h1>Archive</h1>
-          <p class="muted">Past announcements and events, ordered newest first. Filter by year, search by title or location, or hide one kind to focus on the other.</p>
-          <p class="fe-events-archive-back">
-            <a href="{{ url_for('frontend.events_list') }}">{{ icon('arrow-left') }} <span>Upcoming events</span></a>
-          </p>
-          <p class="fe-events-archive-back">
-            <a href="{{ url_for('frontend.announcements_list') }}">{{ icon('arrow-left') }} <span>Announcements</span></a>
-          </p>
-        </header>
-        <div class="fe-mlist-rail-inner">
-          <label class="fe-mlist-search fe-mlist-rail-search">
-            <span class="fe-mlist-search-icon" aria-hidden="true">{{ icon('search') }}</span>
-            <input type="search" data-archive-search
-                   placeholder="Search past items…" autocomplete="off"
-                   aria-label="Search archive">
-            <kbd class="fe-mlist-search-kbd" aria-hidden="true">/</kbd>
-          </label>
-
-          {# Type checkboxes — both checked by default. Unchecking one
-             hides every card of that kind across all year sections.
-             Counts mirror the live totals so visitors know what the
-             toggle changes. #}
-          <fieldset class="fe-archive-types">
-            <legend class="fe-archive-types-legend">Show</legend>
-            <label class="fe-archive-type-check">
-              <input type="checkbox" data-archive-kind-toggle="event" checked>
-              <span class="fe-archive-type-check-label">Events</span>
-              <span class="fe-mlist-day-count">{{ archive_counts.get('event', 0) }}</span>
-            </label>
-            <label class="fe-archive-type-check">
-              <input type="checkbox" data-archive-kind-toggle="announcement" checked>
-              <span class="fe-archive-type-check-label">Announcements</span>
-              <span class="fe-mlist-day-count">{{ archive_counts.get('announcement', 0) }}</span>
-            </label>
-          </fieldset>
-
-          <ul class="fe-mlist-day-list" role="tablist">
-            <li>
-              <button type="button" class="fe-mlist-day-pill is-active"
-                      data-archive-filter="all" role="tab" aria-selected="true">
-                <span>All years</span>
-                <span class="fe-mlist-day-count">{{ archive_items|length }}</span>
-              </button>
-            </li>
-            {% if year_buckets %}
-            <li class="fe-mlist-rail-section" role="presentation">
-              <span>Filter by year</span>
-            </li>
-            {% for bucket in year_buckets %}
-            <li>
-              <button type="button" class="fe-mlist-day-pill"
-                      data-archive-filter="{{ bucket.year }}" role="tab" aria-selected="false">
-                <span>{{ bucket.year }}</span>
-                <span class="fe-mlist-day-count">{{ bucket['items']|length }}</span>
-              </button>
-            </li>
-            {% endfor %}
-            {% endif %}
-          </ul>
-        </div>
-      </aside>
-
-      <div class="fe-mlist-main" data-archive-results>
-        {% if not archive_items %}
-        <p class="fe-mlist-empty muted">Nothing in the archive yet.</p>
-        {% else %}
-        {% for bucket in year_buckets %}
-        <section class="fe-mlist-day-section fe-events-archive-year"
-                 data-archive-year-section="{{ bucket.year }}">
-          <h2 class="fe-mlist-day-section-heading">
-            <span>{{ bucket.year }}</span>
-            <span class="fe-mlist-day-section-count">{{ bucket['items']|length }}</span>
-          </h2>
-          <div class="fe-events-list-stack">
-            {% for it in bucket['items'] %}
-              <div class="fe-events-archive-card-wrap"
-                   data-archive-search="{{ search_blobs.get(it.post.id, '') }}"
-                   data-archive-year="{{ it.year }}"
-                   data-archive-kind="{{ it.kind }}">
-                {% if it.kind == 'event' %}
-                  {%- set ev = it.post -%}
-                  {% include "frontend/events_list/_event_card.html" %}
-                {% else %}
-                  {%- set ann = it.post -%}
-                  {% include "frontend/announcements_list/_announcement_card.html" %}
-                {% endif %}
-              </div>
-            {% endfor %}
-          </div>
-        </section>
-        {% endfor %}
-        <p class="fe-mlist-empty muted" data-archive-no-match hidden>No items match your filters.</p>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-</section>
+{%- set _archive_tpl = template_settings(site, 'archive', list_template_key) if site else {} -%}
+{%- set _dynbg = _archive_tpl.get('bg_dynamic_key') or (site.frontend_archive_bg_dynamic_key if site else None) -%}
+{%- set _dynbg_cfg_raw = {'overlay': _archive_tpl.get('bg_dynbg_overlay'), 'colors': _archive_tpl.get('bg_dynbg_colors') or [], 'overlay_scope': _archive_tpl.get('bg_dynbg_overlay_scope'), 'overlay_size': _archive_tpl.get('bg_dynbg_overlay_size'), 'overlay_intensity': _archive_tpl.get('bg_dynbg_overlay_intensity'), 'randomize_colors': _archive_tpl.get('bg_dynbg_randomize_colors'), 'randomize_positions': _archive_tpl.get('bg_dynbg_randomize_positions'), 'animate': _archive_tpl.get('bg_dynbg_animate', True)} if _archive_tpl.get('bg_dynamic_key') or _archive_tpl.get('bg_dynbg_overlay') else (site.frontend_archive_bg_dynbg_config_json if site else None) -%}
+{%- set _dynbg_cfg = dynbg_decode(_dynbg_cfg_raw) -%}
+{%- set _dynbg_color_vars = dynbg_colors_css(dynbg_resolve_colors(_dynbg_cfg)) -%}
+{%- set _dynbg_pos_vars = dynbg_resolve_positions(_dynbg_cfg, _dynbg) -%}
+{%- set _dynbg_inline = (_dynbg_color_vars ~ " " ~ _dynbg_pos_vars) | trim -%}
+{%- set _dynbg_active = _dynbg or _dynbg_cfg.overlay -%}
+<div class="fe-page-dynbg-host{% if _dynbg_active %} fe-dynbg-host{% endif %}"{% if _dynbg_active and _dynbg_inline %} style="{{ _dynbg_inline }}"{% endif %}>
+  {% if _dynbg_active %}{% with dynbg_key=_dynbg, dynbg_config=_dynbg_cfg_raw %}{% include "frontend/_dynbg_apply.html" %}{% endwith %}{% endif %}
+  {% include list_partial %}
+</div>
 
 <script>
 (function () {
+  // Shared filter + pagination engine for every Archive layout. Each
+  // layout drops the same data-attribute hooks; the JS doesn't care
+  // about layout shape, only that these hooks exist. Layouts without
+  // a rail (top-strip variants) still mark their search input + kind
+  // toggles + year pills with the same selectors so this script
+  // wires into them without modification.
   var rail = document.querySelector('[data-archive-rail]');
   var results = document.querySelector('[data-archive-results]');
-  if (!rail || !results) return;
-  var pills = rail.querySelectorAll('[data-archive-filter]');
+  if (!results) return;
+  var pills = document.querySelectorAll('[data-archive-filter]');
   var sections = results.querySelectorAll('[data-archive-year-section]');
-  var searchInput = rail.querySelector('[data-archive-search]');
+  var searchInput = document.querySelector('[data-archive-search]');
   var noMatch = results.querySelector('[data-archive-no-match]');
-  var kindToggles = rail.querySelectorAll('[data-archive-kind-toggle]');
+  var kindToggles = document.querySelectorAll('[data-archive-kind-toggle]');
+  var sentinel = results.querySelector('[data-archive-load-sentinel]');
+  var pagerEl = results.querySelector('[data-archive-pagination]');
   var activeYear = 'all';
 
-  // Punctuation strip mirrors what the server uses to build the blob.
+  var paginationMode = (results.getAttribute('data-archive-pagination-mode') || 'infinite');
+  if (paginationMode !== 'numbered' && paginationMode !== 'infinite') paginationMode = 'infinite';
+  var pageSize = parseInt(results.getAttribute('data-archive-page-size'), 10);
+  if (!pageSize || pageSize < 1) pageSize = 20;
+  var currentPage = 1;
+  var infiniteShown = pageSize;
+
+  // Flat list of every card wrap, in document order.
+  var allCards = [];
+  results.querySelectorAll('.fe-events-archive-card-wrap').forEach(function (c) {
+    allCards.push(c);
+  });
+  allCards.forEach(function (c, i) { c.__archiveId = i; });
+
   var PUNCT_RE = /[‘’'?!.,;"“”()\[\]{}]/g;
   function tokens() {
     return ((searchInput && searchInput.value) || '')
@@ -136,65 +65,168 @@
 
   function activeKinds() {
     var set = {};
+    // When a layout ships no kind toggles, treat both kinds as active
+    // so the cards aren't accidentally all hidden.
+    if (kindToggles.length === 0) return {event: 1, announcement: 1};
     kindToggles.forEach(function (cb) {
       if (cb.checked) set[cb.getAttribute('data-archive-kind-toggle')] = 1;
     });
     return set;
   }
 
-  function applyFilter(value) {
+  function passesFilter(card, query, kinds) {
+    var kind = card.getAttribute('data-archive-kind');
+    if (!kinds[kind]) return false;
+    var year = card.getAttribute('data-archive-year');
+    if (query.length === 0 && activeYear !== 'all' && year !== activeYear) return false;
+    if (query.length === 0) return true;
+    var blob = card.getAttribute('data-archive-search') || '';
+    for (var i = 0; i < query.length; i++) {
+      if (blob.indexOf(query[i]) === -1) return false;
+    }
+    return true;
+  }
+
+  function animateCards(list) {
+    list.forEach(function (c) { c.classList.remove('is-entering'); });
+    if (list[0]) void results.offsetWidth;
+    list.forEach(function (c, i) {
+      c.style.setProperty('--fe-card-stagger', Math.min(i * 60, 1800) + 'ms');
+      c.classList.add('is-entering');
+    });
+  }
+  results.addEventListener('animationend', function (e) {
+    if (e.target.classList && e.target.classList.contains('is-entering')) {
+      e.target.classList.remove('is-entering');
+      e.target.style.removeProperty('--fe-card-stagger');
+    }
+  });
+
+  function renderPager(filteredCount) {
+    if (!pagerEl) return;
+    if (paginationMode !== 'numbered' || filteredCount === 0) {
+      pagerEl.hidden = true;
+      pagerEl.innerHTML = '';
+      return;
+    }
+    var totalPages = Math.max(1, Math.ceil(filteredCount / pageSize));
+    if (totalPages <= 1) {
+      pagerEl.hidden = true;
+      pagerEl.innerHTML = '';
+      return;
+    }
+    pagerEl.hidden = false;
+    pagerEl.innerHTML = '';
+
+    function addBtn(label, page, opts) {
+      opts = opts || {};
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'fe-archive-page-btn';
+      if (opts.active) btn.classList.add('is-active');
+      if (opts.disabled) btn.disabled = true;
+      if (opts.ariaLabel) btn.setAttribute('aria-label', opts.ariaLabel);
+      if (opts.active) btn.setAttribute('aria-current', 'page');
+      btn.textContent = label;
+      btn.addEventListener('click', function () {
+        if (page < 1 || page > totalPages || page === currentPage) return;
+        currentPage = page;
+        applyFilter(activeYear);
+        var topAnchor = results.querySelector('[data-archive-year-section]:not([hidden])');
+        if (topAnchor && topAnchor.scrollIntoView) {
+          topAnchor.scrollIntoView({behavior: 'smooth', block: 'start'});
+        }
+      });
+      pagerEl.appendChild(btn);
+    }
+    function addEllipsis() {
+      var span = document.createElement('span');
+      span.className = 'fe-archive-page-gap';
+      span.textContent = '…';
+      span.setAttribute('aria-hidden', 'true');
+      pagerEl.appendChild(span);
+    }
+
+    addBtn('‹ Prev', currentPage - 1, {disabled: currentPage === 1, ariaLabel: 'Previous page'});
+    var pagesToShow = {};
+    pagesToShow[1] = true;
+    pagesToShow[totalPages] = true;
+    for (var p = currentPage - 1; p <= currentPage + 1; p++) {
+      if (p >= 1 && p <= totalPages) pagesToShow[p] = true;
+    }
+    var ordered = Object.keys(pagesToShow).map(Number).sort(function (a, b) { return a - b; });
+    var prev = 0;
+    ordered.forEach(function (p) {
+      if (prev && p - prev > 1) addEllipsis();
+      addBtn(String(p), p, {active: p === currentPage, ariaLabel: 'Page ' + p});
+      prev = p;
+    });
+    addBtn('Next ›', currentPage + 1, {disabled: currentPage === totalPages, ariaLabel: 'Next page'});
+  }
+
+  function applySlice(filtered, sliceStart, sliceEnd) {
+    var visibleCards = {};
+    for (var i = sliceStart; i < sliceEnd && i < filtered.length; i++) {
+      visibleCards[filtered[i].__archiveId] = true;
+    }
+    var newlyShown = [];
+    allCards.forEach(function (c) {
+      var wasHidden = c.hidden;
+      var shouldShow = !!visibleCards[c.__archiveId];
+      c.hidden = !shouldShow;
+      if (shouldShow && wasHidden) newlyShown.push(c);
+    });
+    sections.forEach(function (sec) {
+      var any = false;
+      sec.querySelectorAll('.fe-events-archive-card-wrap').forEach(function (c) {
+        if (!c.hidden) any = true;
+      });
+      sec.hidden = !any;
+    });
+    return newlyShown;
+  }
+
+  function applyFilter(value, animate) {
     activeYear = value;
     var query = tokens();
     var hasQuery = query.length > 0;
     var kinds = activeKinds();
+    var filtered = allCards.filter(function (c) { return passesFilter(c, query, kinds); });
 
-    sections.forEach(function (sec) {
-      var year = sec.getAttribute('data-archive-year-section');
-      var yearMatches = hasQuery || value === 'all' || year === value;
-      if (!yearMatches) { sec.hidden = true; return; }
-
-      var anyVisible = false;
-      sec.querySelectorAll('[data-archive-search]').forEach(function (card) {
-        var kind = card.getAttribute('data-archive-kind');
-        if (!kinds[kind]) { card.hidden = true; return; }
-
-        if (!hasQuery) { card.hidden = false; anyVisible = true; return; }
-        var blob = card.getAttribute('data-archive-search') || '';
-        var ok = true;
-        for (var i = 0; i < query.length; i++) {
-          if (blob.indexOf(query[i]) === -1) { ok = false; break; }
-        }
-        card.hidden = !ok;
-        if (ok) anyVisible = true;
-      });
-
-      // Hide an entire year section when search/type filtering leaves
-      // it empty so visitors don't see a heading with no children.
-      if (hasQuery) {
-        sec.hidden = !anyVisible;
-      } else {
-        // No search — section visibility just depends on year-pill +
-        // whether at least one kind is checked has a card under it.
-        var anyCard = false;
-        sec.querySelectorAll('[data-archive-kind]').forEach(function (c) {
-          if (kinds[c.getAttribute('data-archive-kind')]) anyCard = true;
-        });
-        sec.hidden = !anyCard;
-      }
-    });
+    if (paginationMode === 'numbered') {
+      var totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      if (currentPage > totalPages) currentPage = 1;
+      var start = (currentPage - 1) * pageSize;
+      applySlice(filtered, start, start + pageSize);
+      renderPager(filtered.length);
+      if (sentinel) sentinel.hidden = true;
+    } else {
+      if (infiniteShown < pageSize) infiniteShown = pageSize;
+      applySlice(filtered, 0, infiniteShown);
+      if (sentinel) sentinel.hidden = !(filtered.length > infiniteShown);
+      renderPager(0);
+    }
 
     if (noMatch) {
-      var anyHit = false;
-      sections.forEach(function (sec) { if (!sec.hidden) anyHit = true; });
-      noMatch.hidden = anyHit;
       var label = 'No items match your filters.';
-      if (!hasQuery && Object.keys(kinds).length === 0) {
+      if (Object.keys(kinds).length === 0) {
         label = 'Pick at least one type to display.';
       } else if (hasQuery) {
         label = 'No items match your search.';
       }
       noMatch.textContent = label;
+      noMatch.hidden = filtered.length > 0;
     }
+
+    if (animate !== false) {
+      var visibleNow = allCards.filter(function (c) { return !c.hidden; });
+      animateCards(visibleNow);
+    }
+  }
+
+  function resetPaging() {
+    currentPage = 1;
+    infiniteShown = pageSize;
   }
 
   pills.forEach(function (btn) {
@@ -204,17 +236,21 @@
         b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
       });
       if (searchInput && searchInput.value) searchInput.value = '';
+      resetPaging();
       applyFilter(btn.getAttribute('data-archive-filter'));
     });
   });
 
   kindToggles.forEach(function (cb) {
-    cb.addEventListener('change', function () { applyFilter(activeYear); });
+    cb.addEventListener('change', function () {
+      resetPaging();
+      applyFilter(activeYear);
+    });
   });
 
   if (searchInput) {
     searchInput.addEventListener('input', function () {
-      var allPill = rail.querySelector('[data-archive-filter="all"]');
+      var allPill = document.querySelector('[data-archive-filter="all"]');
       if (allPill && searchInput.value) {
         pills.forEach(function (b) {
           b.classList.toggle('is-active', b === allPill);
@@ -222,13 +258,15 @@
         });
         activeYear = 'all';
       }
-      applyFilter(activeYear);
+      resetPaging();
+      applyFilter(activeYear, false);
     });
     searchInput.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && searchInput.value) {
         e.preventDefault();
         searchInput.value = '';
-        applyFilter(activeYear);
+        resetPaging();
+        applyFilter(activeYear, false);
       }
     });
   }
@@ -249,6 +287,30 @@
       searchInput.select();
     }
   });
+
+  if (paginationMode === 'infinite' && sentinel && 'IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var query = tokens();
+        var kinds = activeKinds();
+        var filtered = allCards.filter(function (c) { return passesFilter(c, query, kinds); });
+        if (infiniteShown >= filtered.length) {
+          sentinel.hidden = true;
+          return;
+        }
+        var prevShown = infiniteShown;
+        infiniteShown = Math.min(filtered.length, infiniteShown + pageSize);
+        var newly = applySlice(filtered, 0, infiniteShown);
+        sentinel.hidden = !(filtered.length > infiniteShown);
+        var freshSlice = filtered.slice(prevShown, infiniteShown);
+        if (newly.length) animateCards(freshSlice);
+      });
+    }, {rootMargin: '200px 0px'});
+    io.observe(sentinel);
+  }
+
+  applyFilter('all', false);
 })();
 </script>
 {% endblock %}

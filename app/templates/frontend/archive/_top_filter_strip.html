@@ -1,0 +1,54 @@
+{# Shared filter chrome for the top-strip archive layouts (timeline,
+   compact list, magazine). Drops the same data-attribute hooks the
+   sidebar layout uses, so the shared JS in archive.html drives every
+   layout off the same selector set. #}
+<div class="fe-archive-strip" data-archive-rail>
+  <div class="fe-archive-strip-head">
+    <h1 class="fe-archive-strip-title">Archive</h1>
+    <p class="fe-archive-strip-sub muted">Past announcements and events, ordered newest first. Filter by year, search by title or location, or hide one kind to focus on the other.</p>
+    <div class="fe-archive-strip-back-links">
+      <a href="{{ url_for('frontend.events_list') }}">{{ icon('arrow-left') }} <span>Upcoming events</span></a>
+      <a href="{{ url_for('frontend.announcements_list') }}">{{ icon('arrow-left') }} <span>Announcements</span></a>
+    </div>
+  </div>
+  <div class="fe-archive-strip-controls">
+    <label class="fe-mlist-search fe-archive-strip-search">
+      <span class="fe-mlist-search-icon" aria-hidden="true">{{ icon('search') }}</span>
+      <input type="search" data-archive-search
+             placeholder="Search past items…" autocomplete="off"
+             aria-label="Search archive">
+      <kbd class="fe-mlist-search-kbd" aria-hidden="true">/</kbd>
+    </label>
+    <fieldset class="fe-archive-types fe-archive-types--inline">
+      <legend class="visually-hidden">Show</legend>
+      <label class="fe-archive-type-check">
+        <input type="checkbox" data-archive-kind-toggle="event" checked>
+        <span class="fe-archive-type-check-label">Events</span>
+        <span class="fe-mlist-day-count">{{ archive_counts.get('event', 0) }}</span>
+      </label>
+      <label class="fe-archive-type-check">
+        <input type="checkbox" data-archive-kind-toggle="announcement" checked>
+        <span class="fe-archive-type-check-label">Announcements</span>
+        <span class="fe-mlist-day-count">{{ archive_counts.get('announcement', 0) }}</span>
+      </label>
+    </fieldset>
+  </div>
+  <ul class="fe-archive-strip-years" role="tablist">
+    <li>
+      <button type="button" class="fe-mlist-day-pill is-active"
+              data-archive-filter="all" role="tab" aria-selected="true">
+        <span>All years</span>
+        <span class="fe-mlist-day-count">{{ archive_items|length }}</span>
+      </button>
+    </li>
+    {% for bucket in year_buckets %}
+    <li>
+      <button type="button" class="fe-mlist-day-pill"
+              data-archive-filter="{{ bucket.year }}" role="tab" aria-selected="false">
+        <span>{{ bucket.year }}</span>
+        <span class="fe-mlist-day-count">{{ bucket['items']|length }}</span>
+      </button>
+    </li>
+    {% endfor %}
+  </ul>
+</div>

@@ -1,0 +1,239 @@
+{# Sidebar layout — main column of post cards on the left, sticky
+   sidebar on the right with categories, tag cloud, and the latest /
+   featured posts. Classic blog architecture. #}
+<section class="fe-blog fe-blog-sidebar fe-blog-list--w-{{ list_width_mode }}">
+  <div class="{% if list_width_mode == 'boxed' %}fe-container{% else %}fe-blog-fullwrap{% endif %}"
+       {% if list_width_mode == 'boxed' %}style="max-width: {{ list_max_width }}px;"
+       {%- elif list_padding_pct %}style="padding-left: {{ list_padding_pct }}vw; padding-right: {{ list_padding_pct }}vw;"{% endif %}>
+
+    <header class="fe-blog-sb-head">
+      <h1 class="fe-blog-sb-title">{{ list_heading or 'Blog' }}</h1>
+      {% if list_subheading %}<p class="fe-blog-sb-sub">{{ list_subheading }}</p>{% endif %}
+    </header>
+
+    <div class="fe-blog-sb-grid">
+      <main class="fe-blog-sb-main">
+        {% if active_category %}
+        <div class="fe-blog-sb-active">
+          Showing posts in <b>{{ active_category.name }}</b>
+          {% if active_category.description %}<span class="fe-blog-sb-active-desc">— {{ active_category.description }}</span>{% endif %}
+          · <a href="{{ url_for('frontend.blog_list') }}">view all</a>
+        </div>
+        {% elif active_tag %}
+        <div class="fe-blog-sb-active">
+          Showing posts tagged <b>#{{ active_tag.name }}</b>
+          · <a href="{{ url_for('frontend.blog_list') }}">view all</a>
+        </div>
+        {% endif %}
+
+        {% if not all_posts %}
+        <p class="fe-blog-sb-empty">No posts published yet.</p>
+        {% else %}
+        <ul class="fe-blog-sb-list" role="list">
+          {% for p in all_posts %}
+          <li class="fe-blog-sb-item">
+            <article class="fe-blog-sb-card">
+              <a class="fe-blog-sb-card-link" href="{{ url_for('frontend.blog_post_detail', slug=p.public_slug) }}">
+                {% if p.featured_image_filename %}
+                <div class="fe-blog-sb-art">
+                  <img src="{{ url_for('public.blog_post_featured_image', bid=p.id, thumb=600) }}"
+                       alt="" loading="lazy">
+                </div>
+                {% endif %}
+                <div class="fe-blog-sb-body">
+                  <div class="fe-blog-sb-meta-top">
+                    {% if p.display_date %}<time>{{ p.display_date.strftime('%B %-d, %Y') }}</time>{% endif %}
+                    {% if p.categories %}
+                    <span class="fe-blog-sb-cat-chip" {% if p.categories[0].color %}style="--blog-cat-color: {{ p.categories[0].color }};"{% endif %}>{{ p.categories[0].name }}</span>
+                    {% endif %}
+                    {% if p.is_pinned %}<span class="fe-blog-sb-pin">Pinned</span>{% endif %}
+                  </div>
+                  <h2 class="fe-blog-sb-card-title">{{ p.title }}</h2>
+                  {% if p.summary %}
+                  <p class="fe-blog-sb-summary">{{ p.summary }}</p>
+                  {% endif %}
+                  <div class="fe-blog-sb-meta-bottom">
+                    {% if p.author_name %}<span>By {{ p.author_name }}</span>{% endif %}
+                    {% if p.reading_minutes %}<span>{{ p.reading_minutes }} min read</span>{% endif %}
+                    <span class="fe-blog-sb-readmore">Read more →</span>
+                  </div>
+                </div>
+              </a>
+            </article>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </main>
+
+      <aside class="fe-blog-sb-aside">
+        {% if all_categories %}
+        <section class="fe-blog-sb-widget">
+          <h3 class="fe-blog-sb-widget-title">Categories</h3>
+          <ul class="fe-blog-sb-cat-list" role="list">
+            <li><a class="fe-blog-sb-cat-link{% if not active_category %} is-active{% endif %}"
+                   href="{{ url_for('frontend.blog_list') }}">All posts</a></li>
+            {% for c in all_categories %}
+            <li>
+              <a class="fe-blog-sb-cat-link{% if active_category and active_category.id == c.id %} is-active{% endif %}"
+                 {% if c.color %}style="--blog-cat-color: {{ c.color }};"{% endif %}
+                 href="{{ url_for('frontend.blog_list', category=c.slug) }}">
+                {% if c.color %}<span class="fe-blog-sb-cat-dot" style="background: {{ c.color }};"></span>{% endif %}
+                {{ c.name }}
+              </a>
+            </li>
+            {% endfor %}
+          </ul>
+        </section>
+        {% endif %}
+
+        {% if all_tags %}
+        <section class="fe-blog-sb-widget">
+          <h3 class="fe-blog-sb-widget-title">Tags</h3>
+          <div class="fe-blog-sb-tag-cloud">
+            {% for t in all_tags %}
+            <a class="fe-blog-sb-tag{% if active_tag and active_tag.id == t.id %} is-active{% endif %}"
+               href="{{ url_for('frontend.blog_list', tag=t.slug) }}">#{{ t.name }}</a>
+            {% endfor %}
+          </div>
+        </section>
+        {% endif %}
+      </aside>
+    </div>
+  </div>
+</section>
+
+<style>
+  .fe-blog-sidebar {
+    --blog-bg: var(--fe-color-surface, #f9fafb);
+    --blog-card: var(--fe-color-bg, #ffffff);
+    --blog-ink: var(--fe-color-text, #111827);
+    --blog-ink-soft: var(--fe-color-muted, #6b7280);
+    --blog-rule: var(--fe-color-border, #e5e7eb);
+    --blog-accent: var(--fe-color-accent, #1f4e79);
+    background: var(--blog-bg); color: var(--blog-ink);
+    padding: clamp(2.5rem, 5vw, 4.5rem) 0;
+  }
+  [data-theme="dark"] .fe-blog-sidebar {
+    --blog-bg: #0f172a;
+    --blog-card: #1f2937;
+    --blog-ink: #e5e7eb;
+    --blog-ink-soft: #9ca3af;
+    --blog-rule: #374151;
+  }
+  .fe-blog-sb-head { margin-bottom: 2.5rem; }
+  .fe-blog-sb-title {
+    font-family: var(--tpl-heading-font, var(--fe-font-heading, 'Fraunces', Georgia, serif));
+    font-weight: 600; font-size: clamp(2.2rem, 5vw, 3.5rem);
+    line-height: 1.05; margin: 0; letter-spacing: -.015em;
+  }
+  .fe-blog-sb-sub {
+    margin: .9rem 0 0; max-width: 36rem;
+    color: var(--blog-ink-soft); font-size: 1.05rem;
+  }
+  .fe-blog-sb-grid {
+    display: grid; grid-template-columns: minmax(0, 1fr) 280px;
+    gap: clamp(2rem, 4vw, 3rem);
+  }
+  @media (max-width: 880px) { .fe-blog-sb-grid { grid-template-columns: 1fr; } }
+  .fe-blog-sb-active {
+    margin-bottom: 1.5rem; padding: .85rem 1.1rem;
+    background: var(--blog-card); border: 1px solid var(--blog-rule);
+    border-radius: 8px; font-size: .92rem;
+  }
+  .fe-blog-sb-active a { color: var(--blog-accent); }
+  .fe-blog-sb-active-desc { color: var(--blog-ink-soft); }
+  .fe-blog-sb-empty { color: var(--blog-ink-soft); font-style: italic; padding: 2rem 0; }
+  .fe-blog-sb-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 1.75rem; }
+  .fe-blog-sb-card {
+    background: var(--blog-card);
+    border: 1px solid var(--blog-rule);
+    border-radius: 12px; overflow: hidden;
+    transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+  }
+  .fe-blog-sb-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--blog-accent) 30%, var(--blog-rule));
+    box-shadow: 0 12px 30px -10px rgba(15,23,42,.15);
+  }
+  .fe-blog-sb-card-link {
+    display: grid; grid-template-columns: 220px 1fr;
+    color: inherit; text-decoration: none;
+  }
+  @media (max-width: 600px) { .fe-blog-sb-card-link { grid-template-columns: 1fr; } }
+  .fe-blog-sb-art { aspect-ratio: 4 / 3; overflow: hidden; }
+  .fe-blog-sb-art img { width: 100%; height: 100%; object-fit: cover; transition: transform .5s ease; }
+  .fe-blog-sb-card:hover .fe-blog-sb-art img { transform: scale(1.04); }
+  .fe-blog-sb-card-link:not(:has(.fe-blog-sb-art)) { grid-template-columns: 1fr; }
+  .fe-blog-sb-body { padding: 1.3rem 1.5rem 1.5rem; display: flex; flex-direction: column; justify-content: center; }
+  .fe-blog-sb-meta-top {
+    display: flex; gap: .85rem; align-items: center; flex-wrap: wrap;
+    color: var(--blog-ink-soft); font-size: .78rem; margin-bottom: .65rem;
+  }
+  .fe-blog-sb-cat-chip {
+    --blog-cat-color: var(--blog-accent);
+    color: var(--blog-cat-color);
+    background: color-mix(in srgb, var(--blog-cat-color) 14%, transparent);
+    padding: 2px 9px; border-radius: 999px;
+    font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  }
+  .fe-blog-sb-pin {
+    color: var(--blog-accent); font-weight: 600;
+    text-transform: uppercase; letter-spacing: .1em;
+  }
+  .fe-blog-sb-card-title {
+    font-family: var(--tpl-heading-font, 'Fraunces', Georgia, serif);
+    font-weight: 600; font-size: 1.4rem; line-height: 1.25;
+    margin: 0 0 .6rem;
+  }
+  .fe-blog-sb-summary {
+    margin: 0 0 1rem; color: var(--blog-ink-soft);
+    font-size: .98rem; line-height: 1.55;
+  }
+  .fe-blog-sb-meta-bottom {
+    display: flex; gap: .85rem; align-items: center; flex-wrap: wrap;
+    color: var(--blog-ink-soft); font-size: .82rem;
+  }
+  .fe-blog-sb-meta-bottom > span:not(.fe-blog-sb-readmore) + span:not(.fe-blog-sb-readmore)::before {
+    content: "·"; margin-right: .85rem; opacity: .55;
+  }
+  .fe-blog-sb-readmore { margin-left: auto; color: var(--blog-accent); font-weight: 600; }
+  /* ── Aside ──────────────────────────────────────────────── */
+  .fe-blog-sb-aside { position: sticky; top: 90px; align-self: start; }
+  @media (max-width: 880px) { .fe-blog-sb-aside { position: static; } }
+  .fe-blog-sb-widget {
+    background: var(--blog-card); border: 1px solid var(--blog-rule);
+    border-radius: 12px; padding: 1.2rem 1.3rem;
+    margin-bottom: 1.2rem;
+  }
+  .fe-blog-sb-widget-title {
+    font-family: var(--tpl-heading-font, 'Inter', sans-serif);
+    font-weight: 700; font-size: .82rem;
+    text-transform: uppercase; letter-spacing: .14em;
+    color: var(--blog-ink); margin: 0 0 1rem;
+    padding-bottom: .65rem; border-bottom: 1px solid var(--blog-rule);
+  }
+  .fe-blog-sb-cat-list { list-style: none; padding: 0; margin: 0; }
+  .fe-blog-sb-cat-link {
+    --blog-cat-color: var(--blog-accent);
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 0;
+    color: var(--blog-ink-soft); text-decoration: none;
+    font-size: .92rem; transition: color .15s ease;
+  }
+  .fe-blog-sb-cat-link:hover { color: var(--blog-cat-color); }
+  .fe-blog-sb-cat-link.is-active { color: var(--blog-cat-color); font-weight: 600; }
+  .fe-blog-sb-cat-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .fe-blog-sb-tag-cloud { display: flex; flex-wrap: wrap; gap: 5px; }
+  .fe-blog-sb-tag {
+    color: var(--blog-ink-soft); background: var(--blog-bg);
+    border: 1px solid var(--blog-rule);
+    padding: 3px 9px; border-radius: 4px;
+    font-size: .76rem; text-decoration: none;
+    transition: all .15s ease;
+  }
+  .fe-blog-sb-tag:hover { color: var(--blog-accent); border-color: var(--blog-accent); }
+  .fe-blog-sb-tag.is-active { background: var(--blog-accent); color: #fff; border-color: var(--blog-accent); }
+</style>

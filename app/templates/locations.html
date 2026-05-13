@@ -135,6 +135,158 @@
 })();
 </script>
 
+{# ── Fellowships Index ───────────────────────────────────────────
+   Repeatable list of peer recovery fellowships shown on the public
+   /fellowships page. Each row carries a name, a Virtual/Regional
+   toggle (Virtual hides + ignores the country / state fields), a
+   country, a state/province/region, and a website URL. Same form-
+   array reconciliation pattern as Intergroup Officers above — blank
+   rows are dropped server-side, and existing rows whose ids aren't
+   resubmitted are deleted, so an admin can re-order by drag (future
+   work) or just edit cells in place.
+#}
+<section class="card fellowships-card">
+  <div class="card-head">
+    <h2>Fellowships Index</h2>
+    <span class="muted smaller">Sister fellowships surfaced on the public /fellowships page. Toggle Virtual for online-only fellowships (geography hidden); leave it off and fill in the country + state/region for in-region fellowships. The Web Frontend → Templates panel controls the public layout.</span>
+  </div>
+  <form method="post" action="{{ url_for('main.fellowships_save') }}" class="form fellowships-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+    <table class="tbl fellowships-tbl">
+      <thead>
+        <tr>
+          <th class="fellowship-col-name">Name</th>
+          <th class="fellowship-col-virtual">Virtual</th>
+          <th class="fellowship-col-country">Country</th>
+          <th class="fellowship-col-region">State / Province / Region</th>
+          <th class="fellowship-col-url">Website</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody data-fellowships-rows>
+        {% for f in fellowships %}
+        <tr class="fellowship-row{% if f.is_virtual %} is-virtual{% endif %}" data-fellowship-row>
+          <td>
+            <input type="hidden" name="fellowship_id" value="{{ f.id }}">
+            <input type="text" name="fellowship_name" value="{{ f.name or '' }}" placeholder="e.g. Crystal Meth Anonymous" required>
+          </td>
+          <td class="fellowship-cell-virtual">
+            {# Hidden input is the one that actually submits the row's
+               virtual flag — exactly one value per row, so the server-
+               side zip(ids, names, virtuals) stays aligned regardless
+               of how many rows are checked. The visible checkbox is a
+               pure UI element kept in sync via JS. #}
+            <input type="hidden" name="fellowship_is_virtual"
+                   value="{{ '1' if f.is_virtual else '0' }}"
+                   data-fellowship-virtual-state>
+            <label class="mode-toggle fellowship-virtual-toggle"
+                   title="On = virtual / online-only (country + region ignored). Off = regional.">
+              <input type="checkbox" data-fellowship-virtual {% if f.is_virtual %}checked{% endif %}>
+              <span class="mode-track"><span class="mode-thumb"></span></span>
+            </label>
+          </td>
+          <td class="fellowship-cell-region-field"{% if f.is_virtual %} hidden{% endif %}>
+            <input type="text" name="fellowship_country" value="{{ f.country or '' }}" placeholder="e.g. United States">
+          </td>
+          <td class="fellowship-cell-region-field"{% if f.is_virtual %} hidden{% endif %}>
+            <input type="text" name="fellowship_state_region" value="{{ f.state_region or '' }}" placeholder="e.g. California">
+          </td>
+          <td>
+            <input type="url" name="fellowship_url" value="{{ f.url or '' }}" placeholder="https://example.org">
+          </td>
+          <td><button type="button" class="btn btn-sm btn-danger" data-fellowship-remove aria-label="Remove this fellowship">{{ icon('x') }}</button></td>
+        </tr>
+        {% endfor %}
+        <tr class="fellowship-row fellowship-row-template" hidden data-fellowships-template data-fellowship-row>
+          <td>
+            <input type="hidden" name="fellowship_id" value="">
+            <input type="text" name="fellowship_name" placeholder="e.g. Crystal Meth Anonymous">
+          </td>
+          <td class="fellowship-cell-virtual">
+            <input type="hidden" name="fellowship_is_virtual" value="0"
+                   data-fellowship-virtual-state>
+            <label class="mode-toggle fellowship-virtual-toggle">
+              <input type="checkbox" data-fellowship-virtual>
+              <span class="mode-track"><span class="mode-thumb"></span></span>
+            </label>
+          </td>
+          <td class="fellowship-cell-region-field">
+            <input type="text" name="fellowship_country" placeholder="e.g. United States">
+          </td>
+          <td class="fellowship-cell-region-field">
+            <input type="text" name="fellowship_state_region" placeholder="e.g. California">
+          </td>
+          <td>
+            <input type="url" name="fellowship_url" placeholder="https://example.org">
+          </td>
+          <td><button type="button" class="btn btn-sm btn-danger" data-fellowship-remove aria-label="Remove this fellowship">{{ icon('x') }}</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="fellowships-actions">
+      <button type="button" class="btn btn-sm" data-fellowships-add>+ Add fellowship</button>
+      <button type="submit" class="btn btn-primary">Save fellowships</button>
+    </div>
+  </form>
+</section>
+
+<script>
+(function () {
+  const rows = document.querySelector('[data-fellowships-rows]');
+  if (!rows) return;
+  const template = rows.querySelector('[data-fellowships-template]');
+
+  // Toggle visibility of country / state-region cells when the
+  // Virtual switch flips on. We hide rather than disable so a
+  // pre-existing value isn't accidentally cleared if the admin
+  // toggles back and forth before saving — the server-side handler
+  // is the one that normalises (a virtual fellowship's country +
+  // region get wiped on save).
+  function syncRow(row) {
+    const cb = row.querySelector('[data-fellowship-virtual]');
+    const virtual = !!(cb && cb.checked);
+    // Keep the hidden input (the one that submits) in lockstep with
+    // the visual checkbox. Exactly one value per row keeps the server-
+    // side parallel-array reconciliation honest.
+    const hidden = row.querySelector('[data-fellowship-virtual-state]');
+    if (hidden) hidden.value = virtual ? '1' : '0';
+    row.classList.toggle('is-virtual', virtual);
+    row.querySelectorAll('.fellowship-cell-region-field').forEach(c => {
+      c.hidden = virtual;
+    });
+  }
+
+  // Add a fresh blank row above the template row so the admin's
+  // newest add lands at the bottom of the visible roster. Template
+  // row stays hidden + marked so server-side dedupe drops it.
+  const addBtn = document.querySelector('[data-fellowships-add]');
+  if (addBtn) addBtn.addEventListener('click', () => {
+    const clone = template.cloneNode(true);
+    clone.hidden = false;
+    clone.removeAttribute('data-fellowships-template');
+    clone.classList.remove('fellowship-row-template');
+    rows.insertBefore(clone, template);
+    syncRow(clone);
+    const first = clone.querySelector('input[name="fellowship_name"]');
+    if (first) first.focus();
+  });
+
+  rows.addEventListener('click', e => {
+    const btn = e.target.closest('[data-fellowship-remove]');
+    if (!btn) return;
+    const row = btn.closest('tr.fellowship-row');
+    if (row && !row.hasAttribute('data-fellowships-template')) row.remove();
+  });
+
+  rows.addEventListener('change', e => {
+    if (!e.target.matches('[data-fellowship-virtual]')) return;
+    const row = e.target.closest('tr.fellowship-row');
+    if (row) syncRow(row);
+  });
+})();
+</script>
+
 {# New location modal #}
 <div class="modal" id="location-new-modal" aria-hidden="true">
   <div class="modal-backdrop" data-close></div>

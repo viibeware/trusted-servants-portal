@@ -1,0 +1,406 @@
+{% extends "base.html" %}
+{% block heading %}Blog{% endblock %}
+{% block heading_help %}Long-form editorial posts. Tag with categories or tags so a frontend page block can scope to a single topic — host one blog per committee or group from this single table.{% endblock %}
+{% block top_actions %}
+  <div class="view-controls">
+    <div class="view-toggle">
+      <a class="btn btn-sm {% if show == 'active' %}active{% endif %}"
+         href="{{ url_for('main.blog_index', show='active') }}">Published{% if counts.active %} <span class="badge">{{ counts.active }}</span>{% endif %}</a>
+      <a class="btn btn-sm {% if show == 'featured' %}active{% endif %}"
+         href="{{ url_for('main.blog_index', show='featured') }}">Featured{% if counts.featured %} <span class="badge">{{ counts.featured }}</span>{% endif %}</a>
+      <a class="btn btn-sm {% if show == 'drafts' %}active{% endif %}"
+         href="{{ url_for('main.blog_index', show='drafts') }}">Drafts{% if counts.drafts %} <span class="badge">{{ counts.drafts }}</span>{% endif %}</a>
+      <a class="btn btn-sm {% if show == 'archived' %}active{% endif %}"
+         href="{{ url_for('main.blog_index', show='archived') }}">Archived{% if counts.archived %} <span class="badge">{{ counts.archived }}</span>{% endif %}</a>
+    </div>
+    <div class="view-toggle">
+      <a class="btn btn-sm" href="{{ url_for('main.blog_categories') }}">Categories</a>
+      <a class="btn btn-sm" href="{{ url_for('main.blog_tags') }}">Tags</a>
+    </div>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('main.blog_new') }}">+ New post</a>
+{% endblock %}
+{% block content %}
+
+<section class="card blog-filter-card">
+  <form method="get" action="{{ url_for('main.blog_index') }}" class="blog-filter-form">
+    <input type="hidden" name="show" value="{{ show }}">
+    <label class="blog-filter-field">
+      <span class="blog-filter-label">Search</span>
+      <input type="search" name="q" value="{{ q_text or '' }}" placeholder="Title, summary, author">
+    </label>
+    <label class="blog-filter-field">
+      <span class="blog-filter-label">Category</span>
+      <select name="category">
+        <option value="">All categories</option>
+        {% for c in categories %}
+        <option value="{{ c.id }}" {% if selected_cat == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="blog-filter-field">
+      <span class="blog-filter-label">Tag</span>
+      <select name="tag">
+        <option value="">All tags</option>
+        {% for t in tags %}
+        <option value="{{ t.id }}" {% if selected_tag == t.id|string %}selected{% endif %}>{{ t.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="blog-filter-field">
+      <span class="blog-filter-label">Sort</span>
+      <select name="sort">
+        <option value="published_desc" {% if sort == 'published_desc' %}selected{% endif %}>Newest first</option>
+        <option value="published_asc" {% if sort == 'published_asc' %}selected{% endif %}>Oldest first</option>
+        <option value="updated_desc" {% if sort == 'updated_desc' %}selected{% endif %}>Recently edited</option>
+        <option value="title_asc" {% if sort == 'title_asc' %}selected{% endif %}>Title A→Z</option>
+        <option value="title_desc" {% if sort == 'title_desc' %}selected{% endif %}>Title Z→A</option>
+        <option value="author_asc" {% if sort == 'author_asc' %}selected{% endif %}>Author A→Z</option>
+      </select>
+    </label>
+    <div class="blog-filter-actions">
+      <button class="btn btn-sm btn-primary" type="submit">Apply</button>
+      {% if q_text or selected_cat or selected_tag or sort != 'published_desc' %}
+      <a class="btn btn-sm" href="{{ url_for('main.blog_index', show=show) }}">Clear</a>
+      {% endif %}
+    </div>
+  </form>
+</section>
+
+{% if posts %}
+{# Bulk form lives standalone so the per-row action <form>s below can
+   stay inline (forms can't legally nest in HTML). The checkbox
+   inputs in the table associate with this form via the `form=`
+   attribute, so a single submit captures every checked id. #}
+<form id="blog-bulk-form" method="post" action="{{ url_for('main.blog_bulk') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="action" id="blog-bulk-action" value="">
+  <input type="hidden" name="category_id" id="blog-bulk-category-id" value="">
+  <input type="hidden" name="tag_id" id="blog-bulk-tag-id" value="">
+</form>
+
+<div class="posts-toolbar">
+  <div class="posts-meta muted small">
+    <b>{{ posts|length }}</b> post{% if posts|length != 1 %}s{% endif %} on this page
+  </div>
+  <div class="posts-bulkbar" data-posts-bulkbar hidden>
+    <span class="posts-bulkbar-count" data-bulk-count>0 selected</span>
+    {% if show != 'archived' %}
+    <button type="button" class="btn btn-sm" data-bulk="archive">Archive</button>
+    {% endif %}
+    {% if show == 'archived' %}
+    <button type="button" class="btn btn-sm" data-bulk="unarchive">Restore</button>
+    {% endif %}
+    {% if show != 'drafts' %}
+    <button type="button" class="btn btn-sm" data-bulk="draft">Move to drafts</button>
+    {% endif %}
+    {% if show != 'active' %}
+    <button type="button" class="btn btn-sm btn-primary" data-bulk="publish">Publish</button>
+    {% endif %}
+    <button type="button" class="btn btn-sm" data-bulk="feature">Feature</button>
+    <button type="button" class="btn btn-sm" data-bulk="unfeature">Unfeature</button>
+    <button type="button" class="btn btn-sm" data-bulk="pin">Pin</button>
+    <button type="button" class="btn btn-sm" data-bulk="unpin">Unpin</button>
+
+    {% if categories %}
+    <span class="posts-bulk-sep" aria-hidden="true">·</span>
+    <select class="posts-bulk-select" data-bulk-cat>
+      <option value="">Pick category…</option>
+      {% for c in categories %}
+      <option value="{{ c.id }}">{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <button type="button" class="btn btn-sm" data-bulk="add_category"
+            data-bulk-needs="cat" title="Add the picked category to every selected post">+ Cat</button>
+    <button type="button" class="btn btn-sm" data-bulk="remove_category"
+            data-bulk-needs="cat" title="Remove the picked category from every selected post">− Cat</button>
+    <button type="button" class="btn btn-sm" data-bulk="replace_categories"
+            data-bulk-needs="cat" title="Replace each selected post's categories with just the picked one"
+            data-bulk-confirm="Replace all categories on the selected posts with the picked one? Existing category assignments will be removed.">↦ Cat</button>
+    {% endif %}
+
+    {% if tags %}
+    <span class="posts-bulk-sep" aria-hidden="true">·</span>
+    <select class="posts-bulk-select" data-bulk-tag>
+      <option value="">Pick tag…</option>
+      {% for t in tags %}
+      <option value="{{ t.id }}">#{{ t.name }}</option>
+      {% endfor %}
+    </select>
+    <button type="button" class="btn btn-sm" data-bulk="add_tag"
+            data-bulk-needs="tag" title="Add the picked tag to every selected post">+ Tag</button>
+    <button type="button" class="btn btn-sm" data-bulk="remove_tag"
+            data-bulk-needs="tag" title="Remove the picked tag from every selected post">− Tag</button>
+    {% endif %}
+
+    <span class="posts-bulk-sep" aria-hidden="true">·</span>
+    <button type="button" class="btn btn-sm btn-danger" data-bulk="delete"
+            data-bulk-confirm="Delete the selected posts permanently? Featured images will be cleaned up. This cannot be undone.">Delete</button>
+    <button type="button" class="btn btn-sm posts-bulk-clear" data-bulk-clear>Clear</button>
+  </div>
+</div>
+
+<section class="card posts-card">
+  <table class="tbl posts-tbl">
+    <thead>
+      <tr>
+        <th class="posts-th-check">
+          <label class="posts-check-wrap" title="Select all on this page">
+            <input type="checkbox" data-posts-selectall>
+          </label>
+        </th>
+        <th class="posts-th-thumb"></th>
+        <th>Title</th>
+        <th class="hide-sm">Author</th>
+        <th class="hide-sm">Categories / Tags</th>
+        <th class="hide-sm">Posted</th>
+        <th class="hide-sm">Status</th>
+        <th class="posts-th-actions"></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for p in posts %}
+      <tr data-post-row>
+        <td class="posts-td-check">
+          <label class="posts-check-wrap">
+            <input type="checkbox" name="ids" value="{{ p.id }}"
+                   form="blog-bulk-form" data-posts-row-check>
+          </label>
+        </td>
+        <td class="posts-td-thumb">
+          {% if p.featured_image_filename %}
+          <img class="posts-thumb"
+               src="{{ url_for('public.blog_post_featured_image', bid=p.id, thumb=120) }}"
+               alt="" loading="lazy">
+          {% else %}
+          <div class="posts-thumb posts-thumb-empty">{{ icon('rss') }}</div>
+          {% endif %}
+        </td>
+        <td>
+          <a class="posts-title" href="{{ url_for('main.blog_edit', bid=p.id) }}">{{ p.title }}</a>
+          {% if p.summary %}<div class="muted small posts-summary">{{ p.summary[:140] }}{% if p.summary|length > 140 %}…{% endif %}</div>{% endif %}
+        </td>
+        <td class="hide-sm">
+          {% if p.author_name %}<span class="muted small">{{ p.author_name }}</span>{% else %}<span class="muted smaller">—</span>{% endif %}
+        </td>
+        <td class="hide-sm">
+          <div class="blog-row-tax">
+            {% for c in p.categories %}
+            <span class="blog-cat-chip" {% if c.color %}style="--blog-cat-color: {{ c.color }};"{% endif %}>{{ c.name }}</span>
+            {% endfor %}
+            {% for t in p.tags %}
+            <span class="blog-tag-chip">#{{ t.name }}</span>
+            {% endfor %}
+            {% if not p.categories and not p.tags %}<span class="muted smaller">—</span>{% endif %}
+          </div>
+        </td>
+        <td class="hide-sm">
+          {% if p.display_date %}
+            <div class="muted small">{{ p.display_date.strftime('%b %d, %Y') }}</div>
+            <div class="muted smaller">{{ p.display_date.strftime('%-I:%M %p') }}</div>
+          {% else %}
+            <span class="muted smaller">—</span>
+          {% endif %}
+        </td>
+        <td class="hide-sm">
+          {% if p.is_pinned and not p.is_draft and not p.is_archived %}<span class="post-chip post-chip-warning">Pinned</span>{% endif %}
+          {% if p.is_featured and not p.is_draft and not p.is_archived %}<span class="post-chip post-chip-announcement">Featured</span>{% endif %}
+          {% if p.is_draft %}<span class="post-chip post-chip-draft">Draft</span>{% endif %}
+          {% if p.is_archived %}<span class="post-chip">Archived</span>{% endif %}
+          {% if not p.is_draft and not p.is_archived and not p.is_featured and not p.is_pinned %}<span class="post-chip post-chip-event">Live</span>{% endif %}
+        </td>
+        <td class="posts-td-actions">
+          <div class="row-actions">
+            <a class="btn btn-sm" href="{{ url_for('main.blog_edit', bid=p.id) }}">Edit</a>
+            {% if p.is_draft %}
+            <form method="post" action="{{ url_for('main.blog_publish', bid=p.id) }}" style="display:inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-primary" title="Publish this draft">Publish</button>
+            </form>
+            {% elif not p.is_archived %}
+            <form method="post" action="{{ url_for('main.blog_unpublish', bid=p.id) }}" style="display:inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm" title="Move to Drafts">Move to Drafts</button>
+            </form>
+            {% endif %}
+            <form method="post" action="{{ url_for('main.blog_duplicate', bid=p.id) }}" style="display:inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm" title="Make a copy">Duplicate</button>
+            </form>
+            {% if p.is_archived %}
+              <form method="post" action="{{ url_for('main.blog_unarchive', bid=p.id) }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm" title="Restore">Restore</button>
+              </form>
+            {% else %}
+              <form method="post" action="{{ url_for('main.blog_archive', bid=p.id) }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm" title="Archive">Archive</button>
+              </form>
+            {% endif %}
+            <form method="post" action="{{ url_for('main.blog_delete', bid=p.id) }}" style="display:inline"
+                  onsubmit="return confirm('Delete this post permanently? Featured image will be cleaned up.');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% else %}
+<section class="card">
+  <p class="muted">
+    {% if show == 'archived' %}Nothing archived.
+    {% elif show == 'drafts' %}No drafts yet.
+    {% elif show == 'featured' %}No featured posts.
+    {% elif q_text or selected_cat or selected_tag %}No posts match those filters.
+    {% else %}Nothing here yet — click <b>+ New post</b> above to write the first one.{% endif %}
+  </p>
+</section>
+{% endif %}
+
+<style>
+  .blog-filter-card { padding: .9rem 1rem; }
+  .blog-filter-form {
+    display: flex; flex-wrap: wrap; gap: .9rem; align-items: end;
+  }
+  .blog-filter-field { display: flex; flex-direction: column; gap: 4px; min-width: 160px; flex: 1 1 160px; margin: 0; }
+  .blog-filter-label {
+    font-size: .72rem; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600;
+  }
+  .blog-filter-actions { display: flex; gap: .4rem; align-items: end; padding-bottom: 1px; }
+  .blog-row-tax { display: flex; flex-wrap: wrap; gap: 4px; max-width: 360px; }
+  .blog-cat-chip {
+    background: color-mix(in srgb, var(--blog-cat-color, var(--accent)) 18%, transparent);
+    color: var(--blog-cat-color, var(--accent));
+    border: 1px solid color-mix(in srgb, var(--blog-cat-color, var(--accent)) 35%, transparent);
+    border-radius: 999px; padding: 2px 9px; font-size: .72rem; font-weight: 600;
+  }
+  .blog-tag-chip {
+    background: var(--panel-2, var(--panel)); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 2px 9px; font-size: .72rem;
+  }
+  .post-chip-event { background: #d1fae5; color: #065f46; }
+  [data-theme="dark"] .post-chip-event { background: #064e3b; color: #a7f3d0; }
+
+  /* ── Bulk action chrome (selectall, sticky bar, row highlight) ── */
+  .posts-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 1rem; margin-bottom: .85rem;
+  }
+  .posts-meta { font-size: .88rem; }
+  .posts-bulkbar {
+    display: flex; align-items: center; gap: .4rem; flex-wrap: wrap;
+    background: var(--panel-2, var(--panel));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: .4rem .55rem .4rem 1rem;
+  }
+  .posts-bulkbar[hidden] { display: none; }
+  .posts-bulkbar-count {
+    font-weight: 600; font-size: .88rem;
+    color: var(--text);
+  }
+  .posts-bulk-sep { color: var(--muted); margin: 0 4px; }
+  .posts-bulk-select {
+    height: 30px; padding: 2px 8px; min-width: 8rem;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 6px; font-size: .85rem; color: var(--text);
+  }
+  .posts-bulk-clear { margin-left: .25rem; }
+
+  .posts-th-check, .posts-td-check { width: 2.4rem; text-align: center; }
+  .posts-check-wrap {
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; padding: 4px;
+  }
+  .posts-check-wrap input { margin: 0; cursor: pointer; }
+
+  tr[data-post-row]:has(input[data-posts-row-check]:checked) {
+    background: color-mix(in srgb, var(--brand) 8%, transparent);
+  }
+</style>
+
+<script>
+(function () {
+  // Bulk action wiring for the Blog admin list. The standalone form
+  // (`#blog-bulk-form`) carries csrf + action + category_id + tag_id.
+  // Checkboxes use `form="blog-bulk-form"` to associate with it even
+  // though they live in the table body so the inline per-row action
+  // <form>s can stay nested-free.
+  var form = document.getElementById('blog-bulk-form');
+  if (!form) return;
+  var bar = document.querySelector('[data-posts-bulkbar]');
+  var counter = document.querySelector('[data-bulk-count]');
+  var actionField = document.getElementById('blog-bulk-action');
+  var catField = document.getElementById('blog-bulk-category-id');
+  var tagField = document.getElementById('blog-bulk-tag-id');
+  var catSel = document.querySelector('[data-bulk-cat]');
+  var tagSel = document.querySelector('[data-bulk-tag]');
+  var checkboxes = document.querySelectorAll('[data-posts-row-check]');
+  var selectAll = document.querySelector('[data-posts-selectall]');
+
+  function refresh() {
+    var n = 0;
+    checkboxes.forEach(function (c) { if (c.checked) n++; });
+    if (counter) counter.textContent = n + ' selected';
+    if (bar) bar.hidden = n === 0;
+    if (selectAll) {
+      selectAll.checked = n === checkboxes.length && n > 0;
+      selectAll.indeterminate = n > 0 && n < checkboxes.length;
+    }
+  }
+  checkboxes.forEach(function (c) { c.addEventListener('change', refresh); });
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      checkboxes.forEach(function (c) { c.checked = selectAll.checked; });
+      refresh();
+    });
+  }
+
+  document.querySelectorAll('[data-bulk]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var action = btn.dataset.bulk;
+      var n = 0;
+      checkboxes.forEach(function (c) { if (c.checked) n++; });
+      if (n === 0) return;
+      // Category / tag actions need a picker selection — surface a
+      // tooltip-style alert if the admin forgot to pick one.
+      var needs = btn.dataset.bulkNeeds;
+      if (needs === 'cat') {
+        var cid = catSel && catSel.value;
+        if (!cid) { catSel && catSel.focus(); return; }
+        catField.value = cid;
+      } else if (needs === 'tag') {
+        var tid = tagSel && tagSel.value;
+        if (!tid) { tagSel && tagSel.focus(); return; }
+        tagField.value = tid;
+      }
+      var confirmMsg = btn.dataset.bulkConfirm;
+      if (confirmMsg) {
+        var msg = confirmMsg.replace('the selected posts',
+          n + ' selected post' + (n === 1 ? '' : 's'));
+        if (!confirm(msg)) return;
+      }
+      actionField.value = action;
+      form.submit();
+    });
+  });
+
+  var clearBtn = document.querySelector('[data-bulk-clear]');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function () {
+      checkboxes.forEach(function (c) { c.checked = false; });
+      if (selectAll) { selectAll.checked = false; selectAll.indeterminate = false; }
+      refresh();
+    });
+  }
+  refresh();
+})();
+</script>
+{% endblock %}
