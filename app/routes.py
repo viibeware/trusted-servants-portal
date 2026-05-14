@@ -16,7 +16,7 @@ from .models import (db, User, Meeting, MeetingFile, MeetingSchedule, MeetingLib
                      ZoomAccount, ZoomOtpEmail, Location, Library, LibraryItem,
                      LibraryCategory, MediaItem, NavLink, SiteSetting,
                      IntergroupAccount, AccessRequest, ContactSubmission, PasswordResetToken,
-                     FrontendNavItem,
+                     FrontendNavItem, UrlRedirect, EntitySlugHistory, Page,
                      FrontendNavColumn, FrontendNavLink, FILE_CATEGORIES,
                      DAYS_OF_WEEK, INTERGROUP_LIBRARY_NAMES)
 
@@ -3606,6 +3606,25 @@ def public_page_bg(page_id):
                                page.bg_image_filename)
 
 
+@public_bp.route("/pub/page-og-image/<int:page_id>")
+def public_page_og_image(page_id):
+    """Serve a Page's per-page Open Graph preview image. The page edit
+    screen uploads it as a UUID-prefixed filename in UPLOAD_FOLDER;
+    crawlers (Slack / iMessage / Facebook) fetch it anonymously through
+    this route so visitors get a per-page link preview before they
+    sign in. Falls back to a 404 when the page is unpublished or has
+    no OG image set — the public detail route then renders the
+    site-wide ``frontend_og_image_filename`` instead."""
+    from .models import Page
+    page = Page.query.get(page_id)
+    if not page or not page.og_image_filename or not page.is_published:
+        abort(404)
+    response = send_from_directory(current_app.config["UPLOAD_FOLDER"],
+                                   page.og_image_filename)
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
+
+
 @public_bp.route("/pub/<path:filename>")
 def public_file(filename):
     if ".." in filename or filename.startswith("/"):
@@ -3898,6 +3917,13 @@ def frontend_nav_appearance_save():
     except ValueError:
         ms = 320
     s.frontend_megamenu_animate_ms = max(100, min(ms, 1500))
+    # Panel-level fade (independent of the staggered link reveal).
+    s.frontend_megamenu_panel_fade = request.form.get("frontend_megamenu_panel_fade") == "1"
+    try:
+        fms = int(request.form.get("frontend_megamenu_panel_fade_ms") or 180)
+    except ValueError:
+        fms = 180
+    s.frontend_megamenu_panel_fade_ms = max(0, min(fms, 1500))
     # Heading + link font-size overrides as integer percentages
     # (50 – 200, 100 = theme default). The sliders are centered at 100
     # so a value of exactly 100 is also treated as "no override" — it
@@ -4841,6 +4867,170 @@ def frontend_404_save():
     return redirect(url_for("main.frontend_404"))
 
 
+@bp.route("/frontend/redirects")
+@admin_required
+def frontend_redirects():
+    """Central redirects control panel. Two sections:
+
+    1. **Manual redirects** (`UrlRedirect`) — admin-curated path → URL
+       mappings; the public `_url_redirect_handler` (in `__init__.py`)
+       walks this table on every incoming request and 301s on match.
+    2. **Auto-logged slug renames** (`EntitySlugHistory`) — appended
+       whenever a published post / story / blog / meeting / page slug
+       changes. The detail-page routes use `(entity_type, old_slug)`
+       to look up the entity and redirect to its current canonical
+       URL. Editable + deletable from this panel so admins don't
+       have to hop into each entity's edit page just to tweak a
+       legacy URL alias.
+    """
+    s = _get_site_setting()
+    rows = UrlRedirect.query.order_by(UrlRedirect.source_path.asc()).all()
+    history = (EntitySlugHistory.query
+               .order_by(EntitySlugHistory.changed_at.desc(),
+                         EntitySlugHistory.id.desc())
+               .all())
+    # Resolve entity titles + current canonical slugs in batch so the
+    # template doesn't trigger N queries inside the loop. For each
+    # entity_type we collect the referenced ids, fetch them in one
+    # round-trip, and stash a simple {(type, id): {title, slug}} map.
+    by_type = {}
+    for h in history:
+        by_type.setdefault(h.entity_type, set()).add(h.entity_id)
+    entity_lookup = {}
+    type_models = {
+        "meeting": (Meeting, "name"),
+        "post":    (Post, "title"),
+        "story":   (Story, "title"),
+        "blog":    (BlogPost, "title"),
+        "page":    (Page, "title"),
+    }
+    for ent_type, ids in by_type.items():
+        model_label = type_models.get(ent_type)
+        if not model_label:
+            continue
+        Model, title_attr = model_label
+        rows_q = Model.query.filter(Model.id.in_(ids)).all()
+        for r in rows_q:
+            entity_lookup[(ent_type, r.id)] = {
+                "title": getattr(r, title_attr, "") or f"#{r.id}",
+                "slug":  getattr(r, "public_slug", None) or getattr(r, "slug", None),
+            }
+    return render_template("frontend_redirects.html", site=s,
+                           redirects=rows,
+                           slug_history=history,
+                           entity_lookup=entity_lookup)
+
+
+@bp.route("/frontend/redirects/save", methods=["POST"])
+@admin_required
+def frontend_redirects_save():
+    """Create OR update a redirect. The presence of `redirect_id`
+    decides which path: empty → create, set → update by id."""
+    rid_raw = (request.form.get("redirect_id") or "").strip()
+    src = (request.form.get("source_path") or "").strip()
+    tgt = (request.form.get("target_path") or "").strip()
+    if not src or not tgt:
+        flash("Both source and target are required", "danger")
+        return redirect(url_for("main.frontend_redirects"))
+    # Normalize source to start with "/" — the before_request handler
+    # matches against `request.path` which always starts with "/".
+    if not src.startswith("/"):
+        src = "/" + src
+    src = src[:2000]
+    tgt = tgt[:2000]
+    # Block `source == target` loops at the form layer.
+    if src == tgt:
+        flash("Source and target can't be the same path.", "danger")
+        return redirect(url_for("main.frontend_redirects"))
+    if rid_raw:
+        try:
+            rid = int(rid_raw)
+        except ValueError:
+            abort(400)
+        row = db.session.get(UrlRedirect, rid) or abort(404)
+        if row.source_path != src:
+            dup = UrlRedirect.query.filter(
+                UrlRedirect.source_path == src,
+                UrlRedirect.id != rid).first()
+            if dup:
+                flash(f"Source path “{src}” already redirects elsewhere.", "danger")
+                return redirect(url_for("main.frontend_redirects"))
+        row.source_path = src
+        row.target_path = tgt
+        flash(f"Updated redirect for {src}", "success")
+    else:
+        if UrlRedirect.query.filter_by(source_path=src).first():
+            flash(f"Source path “{src}” already redirects elsewhere.", "danger")
+            return redirect(url_for("main.frontend_redirects"))
+        db.session.add(UrlRedirect(source_path=src, target_path=tgt))
+        flash(f"Added redirect: {src} → {tgt}", "success")
+    db.session.commit()
+    return redirect(url_for("main.frontend_redirects"))
+
+
+@bp.route("/frontend/redirects/<int:rid>/delete", methods=["POST"])
+@admin_required
+def frontend_redirects_delete(rid):
+    row = db.session.get(UrlRedirect, rid) or abort(404)
+    src = row.source_path
+    db.session.delete(row)
+    db.session.commit()
+    flash(f"Deleted redirect for {src}", "success")
+    return redirect(url_for("main.frontend_redirects"))
+
+
+@bp.route("/frontend/redirects/slug-history/<int:hid>/save", methods=["POST"])
+@admin_required
+def frontend_slug_history_save(hid):
+    """Edit an auto-logged slug-rename row. Admins can adjust the
+    `old_slug` (the legacy URL pattern that should redirect) and the
+    `new_slug` (informational, also used as the redirect display).
+    Validation: slugs must be non-empty and slug-shaped (lowercase,
+    digits, hyphens). Uniqueness within `(entity_type, old_slug)` is
+    enforced — an `old_slug` collision would silently shadow the
+    other row's redirect."""
+    row = db.session.get(EntitySlugHistory, hid) or abort(404)
+    old = (request.form.get("old_slug") or "").strip().lower()
+    new = (request.form.get("new_slug") or "").strip().lower()
+    if not old or not new:
+        flash("Both old and new slug are required.", "danger")
+        return redirect(url_for("main.frontend_redirects"))
+    norm_old = _normalize_slug(old)
+    norm_new = _normalize_slug(new)
+    if not norm_old or not norm_new:
+        flash("Slugs must be lowercase letters, digits, and hyphens.", "danger")
+        return redirect(url_for("main.frontend_redirects"))
+    if norm_old != row.old_slug:
+        # Uniqueness check on (entity_type, old_slug) so the redirect
+        # lookup stays deterministic.
+        dup = EntitySlugHistory.query.filter(
+            EntitySlugHistory.entity_type == row.entity_type,
+            EntitySlugHistory.old_slug == norm_old,
+            EntitySlugHistory.id != row.id).first()
+        if dup:
+            flash(f"Old slug “{norm_old}” already redirects elsewhere for this entity type.", "danger")
+            return redirect(url_for("main.frontend_redirects"))
+    row.old_slug = norm_old[:255]
+    row.new_slug = norm_new[:255]
+    db.session.commit()
+    flash("Slug-redirect updated.", "success")
+    return redirect(url_for("main.frontend_redirects"))
+
+
+@bp.route("/frontend/redirects/slug-history/<int:hid>/delete", methods=["POST"])
+@admin_required
+def frontend_slug_history_delete(hid):
+    """Delete an auto-logged slug-rename row. After deletion, requests
+    to the old slug will 404 (or hit a real route if one exists).
+    The entity's current canonical slug is unaffected."""
+    row = db.session.get(EntitySlugHistory, hid) or abort(404)
+    old = row.old_slug
+    db.session.delete(row)
+    db.session.commit()
+    flash(f"Deleted slug-redirect for {old}", "success")
+    return redirect(url_for("main.frontend_redirects"))
+
+
 @public_bp.route("/site-branding/frontend-404-image")
 def frontend_404_image():
     s = SiteSetting.query.first()
@@ -4968,6 +5158,20 @@ def frontend_branding_save():
         old = s.frontend_favicon_filename
         stored, _original = _save_upload(favicon_upload)
         s.frontend_favicon_filename = stored
+        if old and old != stored:
+            _cleanup_retired_asset(old)
+    # iOS / iPadOS home-screen icon + display name. Independent of the
+    # admin /tspro home-screen icon set under Settings → Appearance.
+    s.frontend_apple_touch_icon_name = (request.form.get("frontend_apple_touch_icon_name") or "").strip()[:100] or None
+    if request.form.get("clear_frontend_apple_touch_icon") == "1":
+        old = s.frontend_apple_touch_icon_filename
+        s.frontend_apple_touch_icon_filename = None
+        _cleanup_retired_asset(old)
+    ati_upload = request.files.get("frontend_apple_touch_icon")
+    if ati_upload and ati_upload.filename:
+        old = s.frontend_apple_touch_icon_filename
+        stored, _original = _save_upload(ati_upload)
+        s.frontend_apple_touch_icon_filename = stored
         if old and old != stored:
             _cleanup_retired_asset(old)
     db.session.commit()
@@ -7658,6 +7862,26 @@ def frontend_page_save():
     if has_subheading_font:  page.subheading_font  = subheading_font
     if has_heading_align:    page.heading_align    = heading_align
 
+    # Per-page Open Graph overrides. Blank values clear the column so
+    # the public render falls back to the site-wide frontend_og_*
+    # defaults set under Web Frontend → Branding & SEO. Hidden marker
+    # `og_present` gates assignment so a partial POST (e.g. the
+    # background-only sub-form) can't wipe previously-set OG values.
+    if request.form.get("og_present") == "1":
+        page.og_title = (request.form.get("og_title") or "").strip()[:200] or None
+        page.og_description = (request.form.get("og_description") or "").strip() or None
+        if request.form.get("clear_og_image") == "1":
+            old_og = page.og_image_filename
+            page.og_image_filename = None
+            _cleanup_retired_asset(old_og)
+        og_upload = request.files.get("og_image")
+        if og_upload and og_upload.filename:
+            old_og = page.og_image_filename
+            stored_og, _orig = _save_upload(og_upload)
+            page.og_image_filename = stored_og
+            if old_og and old_og != stored_og:
+                _cleanup_retired_asset(old_og)
+
     db.session.commit()
     flash(f"Page “{title}” saved", "success")
     return redirect(url_for("main.frontend_page_edit", page_id=page.id))
@@ -7886,6 +8110,57 @@ def site_frontend_favicon():
     response = send_from_directory(current_app.config["UPLOAD_FOLDER"], s.frontend_favicon_filename)
     response.headers["Cache-Control"] = "public, max-age=86400"
     return response
+
+
+@public_bp.route("/site-branding/apple-touch-icon")
+def site_apple_touch_icon():
+    """Serves the admin /tspro home-screen icon when one was uploaded.
+    The template falls back to the bundled static asset otherwise. Kept
+    on the public blueprint so iOS — which fetches the icon anonymously
+    when a visitor taps "Add to Home Screen" — can reach it without an
+    auth bounce."""
+    s = _get_site_setting()
+    if not s.apple_touch_icon_filename:
+        abort(404)
+    response = send_from_directory(current_app.config["UPLOAD_FOLDER"], s.apple_touch_icon_filename)
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
+
+
+@public_bp.route("/site-branding/frontend-apple-touch-icon")
+def site_frontend_apple_touch_icon():
+    """Serves the public web frontend home-screen icon when one was
+    uploaded. Falls back to the bundled static asset otherwise."""
+    s = _get_site_setting()
+    if not s.frontend_apple_touch_icon_filename:
+        abort(404)
+    response = send_from_directory(current_app.config["UPLOAD_FOLDER"], s.frontend_apple_touch_icon_filename)
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
+
+
+@bp.route("/settings/apple-touch-icon-save", methods=["POST"])
+@admin_required
+def apple_touch_icon_save():
+    """Persists the admin /tspro home-screen icon (apple-touch-icon)
+    and the display name shown under it on iOS / iPadOS home screens.
+    Upload / clear semantics mirror the favicon and OG image handlers."""
+    s = _get_site_setting()
+    s.apple_touch_icon_name = (request.form.get("apple_touch_icon_name") or "").strip()[:100] or None
+    if request.form.get("clear_apple_touch_icon") == "1":
+        old = s.apple_touch_icon_filename
+        s.apple_touch_icon_filename = None
+        _cleanup_retired_asset(old)
+    uploaded = request.files.get("apple_touch_icon")
+    if uploaded and uploaded.filename:
+        old = s.apple_touch_icon_filename
+        stored, _original = _save_upload(uploaded)
+        s.apple_touch_icon_filename = stored
+        if old and old != stored:
+            _cleanup_retired_asset(old)
+    db.session.commit()
+    flash("Home Screen icon updated", "success")
+    return redirect(request.referrer or url_for("main.index"))
 
 
 @bp.route("/settings/og-save", methods=["POST"])

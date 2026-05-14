@@ -1975,7 +1975,10 @@ html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-social a:hove
   pointer-events: none;
   opacity: 0;
   transform: translateY(-12px);
-  transition: opacity 180ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* No default transition — opt in via the .fe-megamenu-panel-fade
+     modifier (admin toggle in Frontend → Navigation → Mega menu
+     appearance). When the modifier isn't present the panel snaps
+     in / out without a fade. */
   /* Tall panels on small screens need internal scroll so the user can reach
      every link. The panel is capped to the remaining viewport below the header
      and scrolls its own overflow; a body-level lock below stops the page from
@@ -1986,6 +1989,16 @@ html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-social a:hove
   overscroll-behavior: contain;
 }
 .fe-megamenu.open { pointer-events: auto; opacity: 1; transform: translateY(0); }
+/* Panel fade-in modifier — added by the public template when
+   `frontend_megamenu_panel_fade` is on. Duration drives off
+   `--fe-mm-fade-ms` (admin-controlled in the Mega menu appearance
+   panel; default 180 ms). Independent of the staggered link reveal
+   below, so admins can mix-and-match (e.g. snappy panel + slow
+   link stagger). */
+.fe-megamenu-panel-fade {
+  transition: opacity var(--fe-mm-fade-ms, 180ms) ease,
+              transform var(--fe-mm-fade-ms, 180ms) cubic-bezier(0.2, 0.8, 0.2, 1);
+}
 body.fe-megamenu-open { overflow: hidden; }
 /* On mobile the mega menu covers the full viewport width edge-to-edge, so the
    inline bottom-radius from the admin appearance controls looks out of place.
@@ -2859,18 +2872,23 @@ html[data-theme="dark"] .fe-meetings-day-heading { color: #e2e8f0; }
   display: flex; flex-direction: column; gap: 18px;
 }
 .fe-event-row {
+  /* Surface + border read from the Primary card design tokens (same
+     as `.fe-meeting-card` and the standalone event/announcement
+     detail cards) so the homepage Upcoming Events tiles share the
+     elevated meeting-card visual family. The shared primary
+     aggregator near the bottom of this file wires shadow at rest +
+     hover shadow + hover transform + hover border colour through
+     the matching Primary tokens, so no per-row `:hover` rule is
+     needed here. */
   position: relative;
   display: flex; align-items: center; gap: 24px;
   padding: 22px 22px 20px;
-  background: #fff;
-  border: 1px solid var(--fe-accent);
+  background: var(--fe-color-card-primary-bg, #ffffff);
+  border: var(--fe-card-primary-border-width, 1px) solid
+          var(--fe-color-card-primary-border, var(--fe-accent));
   border-radius: 16px;
   cursor: pointer;
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
-}
-.fe-event-row:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.10);
 }
 /* Whole-card click target — the title's <a> is "stretched" via
    ::after to cover the entire row. The title stays the single
@@ -3369,19 +3387,22 @@ html[data-theme="dark"] .fe-meeting-detail-alert {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 .fe-event-detail-card {
+  /* Surface + border read from the Primary card design tokens (same
+     as `.fe-meeting-detail-card`) so the announcement / event /
+     archive detail panels share the elevated meeting-card look. The
+     aggregator rules near the bottom of this file wire the hover
+     lift + shadow + transition through the matching Primary tokens
+     too — see the `.fe-event-detail-card` entry in the
+     `.fe-meeting-card,*-detail-card,*-extended-card,…` selectors. */
   padding: 24px; border-radius: 14px;
-  background: var(--fe-color-card-secondary-bg, var(--fe-panel-soft, var(--fe-color-surface-alt, #f8fafc)));
-  border: var(--fe-card-secondary-border-width, 1px) solid var(--fe-color-card-secondary-border, var(--fe-border));
+  background: var(--fe-color-card-primary-bg, var(--fe-color-surface, #ffffff));
+  border: var(--fe-card-primary-border-width, 1px) solid var(--fe-color-card-primary-border, var(--fe-accent));
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 }
-/* Same lift / accent-border / drop-shadow recipe as the Classic
-   meeting-detail cards (and the homepage feature cards) — keeps the
-   hover affordance consistent across every public detail card. */
-.fe-event-detail-card:hover {
-  transform: translateY(-3px);
-  border-color: var(--fe-accent, var(--fe-border));
-  box-shadow: 0 10px 32px rgba(15,23,42,0.08);
-}
+/* The shared `.fe-meeting-card:hover, .fe-meeting-detail-card:hover,
+   …, .fe-card-primary:hover` aggregator below provides the lift +
+   accent-tinted shadow on hover via the Primary card tokens, so no
+   per-card hover rule is needed here. */
 .fe-event-detail-card h3 {
   display: flex; align-items: center; gap: 8px;
   font-family: var(--fe-font-heading); font-weight: 700;
@@ -3689,6 +3710,19 @@ html[data-theme="dark"] .fe-testimonial cite { color: #94a3b8; }
     padding-left: var(--fe-container-pad-mobile, 5vw);
     padding-right: var(--fe-container-pad-mobile, 5vw);
   }
+  /* Same mobile floor for the homepage Meetings + Events blocks.
+     Their inner `.fe-container` wrapper was dropped so the page-
+     builder container could control width + gutter — fine on
+     desktop where the admin sets a sensible padding, but the
+     homepage's full-bleed containers explicitly carry `0 0 0 0`
+     mobile padding so the blocks render flush. Self-padding on
+     mobile keeps the cards inset without forcing the parent's
+     edge-to-edge desktop layout to also gain a gutter. */
+  .fe-meetings,
+  .fe-events {
+    padding-left: var(--fe-container-pad-mobile, 5vw);
+    padding-right: var(--fe-container-pad-mobile, 5vw);
+  }
 }
 
 /* 2-column variant — page-builder knob `columns=2`. The template
@@ -3906,23 +3940,28 @@ html[data-theme="dark"] .fe-inclusion-tag {
    on its own and inherits surrounding spacing from the parent layout.
    =========================================================================== */
 .fe-meeting-resources {
-  background: var(--fe-color-surface, var(--fe-panel));
-  border: 1px solid var(--fe-color-border, var(--fe-border));
-  border-radius: var(--fe-card-radius, 14px);
+  /* Files & Readings panel reads from the Primary card design tokens
+     so it shares the elevated meeting-card visual family with the
+     Schedule / Location / Zoom sibling cards in the Classic detail
+     grid. Hover lift / shadow / hover-border are wired through the
+     shared primary aggregator near the bottom of this file. Radius
+     is pinned to 14 px (the same hardcoded value the
+     `.fe-meeting-detail-card` siblings use) so the two surfaces
+     share corner rounding regardless of what the admin's
+     `--fe-card-radius` design token resolves to. */
+  background: var(--fe-color-card-primary-bg, var(--fe-color-surface, #ffffff));
+  border: var(--fe-card-primary-border-width, 1px) solid
+          var(--fe-color-card-primary-border, var(--fe-accent));
+  border-radius: 14px;
   padding: 22px 24px;
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 }
 .fe-meeting-detail-grid > .fe-meeting-resources {
-  /* When dropped in the Classic grid, this panel sits next to the
-     Schedule / Location / Zoom .fe-meeting-detail-card siblings. Match
-     them exactly — same surface, padding, radius, and hover transition
-     — so the row reads as three (or four) sibling cards instead of one
-     stylistic outlier. The :hover lift is shared via the combined
-     selector above. */
-  background: var(--fe-color-surface, #ffffff);
-  border: 1px solid var(--fe-accent);
-  border-radius: 14px;
+  /* Inside the Classic detail grid the panel sits next to the
+     `.fe-meeting-detail-card` siblings. Pad to 24px so the inner
+     content lines up exactly; everything else (surface, border,
+     hover) inherits from the base rule above. */
   padding: 24px;
-  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 }
 .fe-meeting-resources h3 {
   display: flex; align-items: center; gap: 8px;
@@ -5180,18 +5219,21 @@ body.fe-frontend-force-dark .fe-mlist-protips-inline .fe-faq-summary {
    since they all share .fe-mlist-card. */
 .fe-mlist-card[hidden] { display: none !important; }
 .fe-mlist-card {
+  /* Surface + border read from the Primary card design tokens. The
+     shared primary aggregator near the bottom of this file wires
+     shadow at rest + hover shadow + hover transform + hover border
+     through the matching Primary tokens, so every meeting-shaped
+     surface across the public site (homepage, /meetings list,
+     meeting detail grid, Files & Readings panel, extended card)
+     shares one rest + motion language driven by Site → Design →
+     Card styles → Primary card. */
   position: relative;
   display: flex; flex-direction: column; gap: 12px;
   padding: 20px 22px;
-  background: #ffffff;
-  /* Border + hover match the homepage `.fe-meeting-card` recipe so
-     every meeting-shaped surface across the public site (homepage,
-     /meetings list, meeting detail grid, Files & Readings panel,
-     extended card) shares one rest + motion language. */
-  border: 1px solid var(--fe-accent);
+  background: var(--fe-color-card-primary-bg, #ffffff);
+  border: var(--fe-card-primary-border-width, 1px) solid
+          var(--fe-color-card-primary-border, var(--fe-accent));
   border-radius: 16px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 }
 /* The body wrapper holds head + schedules + rows + actions; in column
    layouts (directory, weekboard) it's a transparent passthrough so
@@ -5202,8 +5244,10 @@ body.fe-frontend-force-dark .fe-mlist-protips-inline .fe-faq-summary {
   flex: 1 1 auto; min-width: 0;
 }
 .fe-mlist-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.10);
+  /* hover lift / shadow / border come from the shared primary
+     aggregator below; this rule is intentionally empty so the
+     selector still exists for any future consumers but doesn't
+     override the aggregator's token-driven recipe. */
   /* border-color intentionally not overridden — the resting accent
      border stays put on hover so the card feels stable instead of
      visibly recoloring under the cursor. */
@@ -6345,25 +6389,19 @@ body.fe-frontend-force-dark .fe-events-archive-back a {
 .fe-library-section-desc { margin: 0.25rem 0 0.75rem; line-height: 1.45; }
 .fe-library-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .fe-library-item {
+  /* Primary card tokens — same recipe as the meetings / events /
+     announcements / fellowships cards. Hover wired via the shared
+     primary aggregator below. */
   display: flex;
   align-items: flex-start;
   gap: 14px;
   padding: 12px 14px;
-  background: #ffffff;
-  /* Match the .fe-mlist-card border style on /meetings: solid 1px in
-     the accent color, 16px radius, soft 1px shadow at rest. Border
-     colour intentionally stays put on hover so the card feels
-     stable rather than visibly recolouring under the cursor. */
-  border: 1px solid var(--fe-accent);
+  background: var(--fe-color-card-primary-bg, #ffffff);
+  border: var(--fe-card-primary-border-width, 1px) solid
+          var(--fe-color-card-primary-border, var(--fe-accent));
   border-radius: 16px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  transition: transform 160ms ease, box-shadow 160ms ease;
 }
 .fe-library-item[hidden] { display: none; }
-.fe-library-item:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
-}
 .fe-library-thumb {
   flex: 0 0 auto;
   width: 56px;
@@ -6625,23 +6663,21 @@ body.fe-frontend-force-dark .fe-events-omni-tab.is-active {
 
 /* ===== Shared event-card partial ===== */
 .fe-events-card {
+  /* Primary card tokens — same recipe as `.fe-mlist-card` and the
+     announcement / fellowships / library cards. Hover wired via the
+     shared primary aggregator below. */
   position: relative;
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr);
   gap: 22px;
   padding: 22px 24px;
-  background: #ffffff;
-  border: 1px solid var(--fe-accent);
+  background: var(--fe-color-card-primary-bg, #ffffff);
+  border: var(--fe-card-primary-border-width, 1px) solid
+          var(--fe-color-card-primary-border, var(--fe-accent));
   border-radius: 14px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
 }
 .fe-events-card.has-cover {
   grid-template-columns: 88px 180px minmax(0, 1fr);
-}
-.fe-events-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
 }
 .fe-events-card-date {
   display: flex; flex-direction: column; align-items: center;
@@ -6719,7 +6755,12 @@ body.fe-frontend-force-dark .fe-events-omni-tab.is-active {
   border: 1px solid var(--fe-accent);
   border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  /* Large drop-shadow reads through `--fe-shadow-lg` (the design-token
+     scale's "lg" tier) so admins can adjust the calendar's depth from
+     Site → Design alongside every other shadow. Hardcoded fallback
+     mirrors the scale's `lg` value at a slightly heavier alpha so the
+     calendar sheet feels lifted above the page surface. */
+  box-shadow: var(--fe-shadow-lg, 0 12px 28px rgba(15, 23, 42, 0.14));
 }
 .fe-events-cal-toolbar {
   display: flex; align-items: center; justify-content: space-between;
@@ -6937,6 +6978,14 @@ body.fe-frontend-force-dark .fe-events-omni-tab.is-active {
   width: calc(100% + 40px); margin: -18px -20px 14px;
   aspect-ratio: 16 / 9;
   overflow: hidden;
+  /* Match the card's top-corner rounding. Without this the cover's
+     square corners poke past the card's `border-radius: 12px`
+     because `.fe-events-tl-card` can't use `overflow: hidden`
+     itself (the ::after connector line to the timeline spine sits
+     OUTSIDE the card via negative `left/right` and would get
+     clipped). Bottom corners stay square — the cover bleeds into
+     the card body below it. */
+  border-radius: 12px 12px 0 0;
 }
 .fe-events-tl-cover img { width: 100%; height: 100%; object-fit: cover; }
 .fe-events-tl-title {
@@ -6974,20 +7023,19 @@ body.fe-frontend-force-dark .fe-events-omni-tab.is-active {
 
 /* ===== Magazine layout ===== */
 .fe-events-mag-hero {
+  /* Primary card tokens — same recipe as the other list-page cards.
+     Hover lift + shadow + hover border come from the shared primary
+     aggregator near the bottom of this file (see the
+     `.fe-events-mag-hero` entry there). */
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
-  border: 1px solid var(--fe-accent);
+  background: var(--fe-color-card-primary-bg, #ffffff);
+  border: var(--fe-card-primary-border-width, 1px) solid
+          var(--fe-color-card-primary-border, var(--fe-accent));
   border-radius: 16px;
-  background: #ffffff;
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   margin-bottom: 40px;
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
-}
-.fe-events-mag-hero:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.10);
 }
 .fe-events-mag-hero.has-cover {
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
@@ -7052,17 +7100,62 @@ body.fe-frontend-force-dark .fe-events-omni-tab.is-active {
 }
 .fe-events-mag-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  /* Cap at 3 columns above 1024 px; drop to 2 below that and to 1
+     at phone widths. Capping (vs `auto-fill`) keeps each tile wide
+     enough to host a featured image at a sensible aspect ratio
+     even when the page only has 4–5 secondary events to show. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
-.fe-events-mag-grid .fe-events-card {
-  grid-template-columns: 80px minmax(0, 1fr);
+@media (max-width: 1024px) {
+  .fe-events-mag-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .fe-events-mag-grid { grid-template-columns: minmax(0, 1fr); }
+}
+/* Vertical card layout in the More events grid: cover image at the
+   top (bleeding to the card edges), then a small inline date chip,
+   then the body block (title + meta + summary). The standalone
+   Cards layout's horizontal date|body geometry doesn't apply here —
+   the secondary tiles are narrower and read better as a stacked
+   thumbnail card. Grid-template-areas pins each child to its slot
+   regardless of source order in the partial. */
+.fe-events-mag-grid .fe-events-card,
+.fe-events-mag-grid .fe-events-card.has-cover {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "cover"
+    "date"
+    "body";
+  gap: 10px;
   padding: 18px;
 }
-.fe-events-mag-grid .fe-events-card.has-cover {
-  grid-template-columns: 80px minmax(0, 1fr);
+.fe-events-mag-grid .fe-events-card-cover {
+  display: block;
+  grid-area: cover;
+  margin: -18px -18px 6px;
+  border-radius: 14px 14px 0 0;
+  aspect-ratio: 16 / 9;
 }
-.fe-events-mag-grid .fe-events-card-cover { display: none; }
+.fe-events-mag-grid .fe-events-card-date {
+  grid-area: date;
+  flex-direction: row;
+  align-items: center;
+  align-self: flex-start;
+  justify-self: flex-start;
+  padding: 4px 10px;
+  gap: 4px;
+}
+.fe-events-mag-grid .fe-events-card-date-day,
+.fe-events-mag-grid .fe-events-card-date-month,
+.fe-events-mag-grid .fe-events-card-date-year {
+  font-size: 0.78rem;
+  font-family: inherit;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1;
+}
+.fe-events-mag-grid .fe-events-card-body { grid-area: body; }
 @media (max-width: 720px) {
   .fe-events-mag-hero,
   .fe-events-mag-hero.has-cover {
@@ -7163,22 +7256,17 @@ html:not([data-theme="dark"]) .fe-announcements-list a.fe-events-omni-archive {
   gap: 20px;
 }
 .fe-announcements-card {
+  /* Primary card tokens — same recipe as the meetings list / events
+     list / fellowships / library cards. Hover wired via the shared
+     primary aggregator below. */
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   padding: 24px 26px;
-  background: #ffffff;
-  /* Border + hover recipe matches .fe-mlist-card on /meetings — solid 1px
-     accent border, 1px translate + soft shadow on hover, border color
-     stays put so the card doesn't visibly recolor under the cursor. */
-  border: 1px solid var(--fe-accent);
+  background: var(--fe-color-card-primary-bg, #ffffff);
+  border: var(--fe-card-primary-border-width, 1px) solid
+          var(--fe-color-card-primary-border, var(--fe-accent));
   border-radius: 16px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
-}
-.fe-announcements-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
 }
 .fe-announcements-card.has-cover {
   grid-template-columns: 200px minmax(0, 1fr);
@@ -7211,7 +7299,11 @@ html:not([data-theme="dark"]) .fe-announcements-list a.fe-events-omni-archive {
   font-weight: inherit;
   text-decoration: none;
 }
-.fe-announcements-card-title a:hover { text-decoration: none; }
+/* Subtle hover underline so the title reads as plain text at rest
+   but still feels like a navigable link on hover. The card no
+   longer has a separate "View details" CTA — the title IS the
+   click target. */
+.fe-announcements-card-title a:hover { text-decoration: underline; }
 .fe-announcements-card-meta {
   display: flex; flex-wrap: wrap; gap: 14px;
   font-size: 0.85rem;
@@ -7319,6 +7411,22 @@ html:not([data-theme="dark"]) .fe-announcements-list a.fe-events-omni-archive {
   font-weight: 700;
   margin: 0 0 6px;
   line-height: 1.3;
+}
+/* GSR title links read as plain text (no link colour, no underline)
+   so the printed-digest aesthetic stays intact, with a hover
+   underline for affordance. Selectors prefixed with `.fe-page` /
+   `.frontend-body` so the rule beats the global `.fe-page a` link
+   styling on specificity. */
+.fe-page .fe-announcements-gsr-title a,
+.frontend-body .fe-announcements-gsr-title a {
+  color: inherit;
+  font-weight: inherit;
+  text-decoration: none;
+}
+.fe-page .fe-announcements-gsr-title a:hover,
+.frontend-body .fe-announcements-gsr-title a:hover {
+  color: inherit;
+  text-decoration: underline;
 }
 .fe-announcements-gsr-summary {
   margin: 0;
@@ -10226,16 +10334,14 @@ body.fe-frontend-force-dark .fe-site-index-row-link:hover {
 .fe-fellowships-stack { display: grid; gap: 14px; }
 
 .fe-fellowships-card {
-  background: var(--fe-color-surface, #fff);
-  border: 1px solid var(--fe-color-border, #e5e7eb);
+  /* Primary card tokens — same recipe as the other list-page cards.
+     Hover wired via the shared primary aggregator below. */
+  background: var(--fe-color-card-primary-bg, #ffffff);
+  border: var(--fe-card-primary-border-width, 1px) solid
+          var(--fe-color-card-primary-border, var(--fe-accent));
   border-radius: 14px;
   padding: 16px 18px;
   display: grid; gap: 8px;
-  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
-}
-.fe-fellowships-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.10);
 }
 .fe-fellowships-card-head {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -10364,6 +10470,15 @@ html[data-theme="dark"] .fe-mlist-sort select option {
 .fe-meeting-detail-card,
 .fe-meeting-extended-card,
 .fe-recovery-threeup-card,
+.fe-event-detail-card,
+.fe-event-row,
+.fe-meeting-resources,
+.fe-mlist-card,
+.fe-events-card,
+.fe-events-mag-hero,
+.fe-announcements-card,
+.fe-fellowships-card,
+.fe-library-item,
 .fe-card-primary {
   box-shadow: var(--fe-card-primary-shadow, none);
   transition:
@@ -10376,6 +10491,15 @@ html[data-theme="dark"] .fe-mlist-sort select option {
 .fe-meeting-detail-card:hover,
 .fe-meeting-extended-card:hover,
 .fe-recovery-threeup-card:hover,
+.fe-event-detail-card:hover,
+.fe-event-row:hover,
+.fe-meeting-resources:hover,
+.fe-mlist-card:hover,
+.fe-events-card:hover,
+.fe-events-mag-hero:hover,
+.fe-announcements-card:hover,
+.fe-fellowships-card:hover,
+.fe-library-item:hover,
 .fe-card-primary:hover {
   box-shadow: var(--fe-card-primary-hover-shadow, 0 8px 28px rgba(15, 23, 42, 0.10));
   transform: var(--fe-card-primary-hover-transform, translateY(-2px));
@@ -10388,7 +10512,6 @@ html[data-theme="dark"] .fe-mlist-sort select option {
 .fe-faq-item,
 .fe-inclusion-card,
 .fe-meeting-mag-side-card,
-.fe-event-detail-card,
 .fe-card-secondary {
   box-shadow: var(--fe-card-secondary-shadow, none);
   transition:
@@ -10402,7 +10525,6 @@ html[data-theme="dark"] .fe-mlist-sort select option {
 .fe-faq-item:hover,
 .fe-inclusion-card:hover,
 .fe-meeting-mag-side-card:hover,
-.fe-event-detail-card:hover,
 .fe-card-secondary:hover {
   box-shadow: var(--fe-card-secondary-hover-shadow, 0 10px 32px rgba(15, 23, 42, 0.08));
   transform: var(--fe-card-secondary-hover-transform, translateY(-3px));

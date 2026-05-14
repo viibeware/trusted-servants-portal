@@ -6,6 +6,38 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [1.10.2] — 2026-05-14
+
+### Added — Per-page Open Graph on every public detail page + a Page-level OG section
+
+The public site now emits per-entity Open Graph / Twitter Card metadata on every detail surface: `/meetings/<slug>` uses `Meeting.name` + `Meeting.description` + `Meeting.logo_filename` (served via the existing `public.public_meeting_logo` route); `/event/<slug>`, `/announcement/<slug>`, and `/archive/<slug>` use `Post.title` + `Post.summary or Post.body` + `Post.featured_image_filename` (`public.post_featured_image`); `/stories/<slug>` uses the corresponding Story columns (`public.story_featured_image`); `/blog/<slug>` uses BlogPost (`public.blog_post_featured_image`). New `Page` columns `og_title` / `og_description` / `og_image_filename` (with `_migrate_sqlite` entries) — set them from a new **Open Graph / Link Previews** section on the page-edit form, sitting under Background image. A `og_present` hidden marker gates the assignment so partial sub-form submits can't wipe values. Page OG image is served on `/pub/page-og-image/<page_id>` with a 1-day public cache header. Anything left blank — per-entity AND per-page — falls back to the site-wide `frontend_og_*` defaults set under Web Frontend → Branding & SEO; the site-wide `frontend_og_enabled` master toggle still gates the entire block.
+
+Implementation: a new `frontend.py::_page_og(site, title, description, image_url)` helper produces the `page_og_title` / `page_og_description` / `page_og_image_url` triplet that `frontend/base.html` consumes. Descriptions are HTML-stripped, whitespace-collapsed, and clipped to 280 characters with a Unicode ellipsis — comfortably under Facebook's 300-char hard ceiling and a hair above Twitter's classic 200-char sweet spot. Image URLs are emitted as absolute (`_external=True`) because crawlers (Slack / iMessage / Facebook) skip relative-path previews. Every detail route was updated to splat `_page_og(...)` into `render_template(...)` alongside the existing context, including the homepage `index()` (which already renders a Page).
+
+### Added — Apple Home Screen icon + display name for admin (/tspro) and public site
+
+Two new SiteSetting column pairs: `apple_touch_icon_filename` / `apple_touch_icon_name` (backend) and `frontend_apple_touch_icon_filename` / `frontend_apple_touch_icon_name` (frontend), all additively migrated. Two new public serve routes — `/site-branding/apple-touch-icon` and `/site-branding/frontend-apple-touch-icon` — so iOS can fetch the icon anonymously when a visitor taps "Add to Home Screen." `base.html` and `frontend/base.html` swap their hardcoded static `apple-touch-icon_tspro.png` / `apple-touch-icon_dccma.png` links for the uploaded version when one is set (falling back to the bundled static asset otherwise), and emit `<meta name="apple-mobile-web-app-title">` when a display name is configured. The backend control sits in **Settings → Appearance**, paired in the right column of the same grid row as Open Graph; the frontend control lives under **Web Frontend → Branding & SEO** as its own card. Both panels carry a live icon + label preview that updates as the admin edits, with the same `?v={{ app_build_id }}` cache-busting suffix the favicon already uses so iOS picks up new artwork on the next home-screen add.
+
+### Changed — Event / announcement / archive detail cards switched to Primary card tokens
+
+`.fe-event-detail-card` (Schedule / Location / Online / Contact panels on the public event, announcement, and archive detail pages) used to read from the Secondary card design tokens — the soft panel surface used by feature cards and FAQ items. Switched to Primary card tokens (the elevated meeting-card style) so the detail panels read as a coherent card family with the meeting-detail cards. Standalone rule's `background` / `border` / `border-width` declarations swapped to `--fe-color-card-primary-*`; the per-card `:hover` block was removed in favour of the shared primary aggregator selector at the bottom of the file (which now includes `.fe-event-detail-card`); the Secondary aggregator no longer references it. (Dark-mode overrides at `html[data-theme="dark"] .fe-event-detail-card` still read from the Secondary dark tokens — pending a follow-up.)
+
+### Added — View on Frontend ↗ button on the post-edit page
+
+The announcements / events admin edit page (`/tspro/announcementsevents/<id>`) gains a `View on Frontend ↗` button in the top-action row. Uses the existing `post_url` Jinja global so the link routes to the right public URL (`/event/<slug>`, `/announcement/<slug>`, or `/archive/<slug>`) based on the post's state. Gated on `frontend_module_enabled`; hidden on pending-review submissions, drafts, and brand-new unsaved posts.
+
+### Changed — Announcements list cards drop the "View details ↗" CTA; GSR titles become links
+
+The announcement card partial used to render a separate `View details ↗` link at the bottom. Removed — the card title was already a link to the same URL. The card title's `:hover` now underlines (was no underline at any state) so the click affordance is still clear. On the GSR Summary view, each title is now wrapped in an `<a href="{{ post_url(ann) }}">` so the printed-digest layout is also navigable; styled to inherit the surrounding text colour (no link blue, no underline at rest) with a subtle hover underline so the printed-digest aesthetic stays intact.
+
+### Changed — Meetings + Events blocks: mobile self-padding restored
+
+Earlier removing the inner `.fe-container` wrapper from `frontend/blocks/meetings.html` and `frontend/blocks/events.html` (so they wouldn't double-pad inside page-builder containers on desktop) accidentally left those blocks flush on mobile when their parent container carried explicit `0 0 0 0` mobile padding. Added a `@media (max-width: 768px)` self-padding rule reading `--fe-container-pad-mobile` (default `5vw`) — same `.fe-faq--bare` pattern. Desktop is untouched (parent container still controls), so the admin's homepage layout doesn't gain a double gutter.
+
+### Changed — Events Magazine "More events" grid: cover image at the top, max 3 per row
+
+The secondary tiles inside the More events grid (rendered on the events Magazine layout + Omni layout's Magazine panel) now show their featured image above the title (was previously hidden via `display: none`). Tile layout reshaped via `grid-template-areas` so the cover bleeds to the card edges with a 16/9 aspect ratio + rounded top corners, the date drops to a small inline chip, and the body sits below. Grid switched from `repeat(auto-fill, minmax(280px, 1fr))` to a fixed `repeat(3, minmax(0, 1fr))` cap (drops to 2 columns at ≤1024 px and 1 column at ≤640 px) so each tile stays wide enough to host a thumbnail at a sensible size.
+
 ## [1.10.1] — 2026-05-14
 
 ### Changed — Announcements + Events list templates now sort by post date (newest first)

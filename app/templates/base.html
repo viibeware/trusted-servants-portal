@@ -21,7 +21,12 @@
 {% if site.og_description %}<meta name="description" content="{{ site.og_description }}">{% endif %}
 {% endif %}
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+{% if site and site.apple_touch_icon_filename %}
+<link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('public.site_apple_touch_icon', v=app_build_id) }}">
+{% else %}
 <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/apple-touch-icon_tspro.png', v=app_build_id) }}">
+{% endif %}
+{% if site and site.apple_touch_icon_name %}<meta name="apple-mobile-web-app-title" content="{{ site.apple_touch_icon_name }}">{% endif %}
 <script>
   (function(){
     var t = null;
@@ -386,6 +391,34 @@
           </div>
           <div class="form-actions"><button class="btn btn-primary">Save Open Graph</button></div>
         </form>
+        {% set _ati_has_icon = site and site.apple_touch_icon_filename %}
+        {% set _ati_src = (url_for('public.site_apple_touch_icon') ~ '?v=' ~ app_build_id) if _ati_has_icon else url_for('static', filename='img/apple-touch-icon_tspro.png', v=app_build_id) %}
+        <form class="form appearance-apple-touch-form" method="post" action="{{ url_for('main.apple_touch_icon_save') }}" enctype="multipart/form-data">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="u-name">Home Screen Icon (iOS / iPadOS)</div>
+          <p class="muted small">Icon and label used when this admin portal (<code>/tspro</code>) is pinned to an iPhone or iPad home screen via Safari's "Add to Home Screen." Independent from the public site's home-screen icon.</p>
+          <div class="branding-row">
+            <div class="branding-preview-wrap">
+              <div class="muted smaller">Preview</div>
+              <div class="apple-touch-preview-mock">
+                <img id="apple-touch-preview-img" src="{{ _ati_src }}" alt="" style="width:60px;height:60px;border-radius:13px;display:block;">
+                <div class="apple-touch-preview-name muted smaller" id="apple-touch-preview-name" style="margin-top:6px;text-align:center;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ (site.apple_touch_icon_name if site else '') or 'Trusted Servants' }}</div>
+              </div>
+              <p class="muted smaller" style="margin-top:6px;">Recommended: 180×180 px, PNG, opaque background (iOS rounds the corners).</p>
+            </div>
+            <div class="branding-fields">
+              <label>Display name
+                <input type="text" name="apple_touch_icon_name" maxlength="100" value="{{ (site.apple_touch_icon_name if site else '') or '' }}" placeholder="Trusted Servants" id="apple-touch-name-input">
+              </label>
+              <label>Replace icon<input type="file" name="apple_touch_icon" accept="image/png,image/jpeg,image/webp" id="apple-touch-icon-input"></label>
+              <label class="check apple-touch-clear-label"{% if not _ati_has_icon %} hidden{% endif %}><input type="checkbox" name="clear_apple_touch_icon" value="1"><span>Remove custom icon (restore default)</span></label>
+            </div>
+          </div>
+          <div class="form-actions"><button class="btn btn-primary">Save Home Screen Icon</button></div>
+        </form>
+        </div>
+        <hr class="settings-sep">
+        <div class="appearance-grid">
         <form class="form appearance-site-url-form" method="post" action="{{ url_for('main.site_url_save') }}">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="u-name">Public Domain</div>
@@ -416,6 +449,26 @@
             if (empty) empty.hidden = true;
             if (clearLabel) clearLabel.hidden = false;
           });
+        })();
+        (function(){
+          const fileInput = document.getElementById('apple-touch-icon-input');
+          const nameInput = document.getElementById('apple-touch-name-input');
+          const previewImg = document.getElementById('apple-touch-preview-img');
+          const previewName = document.getElementById('apple-touch-preview-name');
+          const clearLabel = document.querySelector('.apple-touch-clear-label');
+          if (fileInput && previewImg) {
+            fileInput.addEventListener('change', () => {
+              const file = fileInput.files && fileInput.files[0];
+              if (!file) return;
+              previewImg.src = URL.createObjectURL(file);
+              if (clearLabel) clearLabel.hidden = false;
+            });
+          }
+          if (nameInput && previewName) {
+            nameInput.addEventListener('input', () => {
+              previewName.textContent = nameInput.value || 'Trusted Servants';
+            });
+          }
         })();
         </script>
         <script src="{{ url_for('static', filename='js/login_fx.js', v=app_build_id) }}"></script>

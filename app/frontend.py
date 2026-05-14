@@ -1015,6 +1015,47 @@ def _frontend_context(site):
     }
 
 
+def _page_og(site, title=None, description=None, image_url=None):
+    """Build the per-page Open Graph override context consumed by
+    ``frontend/base.html``. Any arg left None / empty falls back to the
+    site-wide ``frontend_og_*`` defaults set under Branding & SEO.
+
+    Returns a dict ready to splat into ``render_template``::
+
+        return render_template(..., **_page_og(site, title=m.title,
+                                               image_url=...), **ctx)
+
+    Callers pass an absolute URL for ``image_url`` (use ``_external=True``
+    on ``url_for``) — crawlers like Slack / iMessage / Facebook reject
+    relative paths and skip the preview when only a relative URL is
+    advertised.
+
+    ``description`` is collapsed to a single line and clipped to 280
+    characters (a hair above Twitter's classic 200-char description
+    sweet spot, comfortably under Facebook's 300-char hard ceiling).
+    HTML / Markdown is stripped via the project's `safe_html` filter
+    upstream of this call (callers may pass `.body` directly when they
+    only have one content column to draw from — the clip below handles
+    the unwrap)."""
+    desc = (description or "").strip()
+    if desc:
+        # Collapse all whitespace runs to single spaces and drop
+        # anything that looks like a leftover HTML tag — `summary`
+        # columns are plain text but `body` columns may be Markdown
+        # with embedded HTML and would otherwise emit angle-bracket
+        # garbage to the link preview.
+        import re as _re
+        desc = _re.sub(r"<[^>]+>", " ", desc)
+        desc = _re.sub(r"\s+", " ", desc).strip()
+        if len(desc) > 280:
+            desc = desc[:277].rstrip() + "…"
+    return {
+        "page_og_title": (title or "").strip() or None,
+        "page_og_description": desc or None,
+        "page_og_image_url": (image_url or "").strip() or None,
+    }
+
+
 def _frontend_gate(site):
     """Shared gating logic: return None when access is allowed, or a
     response (redirect / 404) when the visitor isn't allowed to see the
@@ -1144,11 +1185,16 @@ def index():
     for _sec in (sections or []):
         if isinstance(_sec, dict):
             _hydrate(_sec.get("blocks") or [])
+    og = _page_og(site, title=page.og_title or page.title,
+                  description=page.og_description,
+                  image_url=(url_for("public.public_page_og_image", page_id=page.id, _external=True)
+                             if page.og_image_filename else None))
     return render_template("frontend/page.html", page=page,
                            sections=sections, toc_items=toc_items,
                            has_lottie=has_lottie,
                            pp_meetings_groups_by_id=pp_meetings_groups_by_id,
                            pp_events_list_by_id=pp_events_list_by_id,
+                           **og,
                            **_frontend_context(site))
 
 
@@ -1224,8 +1270,11 @@ def meeting_detail(slug):
             if _l.name and _l.name.strip().lower() == loc_norm:
                 location_record = _l
                 break
+    og = _page_og(site, title=m.name, description=m.description,
+                  image_url=(url_for("public.public_meeting_logo", mid=m.id, _external=True)
+                             if m.logo_filename else None))
     return render_template(tpl["partial"], meeting=m, tpl_style=tpl_style, tpl_dynbg_key=tpl_dynbg_key, tpl_dynbg_overlay=tpl_dynbg_overlay, tpl_dynbg_colors=tpl_dynbg_colors, tpl_dynbg_config=tpl_dynbg_config,
-                           meeting_location_record=location_record, **ctx)
+                           meeting_location_record=location_record, **og, **ctx)
 
 
 @bp.route("/meetings/<slug>/calendar.ics")
@@ -2547,8 +2596,12 @@ def archive_detail(slug):
         "randomize_positions": _tpl_settings.get("bg_dynbg_randomize_positions", False),
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
     }
+    og = _page_og(site, title=post.title,
+                  description=post.summary or post.body,
+                  image_url=(url_for("public.post_featured_image", pid=post.id, _external=True)
+                             if post.featured_image_filename else None))
     return render_template(tpl["partial"], event=post, tpl_style=tpl_style, tpl_dynbg_key=tpl_dynbg_key, tpl_dynbg_overlay=tpl_dynbg_overlay, tpl_dynbg_colors=tpl_dynbg_colors, tpl_dynbg_config=tpl_dynbg_config,
-                           is_in_archive=True, **ctx)
+                           is_in_archive=True, **og, **ctx)
 
 
 @bp.route("/announcements")
@@ -2744,7 +2797,11 @@ def story_detail(slug):
                     if _story_cfg["animate"] is True
                     else _story_cfg["animate"]),
     }
-    return render_template(tpl["partial"], story=story, tpl_style=tpl_style, tpl_dynbg_key=tpl_dynbg_key, tpl_dynbg_overlay=tpl_dynbg_overlay, tpl_dynbg_colors=tpl_dynbg_colors, tpl_dynbg_config=tpl_dynbg_config, **ctx)
+    og = _page_og(site, title=story.title,
+                  description=story.summary or story.body,
+                  image_url=(url_for("public.story_featured_image", sid=story.id, _external=True)
+                             if story.featured_image_filename else None))
+    return render_template(tpl["partial"], story=story, tpl_style=tpl_style, tpl_dynbg_key=tpl_dynbg_key, tpl_dynbg_overlay=tpl_dynbg_overlay, tpl_dynbg_colors=tpl_dynbg_colors, tpl_dynbg_config=tpl_dynbg_config, **og, **ctx)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -2904,6 +2961,10 @@ def blog_post_detail(slug):
         related = related + more
     all_categories = (BlogCategory.query
                       .order_by(BlogCategory.position, BlogCategory.name).all())
+    og = _page_og(site, title=post.title,
+                  description=post.summary or post.body,
+                  image_url=(url_for("public.blog_post_featured_image", bid=post.id, _external=True)
+                             if post.featured_image_filename else None))
     return render_template(tpl["partial"], post=post,
                            tpl_style=tpl_style,
                            tpl_dynbg_key=tpl_dynbg_key,
@@ -2912,6 +2973,7 @@ def blog_post_detail(slug):
                            tpl_dynbg_config=tpl_dynbg_config,
                            related=related,
                            all_categories=all_categories,
+                           **og,
                            **ctx)
 
 
@@ -3028,8 +3090,12 @@ def event_detail(slug):
         "randomize_positions": _tpl_settings.get("bg_dynbg_randomize_positions", False),
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
     }
+    og = _page_og(site, title=ev.title,
+                  description=ev.summary or ev.body,
+                  image_url=(url_for("public.post_featured_image", pid=ev.id, _external=True)
+                             if ev.featured_image_filename else None))
     return render_template(tpl["partial"], event=ev, tpl_style=tpl_style, tpl_dynbg_key=tpl_dynbg_key, tpl_dynbg_overlay=tpl_dynbg_overlay, tpl_dynbg_colors=tpl_dynbg_colors, tpl_dynbg_config=tpl_dynbg_config,
-                           is_in_archive=False, **ctx)
+                           is_in_archive=False, **og, **ctx)
 
 
 @bp.route("/event/<slug>/calendar.ics")
@@ -3134,8 +3200,12 @@ def announcement_detail(slug):
     }
     # Pass the post in as `event` so the existing event-detail templates
     # (which all reference `event.*`) render unchanged.
+    og = _page_og(site, title=ann.title,
+                  description=ann.summary or ann.body,
+                  image_url=(url_for("public.post_featured_image", pid=ann.id, _external=True)
+                             if ann.featured_image_filename else None))
     return render_template(tpl["partial"], event=ann, tpl_style=tpl_style, tpl_dynbg_key=tpl_dynbg_key, tpl_dynbg_overlay=tpl_dynbg_overlay, tpl_dynbg_colors=tpl_dynbg_colors, tpl_dynbg_config=tpl_dynbg_config,
-                           is_in_archive=False, **ctx)
+                           is_in_archive=False, **og, **ctx)
 
 
 @bp.route("/contact")
@@ -3613,11 +3683,16 @@ def page_detail(slug):
             _hydrate(_sec.get("blocks") or [])
 
     ctx = _frontend_context(site)
+    og = _page_og(site, title=page.og_title or page.title,
+                  description=page.og_description,
+                  image_url=(url_for("public.public_page_og_image", page_id=page.id, _external=True)
+                             if page.og_image_filename else None))
     return render_template("frontend/page.html", page=page,
                            sections=sections, toc_items=toc_items,
                            has_lottie=has_lottie,
                            pp_meetings_groups_by_id=pp_meetings_groups_by_id,
                            pp_events_list_by_id=pp_events_list_by_id,
+                           **og,
                            **ctx)
 
 

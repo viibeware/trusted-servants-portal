@@ -10,15 +10,25 @@
 {% set _mega_fg = (site.frontend_mega_text_color if site else None) or '#ffffff' %}
 {% set _mega_bl = (site.frontend_mega_radius_bl if site else 18) %}
 {% set _mega_br = (site.frontend_mega_radius_br if site else 18) %}
-{% set _animate = site and site.frontend_megamenu_animate %}
+{# Panel-level fade is the master switch for the menu's open animation.
+   When OFF, the panel snaps in instantly AND the staggered link reveal
+   is suppressed too (so "off" really means "no animation at all" — the
+   user-facing meaning of the toggle, not just one of two independent
+   knobs). When ON, the staggered-link toggle becomes a sub-option for
+   admins who want the panel to fade but the links to appear all at
+   once. Both sliders below tune their respective speeds independently. #}
+{% set _panel_fade = (site is none) or site.frontend_megamenu_panel_fade %}
+{% set _panel_fade_ms = (site.frontend_megamenu_panel_fade_ms if site and site.frontend_megamenu_panel_fade_ms is not none else 180) %}
+{% set _animate = _panel_fade and site and site.frontend_megamenu_animate %}
 {% set _animate_ms = (site.frontend_megamenu_animate_ms if site and site.frontend_megamenu_animate_ms else 320) %}
 {% set _mm_h_pct = site.frontend_megamenu_heading_size if site and site.frontend_megamenu_heading_size else None %}
 {% set _mm_sh_pct = site.frontend_megamenu_subheading_size if site and site.frontend_megamenu_subheading_size else None %}
-<div class="fe-megamenu fe-megamenu-recovery-blue{% if _animate %} fe-megamenu-animate{% endif %}" data-megamenu-panel="{{ ni.id }}" aria-hidden="true"
+<div class="fe-megamenu fe-megamenu-recovery-blue{% if _animate %} fe-megamenu-animate{% endif %}{% if _panel_fade %} fe-megamenu-panel-fade{% endif %}" data-megamenu-panel="{{ ni.id }}" aria-hidden="true"
      style="background: {{ _mega_bg }}; color: {{ _mega_fg }};
             border-bottom-left-radius: {{ _mega_bl }}px;
             border-bottom-right-radius: {{ _mega_br }}px;
-            --fe-mm-reveal-ms: {{ _animate_ms }}ms;{% if _mm_h_pct %}
+            --fe-mm-reveal-ms: {{ _animate_ms }}ms;
+            --fe-mm-fade-ms: {{ _panel_fade_ms }}ms;{% if _mm_h_pct %}
             --fe-mm-heading-scale: {{ '%.2f'|format(_mm_h_pct / 100) }};{% endif %}{% if _mm_sh_pct %}
             --fe-mm-link-scale: {{ '%.2f'|format(_mm_sh_pct / 100) }};{% endif %}">
   <div class="fe-megamenu-inner">

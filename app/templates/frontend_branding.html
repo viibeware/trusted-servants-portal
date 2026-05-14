@@ -97,6 +97,60 @@
     </div>
   </section>
 
+  <section class="card">
+    <div class="card-head">
+      <h2>Home Screen Icon (iOS / iPadOS)</h2>
+      <span class="muted smaller">Icon and label used when a visitor pins this site to an iPhone or iPad home screen via Safari's "Add to Home Screen." Independent from the admin (<code>/tspro</code>) home-screen icon in Settings → Appearance.</span>
+    </div>
+
+    {% set _fe_ati_has = site and site.frontend_apple_touch_icon_filename %}
+    {% set _fe_ati_src = (url_for('public.site_frontend_apple_touch_icon') ~ '?v=' ~ app_build_id) if _fe_ati_has else url_for('static', filename='img/apple-touch-icon_dccma.png', v=app_build_id) %}
+    {% set _fe_ati_name = (site.frontend_apple_touch_icon_name if site else '') or '' %}
+    {% set _fe_ati_fallback_name = (site.frontend_title if site else '') or 'Home' %}
+    <div class="fe-apple-touch-block" style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;">
+      <div class="fe-apple-touch-preview" style="text-align:center;">
+        <div class="muted smaller" style="margin-bottom:6px;">Preview</div>
+        <img id="fe-apple-touch-preview-img" src="{{ _fe_ati_src }}" alt="Home Screen icon preview" style="width:64px;height:64px;border-radius:14px;display:block;margin:0 auto;">
+        <div class="muted smaller" id="fe-apple-touch-preview-name" style="margin-top:6px;max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ _fe_ati_name or _fe_ati_fallback_name }}</div>
+        <p class="muted smaller" style="margin-top:8px;max-width:140px;">180×180 PNG with an opaque background — iOS rounds the corners.</p>
+      </div>
+      <div class="fe-apple-touch-fields" style="flex:1;min-width:240px;">
+        <label>Display name <span class="muted small">(falls back to the page title)</span>
+          <input type="text" name="frontend_apple_touch_icon_name" id="fe-apple-touch-name-input" value="{{ _fe_ati_name }}" maxlength="100" placeholder="{{ _fe_ati_fallback_name }}">
+        </label>
+        <label>Replace icon
+          <input type="file" name="frontend_apple_touch_icon" id="fe-apple-touch-icon-input" accept="image/png,image/jpeg,image/webp">
+        </label>
+        {% if _fe_ati_has %}
+        <label class="check fe-logo-clear-label">
+          <input type="checkbox" name="clear_frontend_apple_touch_icon" value="1"><span>Remove custom icon (restore default)</span>
+        </label>
+        {% endif %}
+      </div>
+    </div>
+    <script>
+    (function(){
+      const fileInput = document.getElementById('fe-apple-touch-icon-input');
+      const nameInput = document.getElementById('fe-apple-touch-name-input');
+      const previewImg = document.getElementById('fe-apple-touch-preview-img');
+      const previewName = document.getElementById('fe-apple-touch-preview-name');
+      const fallback = {{ (_fe_ati_fallback_name|tojson) }};
+      if (fileInput && previewImg) {
+        fileInput.addEventListener('change', () => {
+          const file = fileInput.files && fileInput.files[0];
+          if (!file) return;
+          previewImg.src = URL.createObjectURL(file);
+        });
+      }
+      if (nameInput && previewName) {
+        nameInput.addEventListener('input', () => {
+          previewName.textContent = nameInput.value || fallback;
+        });
+      }
+    })();
+    </script>
+  </section>
+
   <div class="form-actions"><button class="btn btn-primary">Save Branding</button></div>
 </form>
 

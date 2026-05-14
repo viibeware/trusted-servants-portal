@@ -122,10 +122,37 @@
         </div>
         <li class="special-page-row" style="list-style:none; margin-top: 12px;">
           <div class="special-page-info">
-            <div class="u-name">Staggered reveal animation</div>
-            <p class="muted small">When the mega menu opens, items fade in one after another with a slight slide + rotate. Turn off for an instant appearance.</p>
+            <div class="u-name">Show on hover fade</div>
+            <p class="muted small">Fade the whole menu panel in (and slide it down a touch) when it opens on hover. Turn off for an instant appearance.</p>
           </div>
-          <label class="mode-toggle" title="Toggle mega menu reveal animation">
+          <label class="mode-toggle" title="Toggle mega menu panel fade-in">
+            <input type="checkbox" name="frontend_megamenu_panel_fade" value="1"
+                   data-panel-fade-toggle
+                   {% if (site is none) or site.frontend_megamenu_panel_fade %}checked{% endif %}>
+            <span class="mode-track"><span class="mode-thumb"></span></span>
+          </label>
+        </li>
+        {% set _fade_ms = site.frontend_megamenu_panel_fade_ms if site and site.frontend_megamenu_panel_fade_ms is not none else 180 %}
+        <div class="mega-animate-speed-row" data-panel-fade-speed-row
+             {% if site and not site.frontend_megamenu_panel_fade %}hidden{% endif %}>
+          <label class="mega-animate-speed-label">
+            <div class="mega-animate-speed-head">
+              <span>Fade speed</span>
+              <output data-panel-fade-ms-out>{{ _fade_ms }}</output><span class="muted small">&nbsp;ms</span>
+            </div>
+            <input type="range" name="frontend_megamenu_panel_fade_ms"
+                   min="0" max="1500" step="20" value="{{ _fade_ms }}"
+                   data-panel-fade-ms-input>
+            <p class="muted smaller">How long the panel takes to fade in. Lower = snappier; 0 = instant.</p>
+          </label>
+        </div>
+
+        <li class="special-page-row" style="list-style:none; margin-top: 12px;">
+          <div class="special-page-info">
+            <div class="u-name">Staggered link entrance</div>
+            <p class="muted small">After the panel appears, items fade in one after another with a slight slide + rotate. <b>Requires "Show on hover fade" above to be on</b> — when the panel snaps in, the links snap in with it. Turn this sub-option off for a panel that fades in but reveals all its links at once.</p>
+          </div>
+          <label class="mode-toggle" title="Toggle mega menu staggered link entrance">
             <input type="checkbox" name="frontend_megamenu_animate" value="1"
                    data-animate-toggle
                    {% if site and site.frontend_megamenu_animate %}checked{% endif %}>
@@ -137,7 +164,7 @@
              {% if site and not site.frontend_megamenu_animate %}hidden{% endif %}>
           <label class="mega-animate-speed-label">
             <div class="mega-animate-speed-head">
-              <span>Animation speed</span>
+              <span>Stagger speed</span>
               <output data-animate-ms-out>{{ _animate_ms }}</output><span class="muted small">&nbsp;ms</span>
             </div>
             <input type="range" name="frontend_megamenu_animate_ms"
@@ -220,19 +247,27 @@
     apply();
   });
 
-  // Animation-speed slider: live ms readout + show/hide when the
-  // staggered-animation toggle is flipped.
-  (function () {
-    const toggle = document.querySelector('[data-animate-toggle]');
-    const row = document.querySelector('[data-animate-speed-row]');
-    const input = document.querySelector('[data-animate-ms-input]');
-    const out = document.querySelector('[data-animate-ms-out]');
+  // Animation-speed sliders: live ms readout + show/hide when the
+  // matching toggle is flipped. Two pairs: panel fade + staggered link
+  // entrance. The wireSpeed helper takes the four selectors and runs
+  // the same logic for both, returning silently when a control is
+  // missing (defensive — admin templates may strip either toggle in
+  // the future).
+  function wireSpeed(toggleSel, rowSel, inputSel, outSel) {
+    const toggle = document.querySelector(toggleSel);
+    const row = document.querySelector(rowSel);
+    const input = document.querySelector(inputSel);
+    const out = document.querySelector(outSel);
     if (!input || !out) return;
     input.addEventListener('input', () => { out.textContent = input.value; });
     if (toggle && row) {
       toggle.addEventListener('change', () => { row.hidden = !toggle.checked; });
     }
-  })();
+  }
+  wireSpeed('[data-panel-fade-toggle]',  '[data-panel-fade-speed-row]',
+            '[data-panel-fade-ms-input]', '[data-panel-fade-ms-out]');
+  wireSpeed('[data-animate-toggle]',     '[data-animate-speed-row]',
+            '[data-animate-ms-input]',   '[data-animate-ms-out]');
 
   // Heading / link size sliders: live percentage readout. The slider
   // is centered at 100 — that position saves as NULL (theme default

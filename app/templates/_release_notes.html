@@ -12,6 +12,23 @@
 <ul class="release-notes">
 
   <li>
+    <div class="u-name">1.10.2 (latest)</div>
+    <div class="muted smaller">May 2026 — Per-page link previews, Home Screen icons, detail-card style + announcements/events polish</div>
+    <p>Layered on top of 1.10.1 — every public detail page now ships its own Open Graph preview (so a meeting / event / story / blog link pasted into Slack or iMessage shows that entity's logo + title + summary instead of the site-wide fallback), separate iOS Home Screen icon + name for the admin portal and the public site, detail cards swapped to the meeting-card visual family, View on Frontend on the post editor, cleaner announcement cards + linkable GSR titles, mobile padding restored on homepage Meetings + Events blocks, and a redesigned More events grid.</p>
+    <ul>
+      <li><b>Per-page Open Graph link previews</b> — meeting / event / announcement / story / blog detail pages now emit their own <code>og:title</code>, <code>og:description</code>, and <code>og:image</code>. Meetings use the <b>meeting logo</b>; events / announcements / stories / blog posts use their <b>featured image</b>. Anything missing falls back to the site-wide values under <i>Web Frontend → Branding &amp; SEO</i>. (Make sure the <b>Enable link previews</b> toggle there is on.)</li>
+      <li><b>Content pages</b> get a new <b>Open Graph / Link Previews</b> section on the page-edit screen — set a custom title, description, and preview image per page; any field left blank falls back to the site-wide defaults.</li>
+      <li><b>iOS Home Screen icon + display name</b> — separate controls for the admin portal (<i>Settings → Appearance</i>) and the public site (<i>Web Frontend → Branding &amp; SEO</i>). Visitors who "Add to Home Screen" on iPhone / iPad now see the icon and label you upload here instead of the bundled defaults. 180×180 PNG with an opaque background works best — iOS rounds the corners.</li>
+      <li><b>Event / announcement / archive detail cards</b> (Schedule / Location / Online / Contact panels) now use the <b>Primary card</b> design tokens, matching the elevated meeting-detail card look. Adjust them site-wide from <i>Site → Design → Card styles → Primary card</i>.</li>
+      <li><b>View on Frontend ↗</b> button on the announcement / event admin edit page — opens the matching public URL (event / announcement / archive) in a new tab.</li>
+      <li><b>Announcements list cards</b> dropped the redundant <i>View details ↗</i> CTA. The card title is the link now (with a hover underline).</li>
+      <li><b>GSR Summary titles</b> are now navigable — each title links to the announcement detail page, styled to read as plain text with a hover underline so the printed-digest aesthetic stays intact.</li>
+      <li><b>Homepage Meetings + Events blocks</b> regained their mobile gutter. Desktop is unchanged — the parent page-builder container still controls width and padding there.</li>
+      <li><b>Events Magazine "More events" grid</b>: featured images now show above each tile's title; grid caps at 3 cards per row (drops to 2 on tablets, 1 on phones) so each tile stays wide enough to host a thumbnail.</li>
+    </ul>
+  </li>
+
+  <li>
     <div class="u-name">1.10.1</div>
     <div class="muted smaller">May 2026 — Polish pass: meetings list, About tab, post / event editor flow, container gutter</div>
     <p>Quick refinements layered on top of 1.10.0 — a release-notes pane in the About tab, the missing desktop gutter restored, several meeting-page touches, and a stack of editorial-flow fixes for the announcements / events module.</p>

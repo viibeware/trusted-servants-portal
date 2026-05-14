@@ -55,6 +55,18 @@
             onclick="return confirm('Move this published post back to drafts? It will disappear from the public site until republished.');">Move to Drafts</button>
     {% endif %}
   {% endif %}
+  {# View on Frontend opens the post's public URL (event / announcement
+     / archive — the `post_url` Jinja global picks the right path
+     based on `_post_in_archive`). Gated on `frontend_module_enabled`
+     (the module-on switch) — public visibility being off doesn't
+     matter because signed-in editors / admins can preview either way.
+     Hidden on pending-review submissions (no public URL exists yet),
+     on drafts (same — drafts 404 publicly), and on brand-new unsaved
+     posts. #}
+  {% if _p and site and site.frontend_module_enabled
+        and not _p.is_pending_review and not _p.is_draft %}
+  <a class="btn" href="{{ post_url(_p) }}" target="_blank" rel="noopener">View on Frontend ↗</a>
+  {% endif %}
   {# Duplicate the current post into a fresh Draft so the admin can
      spin up next month's announcement / event using last month's
      fields as the seed. Hidden on pending-review submissions (those

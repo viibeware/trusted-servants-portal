@@ -13,7 +13,10 @@
 {% set _mega_br = (site.frontend_mega_radius_br if site else 18) %}
 {% set _mm_h_pct = site.frontend_megamenu_heading_size if site and site.frontend_megamenu_heading_size else None %}
 {% set _mm_sh_pct = site.frontend_megamenu_subheading_size if site and site.frontend_megamenu_subheading_size else None %}
-<div class="fe-megamenu fe-megamenu-classic" data-megamenu-panel="{{ ni.id }}" aria-hidden="true">
+{% set _panel_fade = (site is none) or site.frontend_megamenu_panel_fade %}
+{% set _panel_fade_ms = (site.frontend_megamenu_panel_fade_ms if site and site.frontend_megamenu_panel_fade_ms is not none else 180) %}
+<div class="fe-megamenu fe-megamenu-classic{% if _panel_fade %} fe-megamenu-panel-fade{% endif %}" data-megamenu-panel="{{ ni.id }}" aria-hidden="true"
+     style="--fe-mm-fade-ms: {{ _panel_fade_ms }}ms;">
   <div class="fe-megamenu-classic-card"
        style="background: {{ _mega_bg }}; color: {{ _mega_fg }};
               border-bottom-left-radius: {{ _mega_bl }}px;

@@ -302,9 +302,21 @@ def create_app():
     app.register_blueprint(frontend_bp)
 
     @app.before_request
-    def _legacy_redirect():
+    def _url_redirect_handler():
+        """Look up the incoming path in the `UrlRedirect` table and 301
+        to the target if a row matches. Lets admins manage arbitrary
+        path → URL mappings centrally from Web Frontend → Structure →
+        Redirects (covers legacy WordPress URLs, renamed pages,
+        external short-links, etc.).
+
+        Cheap early-out for static-asset prefixes so the assets path
+        doesn't pay the indexed lookup. The query itself is O(log n)
+        on the unique `source_path` index.
+        """
         p = request.path or ""
-        if not p.startswith("/wp-"):
+        # Skip asset paths — these never redirect, but they're the
+        # bulk of per-page request volume.
+        if p.startswith("/static/") or p.startswith("/pub/"):
             return None
         row = UrlRedirect.query.filter_by(source_path=p).first()
         if row:
@@ -1066,6 +1078,10 @@ def _migrate_sqlite(app):
                          ("frontend_og_description", "TEXT"),
                          ("frontend_og_image_filename", "VARCHAR(500)"),
                          ("frontend_favicon_filename", "VARCHAR(500)"),
+                         ("apple_touch_icon_filename", "VARCHAR(500)"),
+                         ("apple_touch_icon_name", "VARCHAR(100)"),
+                         ("frontend_apple_touch_icon_filename", "VARCHAR(500)"),
+                         ("frontend_apple_touch_icon_name", "VARCHAR(100)"),
                          ("frontend_design_json", "TEXT"),
                          ("frontend_404_heading", "VARCHAR(200)"),
                          ("frontend_404_subheading", "TEXT"),
@@ -1179,6 +1195,8 @@ def _migrate_sqlite(app):
                          ("frontend_mega_radius_br", "INTEGER NOT NULL DEFAULT 18"),
                          ("frontend_megamenu_animate", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("frontend_megamenu_animate_ms", "INTEGER NOT NULL DEFAULT 320"),
+                         ("frontend_megamenu_panel_fade", "BOOLEAN NOT NULL DEFAULT 1"),
+                         ("frontend_megamenu_panel_fade_ms", "INTEGER NOT NULL DEFAULT 180"),
                          ("frontend_megamenu_heading_size", "INTEGER"),
                          ("frontend_megamenu_subheading_size", "INTEGER"),
                          ("frontend_tagline_enabled", "BOOLEAN NOT NULL DEFAULT 1"),
@@ -1364,7 +1382,10 @@ def _migrate_sqlite(app):
                          ("bg_color", "VARCHAR(16)"),
                          ("bg_color_dark", "VARCHAR(16)"),
                          ("bg_color_dark_mode", "VARCHAR(16) NOT NULL DEFAULT 'same'"),
-                         ("is_private", "BOOLEAN NOT NULL DEFAULT 0")):
+                         ("is_private", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("og_title", "VARCHAR(200)"),
+                         ("og_description", "TEXT"),
+                         ("og_image_filename", "VARCHAR(500)")):
             add("page", col, ddl)
 
         # One-shot data migration: when the new frontend_og_* columns are

@@ -21,6 +21,10 @@
        class="fe-subnav-link {% if request.endpoint == 'main.visitor_metrics_page' %}active{% endif %}">
       {{ icon('bar-chart') }}<span>Visitor Metrics</span>
     </a>
+    <a href="{{ url_for('main.frontend_redirects') }}"
+       class="fe-subnav-link {% if request.endpoint == 'main.frontend_redirects' %}active{% endif %}">
+      {{ icon('link') }}<span>Redirects</span>
+    </a>
 
     <div class="fe-subnav-group">
       <div class="fe-subnav-group-label">Setup</div>

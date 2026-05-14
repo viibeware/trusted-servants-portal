@@ -15,21 +15,29 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{% block title %}{{ frontend_title }}{% endblock %}</title>
 {# Frontend (public site) Open Graph — controlled by the Web Frontend's
-   Branding & SEO admin page. The admin /tspro pages render their own,
-   independent og_* tags via app/templates/base.html. #}
+   Branding & SEO admin page. Detail routes (meeting / event /
+   announcement / story / blog / page) may pass `page_og_title`,
+   `page_og_description`, and `page_og_image_url` via the render context
+   to override the site-wide title / description / image on a per-page
+   basis. Anything not supplied falls back to the corresponding
+   frontend_og_* SiteSetting field. The admin /tspro pages render their
+   own, independent og_* tags via app/templates/base.html. #}
 {% if site and site.frontend_og_enabled %}
-{% set _og_title = site.frontend_og_title or frontend_title %}
+{% set _og_title = (page_og_title|default(None, true)) or site.frontend_og_title or frontend_title %}
+{% set _og_description = (page_og_description|default(None, true)) or site.frontend_og_description %}
+{% set _og_image_url = (page_og_image_url|default(None, true))
+       or (url_for('public.site_frontend_og_image', _external=True) if site.frontend_og_image_filename else None) %}
 <meta property="og:title" content="{{ _og_title }}">
 <meta property="og:type" content="website">
 <meta property="og:url" content="{{ request.url }}">
 <meta property="og:site_name" content="{{ frontend_title }}">
-{% if site.frontend_og_description %}<meta property="og:description" content="{{ site.frontend_og_description }}">{% endif %}
-{% if site.frontend_og_image_filename %}<meta property="og:image" content="{{ url_for('public.site_frontend_og_image', _external=True) }}">{% endif %}
-<meta name="twitter:card" content="{% if site.frontend_og_image_filename %}summary_large_image{% else %}summary{% endif %}">
+{% if _og_description %}<meta property="og:description" content="{{ _og_description }}">{% endif %}
+{% if _og_image_url %}<meta property="og:image" content="{{ _og_image_url }}">{% endif %}
+<meta name="twitter:card" content="{% if _og_image_url %}summary_large_image{% else %}summary{% endif %}">
 <meta name="twitter:title" content="{{ _og_title }}">
-{% if site.frontend_og_description %}<meta name="twitter:description" content="{{ site.frontend_og_description }}">{% endif %}
-{% if site.frontend_og_image_filename %}<meta name="twitter:image" content="{{ url_for('public.site_frontend_og_image', _external=True) }}">{% endif %}
-{% if site.frontend_og_description %}<meta name="description" content="{{ site.frontend_og_description }}">{% endif %}
+{% if _og_description %}<meta name="twitter:description" content="{{ _og_description }}">{% endif %}
+{% if _og_image_url %}<meta name="twitter:image" content="{{ _og_image_url }}">{% endif %}
+{% if _og_description %}<meta name="description" content="{{ _og_description }}">{% endif %}
 {% elif frontend_tagline %}
 <meta name="description" content="{{ frontend_tagline }}">
 {% endif %}
@@ -38,7 +46,12 @@
 {% else %}
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
 {% endif %}
+{% if site and site.frontend_apple_touch_icon_filename %}
+<link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('public.site_frontend_apple_touch_icon', v=app_build_id) }}">
+{% else %}
 <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/apple-touch-icon_dccma.png', v=app_build_id) }}">
+{% endif %}
+{% if site and site.frontend_apple_touch_icon_name %}<meta name="apple-mobile-web-app-title" content="{{ site.frontend_apple_touch_icon_name }}">{% endif %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v=app_build_id) }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/frontend.css', v=app_build_id) }}">
 {# Admin-added custom fonts. Both upload and google sources are served

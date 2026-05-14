@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block heading %}Redirects{% endblock %}
+{% block heading_help %}Centrally manage URL redirects on the public site. Every visit hits a single indexed lookup against this table — when a request's path matches a row's source, the visitor is sent to the target with a 301. Use it for legacy WordPress URLs, renamed pages on outside platforms, vanity short-links, or any other path-to-URL mapping you need.{% endblock %}
+{% block content %}
+<div class="fe-admin-layout">
+  {% include "_frontend_subnav.html" %}
+  <div class="fe-admin-main">
+
+  {# ── Add / Edit redirect form ─────────────────────────────────── #}
+  {# Single form serves both create + edit. JS + URL-hash gate the
+     "edit" mode: clicking an Edit button on a row writes the row's
+     id into the hidden `redirect_id` field and pre-populates source
+     + target. Submitting with `redirect_id` empty → create; set →
+     update. #}
+  <section class="card">
+    <div class="card-head">
+      <h2 data-redirect-form-heading>Add a redirect</h2>
+      <span class="muted smaller">Source path is matched against the visitor's request URL. Target can be a path on this site (<code>/about</code>) or any external URL (<code>https://example.org/elsewhere</code>).</span>
+    </div>
+    <form class="form" method="post" action="{{ url_for('main.frontend_redirects_save') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="redirect_id" value="" data-redirect-id>
+      <div class="redirect-form-grid">
+        <label>Source path
+          <input type="text" name="source_path" required
+                 placeholder="/wp-content/old-post"
+                 maxlength="2000"
+                 data-redirect-source>
+          <span class="muted smaller">Must start with <code>/</code>. Matched exactly against the request path (case-sensitive, no wildcards).</span>
+        </label>
+        <label>Target URL
+          <input type="text" name="target_path" required
+                 placeholder="/new-page or https://example.org"
+                 maxlength="2000"
+                 data-redirect-target>
+          <span class="muted smaller">Either a path on this site or a full external URL. Visitors get a permanent (301) redirect.</span>
+        </label>
+      </div>
+      {# Class is `redirect-form-actions` rather than the standard
+         `.form-actions` — the global `body.has-fe-save-bar
+         .fe-admin-main .form-actions { display: none }` rule (in
+         app.css) hides every inline form-actions block on Web Frontend
+         admin pages in favour of the floating save bar. The redirects
+         form doesn't participate in that bar (it's a per-row state-
+         change submit), so the inline button has to stay visible. #}
+      <div class="redirect-form-actions">
+        <button type="button" class="btn" data-redirect-cancel hidden>Cancel edit</button>
+        <button type="submit" class="btn btn-primary" data-redirect-submit>Add</button>
+      </div>
+    </form>
+  </section>
+
+  {# ── Existing redirects table ─────────────────────────────────── #}
+  <section class="card">
+    <div class="card-head">
+      <h2>Active redirects</h2>
+      <span class="muted smaller">{{ redirects|length }} total — sorted alphabetically by source.</span>
+    </div>
+    {% if redirects %}
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Source path</th>
+          <th>→</th>
+          <th>Target</th>
+          <th class="hide-sm">Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in redirects %}
+        <tr data-redirect-row
+            data-id="{{ r.id }}"
+            data-source="{{ r.source_path }}"
+            data-target="{{ r.target_path }}">
+          <td><code>{{ r.source_path }}</code></td>
+          <td class="redirect-arrow muted">→</td>
+          <td><code class="redirect-target">{{ r.target_path }}</code></td>
+          <td class="hide-sm muted small">
+            {% if r.created_at %}{{ r.created_at.strftime('%b %-d, %Y') }}{% endif %}
+          </td>
+          <td class="row-actions">
+            <button type="button" class="btn btn-sm" data-redirect-edit>Edit</button>
+            <form method="post" action="{{ url_for('main.frontend_redirects_delete', rid=r.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Delete this redirect? Visitors hitting the source path will get a 404 (or hit a real route if one exists).');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No redirects yet. Add your first one above.</p>
+    {% endif %}
+  </section>
+
+  {# ── Auto-logged slug renames ──────────────────────────────────
+     Each row was auto-appended when the matching entity's slug
+     changed — admin can edit the old / new slug pair or delete the
+     row outright (e.g. abandoning an obsolete legacy URL). #}
+  <section class="card">
+    <div class="card-head">
+      <h2>Auto-logged slug renames</h2>
+      <span class="muted smaller">{{ slug_history|length }} entr{% if slug_history|length == 1 %}y{% else %}ies{% endif %} — appended whenever a published page, announcement / event, story, blog post, or meeting slug changes. Editing here lets you tune the legacy URL aliases without opening each entity's edit page.</span>
+    </div>
+    {% if slug_history %}
+    {% set _kind_paths = {
+      'meeting':   '/meetings/',
+      'post':      '/event/',
+      'story':     '/stories/',
+      'blog':      '/blog/',
+      'page':      '/'
+    } %}
+    <table class="tbl redirect-history-table">
+      <thead>
+        <tr>
+          <th>Entity</th>
+          <th>Old slug</th>
+          <th>→</th>
+          <th>New slug (current)</th>
+          <th class="hide-sm">Renamed</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in slug_history %}
+        {% set _ent = entity_lookup.get((h.entity_type, h.entity_id)) %}
+        {% set _prefix = _kind_paths.get(h.entity_type, '/') %}
+        <tr>
+          <td>
+            <span class="redirect-history-kind redirect-history-kind--{{ h.entity_type }}">{{ h.entity_type|capitalize }}</span>
+            <div class="redirect-history-title">
+              {% if _ent %}{{ _ent.title }}{% else %}<span class="muted">(deleted entity)</span>{% endif %}
+            </div>
+          </td>
+          <td colspan="3" class="redirect-history-edit">
+            <form method="post" action="{{ url_for('main.frontend_slug_history_save', hid=h.id) }}"
+                  class="redirect-history-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <span class="redirect-history-prefix muted">{{ _prefix }}</span>
+              <input type="text" name="old_slug" value="{{ h.old_slug }}"
+                     class="redirect-history-slug-input" maxlength="255"
+                     pattern="[a-z0-9-]+" required
+                     title="Lowercase letters, digits, hyphens">
+              <span class="redirect-history-arrow muted">→</span>
+              <span class="redirect-history-prefix muted">{{ _prefix }}</span>
+              <input type="text" name="new_slug" value="{{ h.new_slug }}"
+                     class="redirect-history-slug-input" maxlength="255"
+                     pattern="[a-z0-9-]+" required
+                     title="Lowercase letters, digits, hyphens">
+              <button type="submit" class="btn btn-sm btn-primary">Save</button>
+            </form>
+          </td>
+          <td class="hide-sm muted small">
+            {% if h.changed_at %}{{ h.changed_at.strftime('%b %-d, %Y') }}{% endif %}
+          </td>
+          <td class="row-actions">
+            <form method="post" action="{{ url_for('main.frontend_slug_history_delete', hid=h.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Delete this slug redirect? Visitors hitting the old URL will get a 404.');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No auto-logged slug renames yet. Renaming a published entity (page, announcement / event, story, blog post, or meeting) will append a row here automatically so the old URL keeps working as a 301 to the entity's current location.</p>
+    {% endif %}
+  </section>
+
+  </div>
+</div>
+
+<style>
+  .redirect-form-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px;
+  }
+  @media (max-width: 760px) {
+    .redirect-form-grid { grid-template-columns: minmax(0, 1fr); }
+  }
+  .redirect-form-grid label {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .redirect-form-grid label input {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .redirect-form-actions {
+    display: flex; gap: 10px; justify-content: flex-end;
+    margin-top: 12px;
+  }
+  .redirect-arrow { text-align: center; padding: 0 8px; user-select: none; }
+  .redirect-target {
+    word-break: break-all;
+    /* Long external URLs shouldn't blow out the table — wrap inside
+       the `<code>` chip rather than forcing a horizontal scroll. */
+  }
+  .redirect-history-kind {
+    display: inline-block; padding: 2px 8px;
+    font-size: 0.72rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    border-radius: 999px;
+    background: var(--brand-soft, color-mix(in srgb, var(--brand) 14%, transparent));
+    color: var(--brand);
+  }
+  .redirect-history-kind--meeting { background: rgba(16, 185, 129, 0.14); color: rgb(6, 95, 70); }
+  .redirect-history-kind--post    { background: rgba(99, 102, 241, 0.14); color: rgb(67, 56, 202); }
+  .redirect-history-kind--story   { background: rgba(244, 114, 182, 0.16); color: rgb(190, 24, 93); }
+  .redirect-history-kind--blog    { background: rgba(245, 158, 11, 0.16); color: rgb(180, 83, 9); }
+  .redirect-history-kind--page    { background: rgba(14, 165, 233, 0.14); color: rgb(7, 89, 133); }
+  .redirect-history-title { margin-top: 4px; font-weight: 500; }
+  .redirect-history-edit { padding-top: 8px; padding-bottom: 8px; }
+  .redirect-history-form {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    margin: 0;
+  }
+  .redirect-history-prefix {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    user-select: none;
+  }
+  .redirect-history-slug-input {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9rem;
+    padding: 4px 8px;
+    border: 1px solid var(--border); border-radius: 6px;
+    min-width: 140px; flex: 1 1 140px;
+  }
+  .redirect-history-arrow {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    user-select: none;
+  }
+</style>
+
+<script>
+(function () {
+  const sourceInput = document.querySelector('[data-redirect-source]');
+  const targetInput = document.querySelector('[data-redirect-target]');
+  const idInput     = document.querySelector('[data-redirect-id]');
+  const submitBtn   = document.querySelector('[data-redirect-submit]');
+  const cancelBtn   = document.querySelector('[data-redirect-cancel]');
+  const heading     = document.querySelector('[data-redirect-form-heading]');
+  if (!sourceInput || !targetInput || !idInput) return;
+
+  function enterEditMode(row) {
+    idInput.value = row.dataset.id;
+    sourceInput.value = row.dataset.source;
+    targetInput.value = row.dataset.target;
+    submitBtn.textContent = 'Update redirect';
+    cancelBtn.hidden = false;
+    if (heading) heading.textContent = 'Edit redirect';
+    sourceInput.focus();
+    sourceInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  function exitEditMode() {
+    idInput.value = '';
+    sourceInput.value = '';
+    targetInput.value = '';
+    submitBtn.textContent = 'Add redirect';
+    cancelBtn.hidden = true;
+    if (heading) heading.textContent = 'Add a redirect';
+  }
+
+  document.querySelectorAll('[data-redirect-edit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = btn.closest('[data-redirect-row]');
+      if (row) enterEditMode(row);
+    });
+  });
+  if (cancelBtn) cancelBtn.addEventListener('click', exitEditMode);
+})();
+</script>
+{% endblock %}

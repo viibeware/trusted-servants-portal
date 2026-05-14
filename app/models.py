@@ -628,6 +628,16 @@ class SiteSetting(db.Model):
     # Frontend-specific favicon. Independent of the admin /tspro favicon.
     # When None, the bundled static/img/favicon.png fallback is used.
     frontend_favicon_filename = db.Column(db.String(500))
+    # iOS / iPadOS "Add to Home Screen" icon + display name for the
+    # admin /tspro pages. When the filename is None, the bundled
+    # static/img/apple-touch-icon_tspro.png fallback is used. When the
+    # name is None, the browser uses the page <title> instead.
+    apple_touch_icon_filename = db.Column(db.String(500))
+    apple_touch_icon_name = db.Column(db.String(100))
+    # iOS / iPadOS "Add to Home Screen" icon + display name for the
+    # public web frontend. Independent of the admin equivalents above.
+    frontend_apple_touch_icon_filename = db.Column(db.String(500))
+    frontend_apple_touch_icon_name = db.Column(db.String(100))
     # Site-wide design overrides — JSON map of token_key → override
     # value. Layered on top of the active theme's defaults (see
     # app/design.py). Empty / unset means use the theme's value.
@@ -952,6 +962,14 @@ class SiteSetting(db.Model):
     frontend_megamenu_animate = db.Column(db.Boolean, nullable=False, default=True)
     # Duration of each block's reveal animation, in milliseconds.
     frontend_megamenu_animate_ms = db.Column(db.Integer, nullable=False, default=320)
+    # Panel-level fade-in when the menu opens on hover. Independent
+    # from the staggered link reveal above — admins can pair a
+    # snappy panel show with a slow link stagger, or vice versa.
+    # When False, the panel snaps in/out without a transition.
+    frontend_megamenu_panel_fade = db.Column(db.Boolean, nullable=False, default=True)
+    # Duration of the panel's opacity + slide-in transition, in
+    # milliseconds. Reads through `--fe-mm-fade-ms` on the panel.
+    frontend_megamenu_panel_fade_ms = db.Column(db.Integer, nullable=False, default=180)
     # Optional size overrides for the mega-menu block-title heading and
     # the link rows below it, expressed as integer percentages where
     # 100 = the theme's baked default. Sliders run 50 – 200 (half-size
@@ -2039,6 +2057,14 @@ class Page(db.Model):
     heading_font = db.Column(db.String(64))
     subheading_color = db.Column(db.String(16))
     subheading_font = db.Column(db.String(64))
+    # Per-page Open Graph overrides. Empty / unset values fall back to
+    # the site-wide ``frontend_og_*`` defaults at render time (handled
+    # in ``frontend.py::page_detail`` via the ``_page_og`` helper).
+    # ``og_image_filename`` is the UUID-prefixed name in UPLOAD_FOLDER;
+    # the public serve route is ``/page-og-image/<page_id>``.
+    og_title = db.Column(db.String(200))
+    og_description = db.Column(db.Text)
+    og_image_filename = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow,
                            onupdate=datetime.utcnow)
