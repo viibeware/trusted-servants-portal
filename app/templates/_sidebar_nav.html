@@ -2,13 +2,28 @@
    /_sidebar/nav endpoint that AJAX-refreshes the live nav after a
    module-role / module-toggle / sidebar-order save. Source-of-truth
    for visibility + ordering is app/sidebar.py — this template just
-   loops the result. #}
+   loops the result.
+
+   Labelled sections (Intergroup / External / Admin) render as
+   collapsible groups: the divider becomes a button that toggles a
+   wrapper around the section's items. The first section ("main")
+   has no label and so is never collapsible. Collapsed/expanded
+   state is persisted per-section in localStorage by app.js. #}
 {% set _sidebar = sidebar_data(site, nav_links) %}
 {% for _sec_key, _sec_label, _items in _sidebar %}
   {% if _sec_label %}
-  <div class="sidebar-nav-divider"{% if _sec_key == 'external' %} id="sidebar-custom-nav-divider"{% endif %}>
+  <button type="button"
+          class="sidebar-nav-divider sidebar-section-toggle"
+          data-sidebar-section="{{ _sec_key }}"
+          aria-expanded="true"
+          aria-controls="sidebar-section-{{ _sec_key }}"
+          {% if _sec_key == 'external' %}id="sidebar-custom-nav-divider"{% endif %}>
     <span class="sidebar-nav-label">{{ _sec_label }}</span>
-  </div>
+    <span class="sidebar-section-chevron" aria-hidden="true">{{ icon('chevron-down') }}</span>
+  </button>
+  <div class="sidebar-section-items"
+       id="sidebar-section-{{ _sec_key }}"
+       data-sidebar-section-items="{{ _sec_key }}">
   {% endif %}
   {% if _sec_key == 'external' %}<span id="sidebar-custom-nav">{% endif %}
   {% for it in _items %}
@@ -23,4 +38,5 @@
     </a>
   {% endfor %}
   {% if _sec_key == 'external' %}</span>{% endif %}
+  {% if _sec_label %}</div>{% endif %}
 {% endfor %}

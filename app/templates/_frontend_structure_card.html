@@ -222,6 +222,9 @@
     <span class="fe-page-structure-block-icon">{{ icon(_meta[1]) }}</span>
     <span class="fe-page-structure-block-name">{{ _meta[0] }}</span>
     <span class="fe-page-structure-block-edit-hint" aria-hidden="true">Edit</span>
+    <button type="button" class="fe-page-structure-block-duplicate"
+            data-be-duplicate-block aria-label="Duplicate this block"
+            title="Duplicate block">⧉</button>
     <button type="button" class="fe-page-structure-block-remove"
             data-be-remove-block aria-label="Remove this block"
             title="Remove block">×</button>
@@ -240,7 +243,24 @@
   {% elif _t == 'columns' %}
     {% set _n = entry.cols|length %}
     {% set _is_single_col = (_n == 1) %}
-    <div class="fe-page-structure-row fe-page-structure-row--split{% if _is_single_col %} fe-page-structure-row--single-container{% endif %}"
+    {% set _mode = entry.display_mode or 'flex' %}
+    {% set _dir = entry.flex_direction or 'column' %}
+    {% set _is_flex = (_mode == 'flex') %}
+    {# Wording: grid containers keep "N-column container" (matches the
+       public layout). Flex containers always render as a single zone
+       and label themselves "Flex <direction> container" so the admin
+       sees how children will actually flow. #}
+    {% if _is_flex %}
+      {% set _placeholder = 'Flex ' ~ _dir ~ ' container' %}
+      {% set _chip = 'Flex ' ~ _dir ~ ' container' %}
+    {% elif _is_single_col %}
+      {% set _placeholder = 'Container' %}
+      {% set _chip = 'container · single column' %}
+    {% else %}
+      {% set _placeholder = _n ~ '-column row' %}
+      {% set _chip = _n ~ '-column container' %}
+    {% endif %}
+    <div class="fe-page-structure-row fe-page-structure-row--split{% if _is_single_col %} fe-page-structure-row--single-container{% endif %}{% if _is_flex %} fe-page-structure-row--flex fe-page-structure-row--flex-{{ _dir }}{% endif %}"
          data-be-row-block-id="{{ entry.block_id }}">
       <div class="fe-page-structure-row-label">
         {% set _label = entry.label or '' %}
@@ -248,9 +268,9 @@
            name straight into the structure card here; oninput rides
            through `containerPayloadById` and `syncStateFromDom` so the
            hidden form value updates live. The placeholder folds back
-           to the structural fallback ("Container", "N-column row") so
-           an unlabeled row still reads sensibly. #}
-        {% set _placeholder = ('Container' if _is_single_col else (_n ~ '-column row')) %}
+           to the structural fallback ("Container", "N-column row",
+           "Flex row container") so an unlabeled row still reads
+           sensibly. #}
         <input type="text"
                class="fe-page-structure-row-label-input{% if _label %} is-labelled{% endif %}"
                value="{{ _label }}"
@@ -258,13 +278,18 @@
                aria-label="Container label"
                data-be-row-label-input
                data-be-row-block-id="{{ entry.block_id }}">
-        <span class="muted smaller">{{ 'container · single column' if _is_single_col else (_n ~ '-column container') }}</span>
+        <span class="muted smaller">{{ _chip }}</span>
         {% if entry.block_id %}
         <button type="button" class="btn btn-sm fe-page-structure-row-action"
                 data-open-modal="{{ modal_id }}"
                 data-page-block-id="{{ entry.block_id }}"
                 title="Edit container settings (flex/grid, padding, gap, borders, shadow, hover)">
           {{ icon('sliders') }} <span>Settings</span>
+        </button>
+        <button type="button" class="btn btn-sm fe-page-structure-row-action fe-page-structure-row-duplicate"
+                data-be-duplicate-row aria-label="Duplicate this container"
+                title="Duplicate container with all nested blocks">
+          {{ icon('copy') }} <span>Duplicate</span>
         </button>
         <button type="button" class="btn btn-sm fe-page-structure-row-action fe-page-structure-row-remove"
                 data-be-remove-row aria-label="Remove this row"
@@ -279,7 +304,8 @@
           {% if not _is_single_col %}
           <div class="fe-page-structure-col-label muted smaller">Column {{ loop.index }}</div>
           {% endif %}
-          <div class="fe-page-structure-block-list" data-be-zone="container-col"
+          <div class="fe-page-structure-block-list{% if _is_flex %} fe-page-structure-block-list--flex fe-page-structure-block-list--flex-{{ _dir }}{% endif %}"
+               data-be-zone="container-col"
                data-be-parent-block-id="{{ entry.block_id }}"
                data-be-col-index="{{ loop.index0 }}">
             {% for child in col %}{{ render_tree_node(child, modal_id, labels, previews, payloads) }}{% endfor %}

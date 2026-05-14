@@ -92,6 +92,23 @@
         <span>New tab</span>
       </label>
     </div>
+    {# Button-only fields. These take effect when a Link URL is set —
+       the public render emits an <a class="fe-btn fe-btn-{primary|ghost}">
+       inside the card so the title + body stay non-link text. #}
+    <div class="fe-feat-card-btn-row">
+      <input class="fe-feat-card-btn-label" type="text"
+             data-features-card-field="button_label"
+             value="{{ (item.button_label if item else '') or '' }}"
+             placeholder="Button label (defaults to “Learn more”)">
+      {% set _bs = (item.button_style if item else '') or 'primary' %}
+      <label class="fe-feat-card-btn-style" title="Button style">
+        <span class="muted smaller">Style</span>
+        <select data-features-card-field="button_style">
+          <option value="primary" {% if _bs == 'primary' %}selected{% endif %}>Primary</option>
+          <option value="ghost"   {% if _bs == 'ghost'   %}selected{% endif %}>Secondary</option>
+        </select>
+      </label>
+    </div>
   </div>
   <button type="button" class="fe-feat-card-remove" data-features-remove
           title="Remove card" aria-label="Remove card">{{ icon('trash-2') }}</button>
@@ -137,6 +154,39 @@
     </button>
     <span class="muted smaller fe-feat-count" data-features-count></span>
   </div>
+
+  {# Section-level CTA. Renders as a single button under the cards
+     (matches the "See all events"/"See all meetings" pattern) when
+     both label + URL are filled in. #}
+  {% set _cta_style = vals.cta_style or 'primary' %}
+  <fieldset class="fe-feat-section-cta">
+    <legend>Bottom button <span class="muted smaller">(optional)</span></legend>
+    <div class="fe-feat-section-cta-grid">
+      <label>Button label
+        <input type="text"
+               data-features-field="cta_label"
+               value="{{ vals.cta_label or '' }}"
+               placeholder="See all features">
+      </label>
+      <label>Link URL
+        <input type="text"
+               data-features-field="cta_url"
+               value="{{ vals.cta_url or '' }}"
+               placeholder="/features or https://…">
+      </label>
+      <label>Style
+        <select data-features-field="cta_style">
+          <option value="primary" {% if _cta_style == 'primary' %}selected{% endif %}>Primary</option>
+          <option value="ghost"   {% if _cta_style == 'ghost'   %}selected{% endif %}>Secondary</option>
+        </select>
+      </label>
+      <label class="fe-feat-section-cta-newtab">
+        <input type="checkbox" data-features-field="cta_new_tab" value="1"
+               {% if vals.cta_new_tab %}checked{% endif %}>
+        <span>Open in new tab</span>
+      </label>
+    </div>
+  </fieldset>
 
   {# Empty-card template — page_features_modal.js clones this when
      "Add card" is clicked (and when populating the list from a saved

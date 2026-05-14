@@ -104,6 +104,42 @@
     </label>
   </div>
 
+  {# ── Layout controls ──────────────────────────────────────────────
+     Three knobs that affect how the public block paints (not its
+     content). All three carry `data-faq-field` so the existing
+     two-way binding in page_faq_modal.js picks them up alongside
+     heading/subheading — no JS changes needed for new field rows.
+     Defaults match the historic single-column / boxed / no-extra-
+     padding render so unedited blocks look identical post-upgrade.
+  #}
+  <div class="fe-faq-layout-grid">
+    <label class="fe-faq-layout-cell">
+      <span class="fe-faq-layout-label">Columns</span>
+      <select data-faq-field="columns" class="fe-faq-layout-select">
+        <option value="1">1 column</option>
+        <option value="2">2 columns (staggered)</option>
+      </select>
+      <small class="muted smaller">2-column lets the accordion flow column-first with a half-card stagger on the right column.</small>
+    </label>
+    <label class="fe-faq-layout-cell">
+      <span class="fe-faq-layout-label">Width</span>
+      <select data-faq-field="width_mode" class="fe-faq-layout-select">
+        <option value="boxed">Boxed</option>
+        <option value="full">Full-width</option>
+      </select>
+      <small class="muted smaller">Boxed caps the accordion at 760px. Full-width lets it bleed to the parent container's edge.</small>
+    </label>
+    <label class="fe-faq-layout-cell">
+      <span class="fe-faq-layout-label">Side padding
+        <output class="fe-faq-pad-out" data-faq-pad-out>0px</output>
+      </span>
+      <input type="range" min="0" max="200" step="4" value="0"
+             data-faq-field="pad_x" data-faq-pad-input
+             class="fe-faq-layout-range">
+      <small class="muted smaller">Inner horizontal gutter inside the FAQ container. 0 = sit flush against the parent's edges.</small>
+    </label>
+  </div>
+
   <div class="fe-faq-cards" data-faq-list>
     {# Server-rendered items intentionally omitted — page_faq_modal.js
        clones the <template> below once per saved item on pill click,

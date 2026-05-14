@@ -4190,6 +4190,31 @@
       labelPanel.appendChild(labelBody);
       wrap.appendChild(labelPanel);
 
+      // ── Card style panel ─────────────────────────────────────────
+      // Opts the container into the site-wide Primary or Secondary
+      // card design tokens. When set, the container picks up the
+      // matching bg + border + shadow + hover lift centrally from
+      // Design → Card styles, so every container with the same
+      // setting updates together when the admin tweaks the tokens.
+      // "None" leaves the per-container inline styles alone (admins
+      // can still hand-tune bg / border / shadow on this same block).
+      const cardStylePanel = el('details', { class: 'be-container-panel', open: 'open' }, [
+        el('summary', {}, ['Card style']),
+      ]);
+      const cardStyleBody = el('div', { class: 'be-container-panel-body' });
+      cardStyleBody.appendChild(row('Use card tokens',
+        selectInput(d.card_style || '', [
+          ['', 'None · custom (use the controls below)'],
+          ['primary', 'Primary card · meeting-card look'],
+          ['secondary', 'Secondary card · feature-card look'],
+        ], v => {
+          d.card_style = v || '';
+          notifyChange();
+        }),
+        'Linking to a card token makes this container inherit the matching primary or secondary card visuals from Design → Card styles. Any per-container bg / border / shadow you set below still applies on top, so you can tweak this single container without losing the shared baseline.'));
+      cardStylePanel.appendChild(cardStyleBody);
+      wrap.appendChild(cardStylePanel);
+
       // ── Layout panel (display, flex/grid axes, gap) ──────────────
       const layoutPanel = el('details', { class: 'be-container-panel', open: 'open' }, [
         el('summary', {}, ['Layout']),
@@ -4515,15 +4540,141 @@
         el('summary', {}, ['Spacing & width']),
       ]);
       const spacingBody = el('div', { class: 'be-container-panel-body' });
-      spacingBody.appendChild(row('Padding',
-        textInput(d.padding || '1rem', 'e.g. 1rem, 24px 16px, 0',
-          v => { d.padding = v; notifyChange(); }),
-        'CSS shorthand: top right bottom left, or a single value for all.'));
-      const _mobilePadRow = row('Padding (mobile)',
-        textInput(d.padding_mobile || '', 'inherits desktop padding if blank',
-          v => { d.padding_mobile = v; notifyChange(); }),
-        'Optional override applied at ≤720 px. Same CSS shorthand as the desktop field.');
-      _mobilePadRow.classList.add('be-container-row--mobile-section');
+
+      // ── Padding (per-side box-style) ─────────────────────────────
+      // Four numeric inputs (px) laid out around a centre label so
+      // the admin can see at-a-glance which input drives which side.
+      // Legacy `d.padding` (CSS shorthand) stays as a fallback in the
+      // renderer when all four per-side fields are empty / 0; the
+      // first time an admin touches these, we seed the per-side
+      // fields by parsing the legacy shorthand so simple values
+      // (`1rem`, `16px`, `24px 16px`) carry forward cleanly.
+      function parseCssShorthand(raw) {
+        // Returns [top, right, bottom, left] as CSS-value strings
+        // ("16px", "1rem", "5%") preserving the original unit, or
+        // null if the shorthand can't be parsed unambiguously.
+        if (raw == null) return null;
+        const s = String(raw).trim();
+        if (!s) return null;
+        const toCssVal = (tok) => {
+          const m = tok.match(/^(-?\d+(?:\.\d+)?)(px|rem|em|vh|vw|%)?$/i);
+          if (!m) return null;
+          const unit = (m[2] || 'px').toLowerCase();
+          return m[1] + unit;
+        };
+        const parts = s.split(/\s+/).map(toCssVal);
+        if (parts.some(p => p == null)) return null;
+        if (parts.length === 1) return [parts[0], parts[0], parts[0], parts[0]];
+        if (parts.length === 2) return [parts[0], parts[1], parts[0], parts[1]];
+        if (parts.length === 3) return [parts[0], parts[1], parts[2], parts[1]];
+        if (parts.length === 4) return parts;
+        return null;
+      }
+      // Seed per-side fields from the legacy `padding` shorthand on
+      // first edit. Only runs when ALL four per-side fields are
+      // undefined AND the legacy field parses cleanly — otherwise
+      // the per-side fields stay empty so the legacy shorthand
+      // keeps applying via the renderer's fallback.
+      function seedPerSideFromLegacy(prefix, legacyKey) {
+        const has = ['_top', '_right', '_bottom', '_left'].some(suf =>
+          d[prefix + suf] !== undefined && d[prefix + suf] !== '');
+        if (has) return;
+        const parsed = parseCssShorthand(d[legacyKey]);
+        if (!parsed) return;
+        d[prefix + '_top']    = parsed[0];
+        d[prefix + '_right']  = parsed[1];
+        d[prefix + '_bottom'] = parsed[2];
+        d[prefix + '_left']   = parsed[3];
+      }
+      seedPerSideFromLegacy('padding', 'padding');
+      seedPerSideFromLegacy('padding_mobile', 'padding_mobile');
+
+      // Each padding side stores a full CSS-value string ("16px",
+      // "2rem", "5%", etc.) so admins can mix units freely. Legacy
+      // saves carried bare integers (px); the splitter below treats
+      // them as px so existing containers keep their look. Empty
+      // string => unset; the renderer falls back to 0 / inherits.
+      const PAD_UNITS = ['px', 'rem', 'em', 'vh', 'vw', '%'];
+      function splitPaddingValue(value) {
+        if (value === '' || value == null) return { num: '', unit: 'px' };
+        if (typeof value === 'number') return { num: String(value), unit: 'px' };
+        const s = String(value).trim();
+        if (!s) return { num: '', unit: 'px' };
+        const m = s.match(/^(-?\d+(?:\.\d+)?)(px|rem|em|vh|vw|%)?$/i);
+        if (m) {
+          const unit = (m[2] || 'px').toLowerCase();
+          return {
+            num: m[1],
+            unit: PAD_UNITS.indexOf(unit) >= 0 ? unit : 'px',
+          };
+        }
+        return { num: s, unit: 'px' };
+      }
+      function combinePaddingValue(num, unit) {
+        const n = String(num == null ? '' : num).trim();
+        if (n === '') return '';
+        const u = PAD_UNITS.indexOf(unit) >= 0 ? unit : 'px';
+        return n + u;
+      }
+      function sideInput(value, oninput) {
+        const parts = splitPaddingValue(value);
+        const inp = el('input', {
+          type: 'number',
+          value: parts.num,
+          min: '0', max: '9999', step: '1',
+          placeholder: '0',
+          'aria-label': 'amount',
+        });
+        const sel = el('select', { 'aria-label': 'unit', class: 'be-pad-cell-unit-sel' });
+        PAD_UNITS.forEach(u => {
+          const o = el('option', { value: u }, [u]);
+          if (u === parts.unit) o.selected = true;
+          sel.appendChild(o);
+        });
+        function emit() {
+          oninput(combinePaddingValue(inp.value, sel.value));
+        }
+        inp.addEventListener('input', emit);
+        sel.addEventListener('change', emit);
+        return el('span', { class: 'be-pad-cell-wrap' }, [inp, sel]);
+      }
+      function paddingBox(prefix, centerLabel) {
+        // 3x3 grid: top row = top input, middle row = left | label |
+        // right, bottom row = bottom input. Diagram + axis labels
+        // around the box make it obvious which input is which side.
+        const grid = el('div', { class: 'be-pad-box' });
+        // Row 1: blank | "Top" label | blank
+        grid.appendChild(el('div', { class: 'be-pad-box-axis be-pad-box-axis--top' }, ['Top']));
+        // Row 2: top input
+        grid.appendChild(el('div', { class: 'be-pad-box-cell be-pad-box-cell--top' },
+          [sideInput(d[prefix + '_top'], v => { d[prefix + '_top'] = v; notifyChange(); })]));
+        // Row 3: "Left" | center | "Right"
+        grid.appendChild(el('div', { class: 'be-pad-box-axis be-pad-box-axis--left' }, ['Left']));
+        grid.appendChild(el('div', { class: 'be-pad-box-cell be-pad-box-cell--left' },
+          [sideInput(d[prefix + '_left'], v => { d[prefix + '_left'] = v; notifyChange(); })]));
+        grid.appendChild(el('div', { class: 'be-pad-box-center' }, [centerLabel]));
+        grid.appendChild(el('div', { class: 'be-pad-box-cell be-pad-box-cell--right' },
+          [sideInput(d[prefix + '_right'], v => { d[prefix + '_right'] = v; notifyChange(); })]));
+        grid.appendChild(el('div', { class: 'be-pad-box-axis be-pad-box-axis--right' }, ['Right']));
+        // Row 4: bottom input
+        grid.appendChild(el('div', { class: 'be-pad-box-cell be-pad-box-cell--bottom' },
+          [sideInput(d[prefix + '_bottom'], v => { d[prefix + '_bottom'] = v; notifyChange(); })]));
+        // Row 5: blank | "Bottom" label | blank
+        grid.appendChild(el('div', { class: 'be-pad-box-axis be-pad-box-axis--bottom' }, ['Bottom']));
+        return grid;
+      }
+      const padRow = el('div', { class: 'be-container-row be-container-row--pad-box' }, [
+        el('span', { class: 'be-container-row-lbl' }, ['Padding']),
+        paddingBox('padding', 'Padding'),
+      ]);
+      spacingBody.appendChild(padRow);
+      const _mobilePadRow = el('div',
+        { class: 'be-container-row be-container-row--pad-box be-container-row--mobile-section' }, [
+          el('span', { class: 'be-container-row-lbl' }, ['Padding (mobile)']),
+          paddingBox('padding_mobile', 'Mobile'),
+          el('div', { class: 'be-container-row-hint muted smaller' },
+            ['Leave any side blank to inherit the matching desktop value at ≤720 px.']),
+        ]);
       spacingBody.appendChild(_mobilePadRow);
       spacingBody.appendChild(row('Width',
         (function () {

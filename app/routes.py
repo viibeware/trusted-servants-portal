@@ -239,7 +239,7 @@ def inject_globals():
             "unread_contact_count": unread_contact_count, "otp": otp}
 
 
-DASHBOARD_WIDGET_KEYS = ("server-metrics", "currently-online", "meetings", "libraries", "files", "access-requests", "contact-form", "deletions")
+DASHBOARD_WIDGET_KEYS = ("server-metrics", "visitor-metrics", "currently-online", "meetings", "libraries", "files", "access-requests", "contact-form", "deletions")
 
 ONLINE_WINDOW = timedelta(minutes=5)
 LAST_SEEN_THROTTLE = timedelta(seconds=60)
@@ -394,6 +394,8 @@ def index():
     online_users = []
     locked_accounts = []
     recent_deletions = []
+    visitor_summary = None
+    visitor_sparkline = []
     if current_user.is_admin():
         access_requests = (AccessRequest.query
                            .filter_by(status="pending", is_archived=False)
@@ -425,6 +427,18 @@ def index():
         recent_deletions = (_DF.query
                             .order_by(_DF.deleted_at.desc())
                             .limit(6).all())
+        # Visitor-metrics widget — top-line summary + 14-day sparkline
+        # for the public frontend. Defensive: a brand-new install with
+        # zero VisitorEvent rows still renders the widget (showing
+        # zeros across the board) so the customize toggle's effect is
+        # visible from the very first page load.
+        try:
+            from . import visitor_metrics as _vm
+            visitor_summary = _vm.summary(days=30)
+            visitor_sparkline = _vm.sparkline_views(days=14)
+        except Exception:  # noqa: BLE001
+            visitor_summary = None
+            visitor_sparkline = []
     dashboard_order = _dashboard_order(current_user)
     return render_template("index.html", meetings=meetings, libraries=libraries,
                            recent_files=recent_files, access_requests=access_requests,
@@ -432,6 +446,8 @@ def index():
                            online_count=online_count, online_users=online_users,
                            locked_accounts=locked_accounts,
                            recent_deletions=recent_deletions,
+                           visitor_summary=visitor_summary,
+                           visitor_sparkline=visitor_sparkline,
                            dashboard_order=dashboard_order)
 
 
@@ -448,6 +464,7 @@ def dashboard_customize():
         current_user.dash_show_contact_form = request.form.get("dash_show_contact_form") == "1"
         current_user.dash_show_deletions = request.form.get("dash_show_deletions") == "1"
         current_user.dash_show_currently_online = request.form.get("dash_show_currently_online") == "1"
+        current_user.dash_show_visitor_metrics = request.form.get("dash_show_visitor_metrics") == "1"
     db.session.commit()
     flash("Dashboard updated", "success")
     return redirect(url_for("main.index"))
@@ -6670,9 +6687,15 @@ def _block_preview(b):
                 "subtext": f"{n} card" + ("" if n == 1 else "s")}
     if t == "faq":
         n = len(d.get("items") or [])
+        cols = 2 if str(d.get("columns") or 1) == "2" else 1
+        wm = d.get("width_mode") or "boxed"
+        sub_bits = [f"{n} item" + ("" if n == 1 else "s"),
+                    f"{cols} col"]
+        if wm == "full":
+            sub_bits.append("full-width")
         return {"kind": "text", "label": "FAQ",
-                "text": "Frequently asked questions",
-                "subtext": f"{n} item" + ("" if n == 1 else "s")}
+                "text": (d.get("heading") or "Frequently asked questions"),
+                "subtext": " · ".join(sub_bits)}
     return {"kind": "text", "label": t or "block"}
 
 
@@ -6767,18 +6790,27 @@ def _page_active_tree(page):
             return {"type": "block", "t": t, "block_id": b.get("id") or ""}
         d = b.get("data") or {}
         kids = [c for c in (d.get("blocks") or []) if isinstance(c, dict)]
+        display_mode = (d.get("display") or "flex").lower()
+        flex_direction = (d.get("direction") or "column").lower()
         n_cols = 1
-        if d.get("display") == "grid":
+        if display_mode == "grid":
+            # Grid containers retain their N-cell visualisation — that's
+            # how the public CSS lays them out, so the editor mirrors it.
             n_cols = max(1, _grid_col_count(d.get("grid_columns") or "") or 1)
-        elif (d.get("display") == "flex"
-              and d.get("direction") in ("row", "row-reverse")):
-            n_cols = max(1, len(kids))
+        # Flex containers ALWAYS render as a single zone in the editor,
+        # regardless of `direction`. Splitting flex-row children into
+        # per-cell columns misrepresented how flexbox works (children
+        # are siblings inside one container, not isolated tracks) and
+        # left the admin unable to drag siblings between cells. The
+        # cell receives a `flex_direction` flag so the template / CSS
+        # can flow pills in the configured direction inside it.
         cells = [[] for _ in range(n_cols)]
         # Round-robin distribution mirrors CSS grid's default
         # `grid-auto-flow: row` (item i lands in column `i mod n_cols`),
         # so 6 items in a 3-col grid stack as col0:[0,3], col1:[1,4],
         # col2:[2,5] in the editor instead of dumping everything past
-        # the column count into the last cell.
+        # the column count into the last cell. Flex containers (n_cols=1)
+        # land every child in the single cell preserving source order.
         for i, child in enumerate(kids):
             node = _block_node(child)
             if node is not None:
@@ -6787,6 +6819,8 @@ def _page_active_tree(page):
             "type": "columns",
             "block_id": b.get("id") or "",
             "label": (d.get("label") or "").strip(),
+            "display_mode": display_mode,
+            "flex_direction": flex_direction,
             "cols": cells,
         }
 
@@ -8994,18 +9028,33 @@ def _cleanup_retired_asset(stored):
 
 # --- Media browser ---
 
+MEDIA_PER_PAGE = 100
+
+
 @bp.route("/files")
 @login_required
 def media_list():
+    from sqlalchemy import case, func, or_
     q = (request.args.get("q") or "").strip().lower()
     picker = request.args.get("picker") == "1"
-    view = request.args.get("view") or request.cookies.get("view-media") or "table"
+    view = request.args.get("view") or request.cookies.get("view-media") or "list"
+    if view not in ("list", "grid"): view = "list"  # legacy "table" → "list"
     sort = request.args.get("sort") or request.cookies.get("view-media-sort") or "uploaded"
     direction = request.args.get("dir") or request.cookies.get("view-media-dir") or "desc"
-    items = MediaItem.query.all()
+    try:
+        page = max(1, int(request.args.get("page") or 1))
+    except (TypeError, ValueError):
+        page = 1
+
+    query = MediaItem.query
+
+    # Site-interface uploads (branding logos, OG images, favicon, etc.)
+    # are hidden from the File Browser so administrative uploads don't
+    # clutter the content library.
     hidden = _interface_stored_filenames()
     if hidden:
-        items = [m for m in items if m.stored_filename not in hidden]
+        query = query.filter(MediaItem.stored_filename.notin_(hidden))
+
     # Public-submission uploads are hidden from non-admin users while
     # the parent post is still in the holding tank — admins see them
     # so they can review before approving, but editors / viewers
@@ -9018,22 +9067,68 @@ def media_list():
                                              Post.featured_image_filename.isnot(None)).all()
                            if p.featured_image_filename}
         if pending_uploads:
-            items = [m for m in items if m.stored_filename not in pending_uploads]
-    if sort == "name":
-        items.sort(key=lambda m: (m.original_filename or "").lower())
-    elif sort == "type":
-        items.sort(key=lambda m: (_media_type(m.original_filename), (m.original_filename or "").lower()))
-    elif sort == "size":
-        items.sort(key=lambda m: (m.size_bytes or 0))
-    else:  # uploaded (created_at)
-        items.sort(key=lambda m: (m.created_at or m.id))
-    if direction == "desc":
-        items.reverse()
+            query = query.filter(MediaItem.stored_filename.notin_(pending_uploads))
+
     if q:
-        items = [m for m in items if q in (m.original_filename or "").lower()]
+        query = query.filter(func.lower(MediaItem.original_filename).contains(q))
+
+    # Server-side sort + paginate so the route always returns at most
+    # MEDIA_PER_PAGE rows, regardless of how many files exist. The
+    # ``type`` sort buckets by extension via a CASE expression so the
+    # ordering matches the in-Python ``_media_type`` helper.
+    name_col = func.lower(MediaItem.original_filename)
+    if sort == "name":
+        order_cols = [name_col, MediaItem.id]
+    elif sort == "size":
+        order_cols = [MediaItem.size_bytes, MediaItem.id]
+    elif sort == "type":
+        type_case = case(
+            (name_col.like("%.pdf"), "pdf"),
+            (or_(name_col.like("%.doc"), name_col.like("%.docx"),
+                 name_col.like("%.rtf"), name_col.like("%.odt"),
+                 name_col.like("%.txt"), name_col.like("%.md")), "doc"),
+            (or_(name_col.like("%.xls"), name_col.like("%.xlsx"),
+                 name_col.like("%.csv"), name_col.like("%.ods")), "xls"),
+            (or_(name_col.like("%.ppt"), name_col.like("%.pptx"),
+                 name_col.like("%.odp")), "ppt"),
+            (or_(name_col.like("%.jpg"), name_col.like("%.jpeg"),
+                 name_col.like("%.png"), name_col.like("%.gif"),
+                 name_col.like("%.webp"), name_col.like("%.svg"),
+                 name_col.like("%.bmp"), name_col.like("%.avif")), "img"),
+            (or_(name_col.like("%.mp4"), name_col.like("%.mov"),
+                 name_col.like("%.avi"), name_col.like("%.mkv"),
+                 name_col.like("%.webm")), "vid"),
+            (or_(name_col.like("%.mp3"), name_col.like("%.wav"),
+                 name_col.like("%.m4a"), name_col.like("%.ogg"),
+                 name_col.like("%.flac")), "aud"),
+            else_="zzz",
+        )
+        order_cols = [type_case, name_col, MediaItem.id]
+    else:  # uploaded (created_at)
+        order_cols = [MediaItem.created_at, MediaItem.id]
+
+    if direction == "desc":
+        order_cols = [c.desc() for c in order_cols]
+    query = query.order_by(*order_cols)
+
+    total = query.count()
+    pages = max(1, (total + MEDIA_PER_PAGE - 1) // MEDIA_PER_PAGE)
+    if page > pages:
+        page = pages
+    items = (query.offset((page - 1) * MEDIA_PER_PAGE)
+                  .limit(MEDIA_PER_PAGE).all())
+    pagination = {
+        "page": page, "pages": pages, "per_page": MEDIA_PER_PAGE,
+        "total": total,
+        "start": 0 if total == 0 else (page - 1) * MEDIA_PER_PAGE + 1,
+        "end": min(page * MEDIA_PER_PAGE, total),
+        "has_prev": page > 1, "has_next": page < pages,
+    }
+
     resp = current_app.make_response(
         render_template("media.html", items=items, q=q, picker=picker, view=view,
-                        sort=sort, direction=direction, media_type=_media_type))
+                        sort=sort, direction=direction, media_type=_media_type,
+                        pagination=pagination))
     if not picker:
         resp.set_cookie("view-media", view, max_age=60*60*24*365, samesite="Lax")
         resp.set_cookie("view-media-sort", sort, max_age=60*60*24*365, samesite="Lax")
@@ -10819,6 +10914,85 @@ def story_delete(sid):
     return redirect(url_for("main.stories"))
 
 
+@bp.route("/stories/bulk", methods=["POST"])
+@login_required
+def story_bulk():
+    """Apply a single state change to many stories at once. Form fields:
+
+      action  — one of archive | unarchive | draft | publish | delete
+      ids     — repeated ``ids`` field, one per checked row
+
+    Stories whose ids don't resolve are silently skipped so a stale
+    form (e.g. someone deleted a story in another tab) doesn't error
+    out the whole batch. Image cleanup runs once for delete actions,
+    after the rows are removed."""
+    _require_stories_enabled()
+    action = (request.form.get("action") or "").strip().lower()
+    if action not in ("archive", "unarchive", "draft", "publish", "delete"):
+        flash("Unknown bulk action", "danger")
+        return redirect(request.referrer or url_for("main.stories"))
+
+    raw_ids = request.form.getlist("ids")
+    sids = []
+    for v in raw_ids:
+        try:
+            sids.append(int(v))
+        except (TypeError, ValueError):
+            continue
+    if not sids:
+        flash("No stories selected", "warning")
+        return redirect(request.referrer or url_for("main.stories"))
+
+    rows = Story.query.filter(Story.id.in_(sids)).all()
+    if not rows:
+        flash("No stories matched the selection", "warning")
+        return redirect(request.referrer or url_for("main.stories"))
+
+    from . import activity
+    n = len(rows)
+    label = {"archive": "archived", "unarchive": "restored",
+             "draft": "moved to drafts", "publish": "published",
+             "delete": "deleted"}[action]
+
+    if action == "delete":
+        # Snapshot every asset path BEFORE the rows are removed so the
+        # post-commit cleanup pass has the full set to walk. Image
+        # references are cleared first so `_cleanup_retired_asset`'s
+        # residual-reference check sees the row no longer points at
+        # the file.
+        retired_assets = []
+        retired_inline = []
+        for s in rows:
+            if s.featured_image_filename:
+                retired_assets.append(s.featured_image_filename)
+                s.featured_image_filename = None
+            retired_inline.extend(_collect_body_inline_stored(s.body))
+        for s in rows:
+            db.session.delete(s)
+        db.session.commit()
+        for asset in retired_assets:
+            _cleanup_retired_asset(asset)
+        for asset in retired_inline:
+            _cleanup_retired_asset(asset)
+    else:
+        for s in rows:
+            if action == "archive":
+                s.is_archived = True
+            elif action == "unarchive":
+                s.is_archived = False
+            elif action == "draft":
+                s.is_draft = True
+            elif action == "publish":
+                s.is_draft = False
+                s.is_archived = False
+        db.session.commit()
+
+    activity.log(f"story.bulk_{action}", entity_type="story",
+                 summary=f"Bulk {label} {n} stor{'ies' if n != 1 else 'y'}")
+    flash(f"{n} stor{'ies' if n != 1 else 'y'} {label}", "success")
+    return redirect(request.referrer or url_for("main.stories"))
+
+
 @public_bp.route("/story-image/<int:sid>")
 def story_featured_image(sid):
     """Serve a story's featured image. Public so the public web frontend
@@ -11502,5 +11676,66 @@ def blog_post_featured_image(bid):
                 resp.headers["Cache-Control"] = "public, max-age=86400"
                 return resp
     return send_from_directory(upload_dir, post.featured_image_filename)
+
+
+# ---------------------------------------------------------------------------
+# Visitor metrics — admin-only analytics for the public frontend. Logged-in
+# users (anyone signed in to the admin portal) are excluded from the
+# recorded events upstream, so these queries are purely "real visitors".
+# See ``app/visitor_metrics.py`` for the recording hook and aggregators.
+# ---------------------------------------------------------------------------
+
+# Allowed window sizes for the metrics page. Anything else falls back to
+# the default (30 days) so a hand-crafted query-string can't push the
+# window absurdly wide and run an expensive scan.
+_METRICS_WINDOWS = (7, 14, 30, 90)
+
+
+def _resolve_metrics_window(arg):
+    try:
+        n = int(arg or 30)
+    except (ValueError, TypeError):
+        return 30
+    return n if n in _METRICS_WINDOWS else 30
+
+
+@bp.route("/frontend/metrics")
+@admin_required
+def visitor_metrics_page():
+    """Admin visitor-metrics dashboard. Lifetime + window summary,
+    daily time-series, hour-of-day heat, plus top paths / referrers /
+    devices / browsers / OS. The page reads all data straight from
+    ``app/visitor_metrics.py``'s aggregators — keeping the route thin
+    so the heavy lifting is testable in isolation."""
+    from . import visitor_metrics as vm
+    window = _resolve_metrics_window(request.args.get("window"))
+    return render_template(
+        "visitor_metrics.html",
+        window=window,
+        windows=_METRICS_WINDOWS,
+        summary=vm.summary(days=window),
+        daily=vm.daily_series(days=window),
+        hourly=vm.hourly_distribution(days=min(window, 30)),
+        top_paths=vm.top_paths(days=window, limit=10),
+        top_referrers=vm.top_referrers(days=window, limit=10),
+        devices=vm.device_breakdown(days=window),
+        browsers=vm.browser_breakdown(days=window),
+        os_breakdown=vm.os_breakdown(days=window),
+    )
+
+
+@bp.route("/frontend/api/visitor-metrics/summary")
+@admin_required
+def api_visitor_metrics_summary():
+    """JSON endpoint backing the dashboard widget's poll. Returns the
+    same summary numbers + a compact sparkline series so the widget
+    can refresh without re-rendering the whole admin index. Kept
+    lightweight on purpose — heavy aggregations live behind the full
+    /tspro/metrics page."""
+    from . import visitor_metrics as vm
+    return jsonify(
+        summary=vm.summary(days=30),
+        sparkline=vm.sparkline_views(days=14),
+    )
 
 

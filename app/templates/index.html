@@ -154,6 +154,66 @@
   </div>
   {% endif %}
 
+  {% if widget_key == 'visitor-metrics' and current_user.is_admin() and current_user.dash_show_visitor_metrics %}
+    {% call dash_widget(key='visitor-metrics', title='Frontend Visitor Metrics',
+                         view_all_url=url_for('main.visitor_metrics_page'),
+                         view_all_label='Open metrics') %}
+      <div class="vm-widget-card">
+        <div class="vm-widget-stats">
+          <div class="vm-widget-stat vm-widget-stat-accent">
+            <div class="vm-widget-stat-label">Today</div>
+            <div class="vm-widget-stat-value">{% if visitor_summary %}{{ '{:,}'.format(visitor_summary.views_today) }}{% else %}—{% endif %}</div>
+          </div>
+          <div class="vm-widget-stat">
+            <div class="vm-widget-stat-label">Last 7 days</div>
+            <div class="vm-widget-stat-value">{% if visitor_summary %}{{ '{:,}'.format(visitor_summary.views_7d) }}{% else %}—{% endif %}</div>
+          </div>
+          <div class="vm-widget-stat">
+            <div class="vm-widget-stat-label">Unique · 30d</div>
+            <div class="vm-widget-stat-value">{% if visitor_summary %}{{ '{:,}'.format(visitor_summary.uniques_30d) }}{% else %}—{% endif %}</div>
+          </div>
+        </div>
+        {% if visitor_sparkline and visitor_sparkline|sum > 0 %}
+        {# 14-day sparkline. Inline SVG keeps the widget self-contained
+           — no chart library to load. The polyline fills from the
+           bottom so it reads as an area chart even at this size. #}
+        {% set _vw = 360 %}
+        {% set _vh = 56 %}
+        {% set _vmax = visitor_sparkline|max %}
+        {% set _vstep = (_vw / (visitor_sparkline|length - 1)) if visitor_sparkline|length > 1 else 0 %}
+        <svg class="vm-widget-spark" viewBox="0 0 {{ _vw }} {{ _vh }}" preserveAspectRatio="none" role="img" aria-label="14-day visit sparkline">
+          <defs>
+            <linearGradient id="vm-widget-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="var(--brand)" stop-opacity="0.42"/>
+              <stop offset="100%" stop-color="var(--brand)" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          {% set ns = namespace(area='', line='') %}
+          {% for v in visitor_sparkline %}
+            {% set x = loop.index0 * _vstep %}
+            {% set y = (_vh - 4) - ((v / _vmax) * (_vh - 8) if _vmax > 0 else 0) %}
+            {% if loop.first %}
+              {% set ns.area = "M 0 " ~ _vh ~ " L " ~ x ~ " " ~ y %}
+              {% set ns.line = "M " ~ x ~ " " ~ y %}
+            {% else %}
+              {% set ns.area = ns.area ~ " L " ~ x ~ " " ~ y %}
+              {% set ns.line = ns.line ~ " L " ~ x ~ " " ~ y %}
+            {% endif %}
+            {% if loop.last %}
+              {% set ns.area = ns.area ~ " L " ~ x ~ " " ~ _vh ~ " Z" %}
+            {% endif %}
+          {% endfor %}
+          <path d="{{ ns.area }}" fill="url(#vm-widget-fill)" stroke="none"/>
+          <path d="{{ ns.line }}" fill="none" stroke="var(--brand)" stroke-width="2"
+                stroke-linejoin="round" stroke-linecap="round"/>
+        </svg>
+        {% else %}
+        <div class="vm-widget-spark-empty">No visits yet — once the public site sees real traffic, the chart will populate.</div>
+        {% endif %}
+      </div>
+    {% endcall %}
+  {% endif %}
+
   {% if widget_key == 'deletions' and current_user.is_admin() and current_user.dash_show_deletions %}
     {% call dash_widget(key='deletions', title='Recent Deletions',
                          view_all_url=url_for('main.delete_log'),
@@ -308,6 +368,16 @@
             </div>
             <label class="mode-toggle" title="Show Recent Deletions">
               <input type="checkbox" name="dash_show_deletions" value="1" {% if current_user.dash_show_deletions %}checked{% endif %}>
+              <span class="mode-track"><span class="mode-thumb"></span></span>
+            </label>
+          </li>
+          <li class="special-page-row">
+            <div class="special-page-info">
+              <div class="u-name">Visitor Metrics</div>
+              <p class="muted small">Public-frontend traffic summary with a 14-day sparkline and a link to the full metrics page. Signed-in users are excluded from the counts.</p>
+            </div>
+            <label class="mode-toggle" title="Show Visitor Metrics">
+              <input type="checkbox" name="dash_show_visitor_metrics" value="1" {% if current_user.dash_show_visitor_metrics %}checked{% endif %}>
               <span class="mode-track"><span class="mode-thumb"></span></span>
             </label>
           </li>

@@ -104,11 +104,17 @@
       const data = {};
       data.heading = (modal.querySelector('[data-features-field="heading"]') || {}).value || '';
       data.subheading = (modal.querySelector('[data-features-field="subheading"]') || {}).value || '';
+      data.cta_label = (modal.querySelector('[data-features-field="cta_label"]') || {}).value || '';
+      data.cta_url   = (modal.querySelector('[data-features-field="cta_url"]')   || {}).value || '';
+      data.cta_style = (modal.querySelector('[data-features-field="cta_style"]') || {}).value || 'primary';
+      const ntInp = modal.querySelector('[data-features-field="cta_new_tab"]');
+      data.cta_new_tab = !!(ntInp && ntInp.checked);
       const items = [];
       list.querySelectorAll('[data-features-card]').forEach(card => {
         const item = {
           icon: '', icon_color: '', icon_size: '',
           title: '', body: '', href: '', open_in_new_tab: false,
+          button_label: '', button_style: 'primary',
         };
         card.querySelectorAll('[data-features-card-field]').forEach(inp => {
           const key = inp.dataset.featuresCardField;
@@ -167,15 +173,23 @@
       edits.set(activeBlockId, modalData);
       const sections = readSections();
       let touched = false;
+      let touchedBlock = null;
       for (const sec of sections) {
         walkBlocks(sec.blocks || [], (b) => {
           if (b.id === activeBlockId) {
             b.data = Object.assign({}, b.data || {}, modalData);
             touched = true;
+            touchedBlock = b;
           }
         });
       }
-      if (touched) writeSections(sections);
+      if (touched) {
+        writeSections(sections);
+        if (touchedBlock && typeof window.tspSyncStructurePayloadOne === 'function') {
+          try { window.tspSyncStructurePayloadOne(activeBlockId, touchedBlock); }
+          catch (_) {}
+        }
+      }
     }
 
     function populateModalFromBlock(block) {
@@ -185,6 +199,14 @@
       if (headingInp) headingInp.value = data.heading || '';
       const subInp = modal.querySelector('[data-features-field="subheading"]');
       if (subInp) subInp.value = data.subheading || '';
+      const ctaLblInp = modal.querySelector('[data-features-field="cta_label"]');
+      if (ctaLblInp) ctaLblInp.value = data.cta_label || '';
+      const ctaUrlInp = modal.querySelector('[data-features-field="cta_url"]');
+      if (ctaUrlInp) ctaUrlInp.value = data.cta_url || '';
+      const ctaStyleInp = modal.querySelector('[data-features-field="cta_style"]');
+      if (ctaStyleInp) ctaStyleInp.value = data.cta_style || 'primary';
+      const ctaNtInp = modal.querySelector('[data-features-field="cta_new_tab"]');
+      if (ctaNtInp) ctaNtInp.checked = !!data.cta_new_tab;
       // Rebuild the cards list from scratch — wipe whatever's there
       // from a previous pill click, reset the idx counter so the new
       // cards get fresh unique IDs.

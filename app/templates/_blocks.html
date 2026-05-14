@@ -639,10 +639,55 @@
      `padding:` declaration) so the mobile media query can override it
      without fighting inline-style specificity. `padding_mobile` (when
      set) layers a second var that the mobile query prefers; empty
-     means "mobile padding = desktop padding". #}
-  {% set _ = _styles.append('--block-cont-padding: ' ~ (d.padding or '1rem')) %}
-  {% set _padm = (d.get('padding_mobile') or '').strip() %}
-  {% if _padm %}{% set _ = _styles.append('--block-cont-padding-mobile: ' ~ _padm) %}{% endif %}
+     means "mobile padding = desktop padding".
+
+     Per-side fields (`padding_top` / `padding_right` / `padding_bottom`
+     / `padding_left`) are the new editor UX — when ANY of the four is
+     non-empty, assemble a `Tpx Rpx Bpx Lpx` shorthand using each
+     side's value (empty sides default to 0). When ALL four are
+     empty, fall back to the legacy `d.padding` CSS shorthand
+     (existing containers saved before the per-side split still
+     render correctly). Same fallback chain for the mobile variant. #}
+  {# Per-side values are stored as full CSS-value strings ("16px",
+     "2rem", "5%"). Pre-unit-selector saves carried bare integers
+     interpreted as px — `_pad_side` normalises both: empty / null
+     → "0", integer / numeric string → "<n>px", otherwise the value
+     passes through unchanged. #}
+  {% macro _pad_side(v) -%}
+    {%- if v in (none, '') -%}0
+    {%- elif v is number -%}{{ v }}px
+    {%- else -%}
+      {%- set _vs = v | string | trim -%}
+      {%- if _vs.lstrip('-').replace('.', '', 1).isdigit() -%}{{ _vs }}px
+      {%- else -%}{{ _vs }}
+      {%- endif -%}
+    {%- endif -%}
+  {%- endmacro %}
+  {% set _pt = d.get('padding_top') %}
+  {% set _pr = d.get('padding_right') %}
+  {% set _pb = d.get('padding_bottom') %}
+  {% set _pl = d.get('padding_left') %}
+  {% set _per_side_any =
+        (_pt not in (none, '')) or (_pr not in (none, ''))
+     or (_pb not in (none, '')) or (_pl not in (none, '')) %}
+  {% if _per_side_any %}
+    {% set _ = _styles.append('--block-cont-padding: ' ~ _pad_side(_pt)|trim ~ ' ' ~ _pad_side(_pr)|trim ~ ' ' ~ _pad_side(_pb)|trim ~ ' ' ~ _pad_side(_pl)|trim) %}
+  {% else %}
+    {% set _ = _styles.append('--block-cont-padding: ' ~ (d.padding or '1rem')) %}
+  {% endif %}
+  {% set _pmt = d.get('padding_mobile_top') %}
+  {% set _pmr = d.get('padding_mobile_right') %}
+  {% set _pmb = d.get('padding_mobile_bottom') %}
+  {% set _pml = d.get('padding_mobile_left') %}
+  {% set _per_side_mob_any =
+        (_pmt not in (none, '')) or (_pmr not in (none, ''))
+     or (_pmb not in (none, '')) or (_pml not in (none, '')) %}
+  {% if _per_side_mob_any %}
+    {% set _ = _styles.append('--block-cont-padding-mobile: ' ~ _pad_side(_pmt)|trim ~ ' ' ~ _pad_side(_pmr)|trim ~ ' ' ~ _pad_side(_pmb)|trim ~ ' ' ~ _pad_side(_pml)|trim) %}
+  {% else %}
+    {% set _padm = (d.get('padding_mobile') or '').strip() %}
+    {% if _padm %}{% set _ = _styles.append('--block-cont-padding-mobile: ' ~ _padm) %}{% endif %}
+  {% endif %}
 
   {# Background / border-color / shadow emit as inline CSS VARIABLES
      (not direct properties). A global `.block-container` rule reads
@@ -752,7 +797,15 @@
     {%- set _bdyn_pos = dynbg_resolve_positions(_bdyn_pseudo_cfg, d.get('bg_dynamic_key')) -%}
     {%- if _bdyn_pos -%}{%- set _ = _styles.append(_bdyn_pos) -%}{%- endif -%}
   {%- endif -%}
-  <div class="block block-container block-container--{{ _disp }}{% if _bdyn_active %} fe-dynbg-host{% endif %}{% if _hover_classes %} {{ _hover_classes | join(' ') }}{% endif %}"
+  {# Optional design-token card-style opt-in. Admins pick "Primary" or
+     "Secondary" in the container's settings panel; here we add the
+     matching CSS class. The class applies the site-wide design-token
+     defaults (bg + border + shadow + hover lift). When set, the
+     container becomes a card surface that tracks Design → Card styles
+     centrally. #}
+  {% set _cardcls = (d.get('card_style') or '').strip().lower() %}
+  {% if _cardcls not in ('primary', 'secondary') %}{% set _cardcls = '' %}{% endif %}
+  <div class="block block-container block-container--{{ _disp }}{% if _cardcls %} fe-card-{{ _cardcls }}{% endif %}{% if _bdyn_active %} fe-dynbg-host{% endif %}{% if _hover_classes %} {{ _hover_classes | join(' ') }}{% endif %}"
        style="{{ _styles | join('; ') }}">
     {% if _bdyn_active %}
       {% with dynbg_key=d.get('bg_dynamic_key'),

@@ -118,14 +118,17 @@ body.frontend-body {
 .frontend-body .fe-container {
   max-width: var(--fe-container-max, 1160px);
   margin: 0 auto;
-  padding: 0 28px;
+  padding: 0 var(--fe-container-pad-desktop, 0);
 }
-/* On mobile the rail collapses to 5% of the viewport on each side, so
-   card-grid borders extend close to the screen edge. Site-wide so
-   every section follows the same gutter — keeps headers, hero, and
-   meeting cards aligned. */
-@media (max-width: 560px) {
-  .frontend-body .fe-container { padding: 0 5vw; }
+/* Mobile gutter — admin-tunable via the Design page's "Container
+   padding — mobile" token. Defaults to 5vw so content doesn't crash
+   into the screen edges on phones. The 768px breakpoint covers
+   tablets-and-down, matching the rest of the public site's "mobile"
+   media queries. */
+@media (max-width: 768px) {
+  .frontend-body .fe-container {
+    padding: 0 var(--fe-container-pad-mobile, 5vw);
+  }
 }
 
 /* Site-wide design-token consumers. Each rule reads a CSS custom
@@ -758,8 +761,10 @@ body.fe-megamenu-open .fe-recovery-menu-btn span:last-child {
 .fe-recovery-threeup { padding: 64px 0; background: #f6f9ff; border-bottom: 1px solid #e5e9f0; }
 .fe-recovery-threeup-grid { display: grid; gap: 20px;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-.fe-recovery-threeup-card { padding: 28px 26px; background: #fff; border-radius: 12px;
-  border: 1px solid #e5e9f0; transition: transform 180ms ease, box-shadow 180ms ease; }
+.fe-recovery-threeup-card { padding: 28px 26px; border-radius: 12px;
+  background: var(--fe-color-card-primary-bg, #fff);
+  border: var(--fe-card-primary-border-width, 1px) solid var(--fe-color-card-primary-border, #e5e9f0);
+  transition: transform 180ms ease, box-shadow 180ms ease; }
 .fe-recovery-threeup-card:hover { transform: translateY(-3px);
   box-shadow: 0 10px 28px rgba(15,23,42,0.08); }
 .fe-recovery-threeup-icon { width: 52px; height: 52px; display: grid; place-items: center;
@@ -1057,7 +1062,13 @@ body.fe-megamenu-open .fe-recovery-menu-btn span:last-child {
 }
 .fe-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  padding: 14px 28px; border-radius: 999px; font-weight: 600; font-size: 1rem;
+  /* Padding reads from the design tokens (Site → Design → Buttons) so
+     admins can dial vertical (top/bottom) and horizontal (left/right)
+     independently. Fallbacks match the historic 14px / 28px shipped
+     before the tokens were wired so unstyled environments stay on the
+     same visual. */
+  padding: var(--fe-btn-padding-y, 14px) var(--fe-btn-padding-x, 28px);
+  border-radius: 999px; font-weight: 600; font-size: 1rem;
   text-decoration: none; border: 1px solid transparent;
   transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
   cursor: pointer;
@@ -1067,6 +1078,12 @@ body.fe-megamenu-open .fe-recovery-menu-btn span:last-child {
 .frontend-body .fe-btn-primary {
   background: var(--fe-color-btn-primary-bg, var(--fe-ink));
   color: var(--fe-color-btn-primary-text, #fff);
+  /* Border resting + hover are admin-tunable from the Design tokens
+     page (Buttons → Primary). Defaults match the bg colour so the
+     border is invisible until the admin sets a contrasting colour. */
+  border-width: var(--fe-btn-primary-border-width, 1px);
+  border-style: solid;
+  border-color: var(--fe-color-btn-primary-border, var(--fe-color-btn-primary-bg, transparent));
   /* Drop-shadow + hover lift + hover glow are admin-toggleable from
      the Design tokens page (Buttons group). Each token resolves to
      `none` when its toggle is off so the rule still applies cleanly. */
@@ -1076,8 +1093,12 @@ body.fe-megamenu-open .fe-recovery-menu-btn span:last-child {
 .fe-page .fe-btn-primary:hover,
 .frontend-body .fe-btn-primary:hover {
   transform: var(--fe-btn-hover-transform, translateY(-1px));
-  background: color-mix(in srgb, var(--fe-color-btn-primary-bg, var(--fe-ink)) 88%, black);
+  background: var(--fe-color-btn-primary-hover-bg,
+                  color-mix(in srgb, var(--fe-color-btn-primary-bg, var(--fe-ink)) 88%, black));
   color: var(--fe-color-btn-primary-text, #fff);
+  border-width: var(--fe-btn-primary-hover-border-width, var(--fe-btn-primary-border-width, 1px));
+  border-color: var(--fe-color-btn-primary-hover-border,
+                    var(--fe-color-btn-primary-border, var(--fe-color-btn-primary-bg, transparent)));
   box-shadow: var(--fe-btn-hover-glow, 0 10px 28px rgba(81, 100, 255, 0.32));
 }
 .fe-btn-ghost,
@@ -1085,7 +1106,9 @@ body.fe-megamenu-open .fe-recovery-menu-btn span:last-child {
 .frontend-body .fe-btn-ghost {
   background: var(--fe-color-btn-secondary-bg, transparent);
   color: var(--fe-color-btn-secondary-text, var(--fe-ink));
-  border-color: var(--fe-border);
+  border-width: var(--fe-btn-secondary-border-width, 1px);
+  border-style: solid;
+  border-color: var(--fe-color-btn-secondary-border, var(--fe-border));
 }
 
 /* Yellow CTA — high-contrast attention-grabbing variant. Hardcoded
@@ -1127,9 +1150,11 @@ html[data-theme="dark"] .frontend-body .fe-btn-yellow:hover {
 .fe-btn-ghost:hover,
 .fe-page .fe-btn-ghost:hover,
 .frontend-body .fe-btn-ghost:hover {
-  background: color-mix(in srgb, var(--fe-color-btn-secondary-bg, var(--fe-panel-soft)) 92%, black);
+  background: var(--fe-color-btn-secondary-hover-bg,
+                  color-mix(in srgb, var(--fe-color-btn-secondary-bg, var(--fe-panel-soft)) 92%, black));
   color: var(--fe-color-btn-secondary-text, var(--fe-ink));
-  border-color: var(--fe-color-btn-secondary-text, var(--fe-ink));
+  border-width: var(--fe-btn-secondary-hover-border-width, var(--fe-btn-secondary-border-width, 1px));
+  border-color: var(--fe-color-btn-secondary-hover-border, var(--fe-color-btn-secondary-text, var(--fe-ink)));
 }
 /* Light-mode override: align the hover border with the feature card's
    hover border (var(--fe-accent)) so the two affordances visually rhyme.
@@ -1177,10 +1202,11 @@ html[data-theme="dark"] body[data-fe-theme="recovery-blue"] .fe-btn-ghost:hover 
 }
 .fe-quick-card {
   display: block; padding: 28px 24px; border-radius: 18px;
-  background: var(--fe-panel-soft); color: var(--fe-ink);
+  background: var(--fe-color-card-secondary-bg, var(--fe-panel-soft));
+  color: var(--fe-ink);
   text-decoration: none; position: relative;
   transition: transform 200ms ease, box-shadow 200ms ease, background 200ms ease;
-  border: 1px solid transparent;
+  border: var(--fe-card-secondary-border-width, 1px) solid var(--fe-color-card-secondary-border, transparent);
 }
 .fe-quick-card:hover {
   transform: translateY(-4px);
@@ -1240,7 +1266,8 @@ html[data-theme="dark"] body[data-fe-theme="recovery-blue"] .fe-btn-ghost:hover 
   position: relative;
   display: flex; flex-direction: column;
   padding: 22px 22px 20px; border-radius: 16px;
-  background: #fff; border: 1px solid var(--fe-accent);
+  background: var(--fe-color-card-primary-bg, #fff);
+  border: var(--fe-card-primary-border-width, 1px) solid var(--fe-color-card-primary-border, var(--fe-accent));
   transition: transform 200ms ease, box-shadow 200ms ease;
 }
 .fe-meeting-card:hover {
@@ -2324,8 +2351,10 @@ html[data-theme="dark"] .fe-megamenu-recovery-blue .fe-megamenu-block-section-li
    pick up the same palette as the visitor's explicit dark choice.
    ===================================================================== */
 html[data-theme="dark"], body.fe-frontend-force-dark {
-  /* Page-level surface — sits behind every section without its own bg. */
-  --fe-dm-page-bg:           #0b1026;
+  /* Page-level surface — sits behind every section without its own bg.
+     Reads the design token so admins can rebrand the dark-mode surface
+     site-wide from Site → Design → Colors → Surface — Darkmode. */
+  --fe-dm-page-bg:           var(--fe-color-surface-dark, #0b1026);
   /* Card / panel surfaces. -surface is the elevated card colour;
      -surface-soft is a translucent wash for chips, soft fills, etc. */
   --fe-dm-surface:           #131a33;
@@ -2526,7 +2555,11 @@ html[data-theme="dark"] .frontend-body .fe-hero-cta .fe-btn-ghost:hover {
 
 /* Quick links / sections */
 html[data-theme="dark"] .fe-quick { background: #0b1026; }
-html[data-theme="dark"] .fe-quick-card { background: #131a33; color: #e2e8f0; border-color: transparent; }
+html[data-theme="dark"] .fe-quick-card {
+  background: var(--fe-color-card-secondary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-secondary-border-dark, transparent);
+  color: #e2e8f0;
+}
 html[data-theme="dark"] .fe-quick-card:hover { background: #17203f; border-color: #1f2a44;
   box-shadow: 0 8px 28px rgba(0,0,0,0.4); }
 html[data-theme="dark"] .fe-quick-card p { color: #94a3b8; }
@@ -2534,7 +2567,10 @@ html[data-theme="dark"] .fe-section + .fe-section { border-top-color: #1f2a44; }
 html[data-theme="dark"] .fe-section-head p { color: #94a3b8; }
 
 /* Meetings */
-html[data-theme="dark"] .fe-meeting-card { background: #131a33; border-color: #1f2a44; }
+html[data-theme="dark"] .fe-meeting-card {
+  background: var(--fe-color-card-primary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-primary-border-dark, #1f2a44);
+}
 html[data-theme="dark"] .fe-meeting-card:hover { box-shadow: 0 10px 28px rgba(0,0,0,0.45); }
 /* Meetings-list cards (`.fe-mlist-card`) — distinct from the
    homepage `.fe-meeting-card`. Without a dark-mode override these
@@ -2630,7 +2666,10 @@ html[data-theme="dark"] .fe-recovery-hero { background: #0b1026; border-bottom-c
 html[data-theme="dark"] .fe-recovery-hero-h1 { color: #e2e8f0; }
 html[data-theme="dark"] .fe-recovery-hero-lede { color: #94a3b8; }
 html[data-theme="dark"] .fe-recovery-threeup { background: #0f172a; border-bottom-color: #1f2a44; }
-html[data-theme="dark"] .fe-recovery-threeup-card { background: #131a33; border-color: #1f2a44; }
+html[data-theme="dark"] .fe-recovery-threeup-card {
+  background: var(--fe-color-card-primary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-primary-border-dark, #1f2a44);
+}
 html[data-theme="dark"] .fe-recovery-threeup-card:hover { box-shadow: 0 10px 32px rgba(0,0,0,0.5); }
 html[data-theme="dark"] .fe-recovery-threeup-card h2 { color: #e2e8f0; }
 html[data-theme="dark"] .fe-recovery-threeup-card p { color: #94a3b8; }
@@ -2764,10 +2803,19 @@ html[data-theme="dark"] .fe-meetings-day-heading { color: #e2e8f0; }
   padding: 48px 0; text-align: center; font-size: 1.0625rem;
 }
 
-/* Section foot — "See all meetings"/"See all events" CTA below the grid. */
+/* Section foot — "See all meetings"/"See all events" CTA below the grid.
+   Features block uses the same pattern when its admin-set bottom button
+   is filled in (cta_label + cta_url). */
 .fe-meetings-foot,
-.fe-events-foot {
+.fe-events-foot,
+.fe-features-foot {
   margin-top: 28px; text-align: center;
+}
+/* Features block gets a deeper desktop gutter — the cards above are
+   already chunky, so 28px reads as cramped between the grid and the
+   single section CTA. Mobile keeps the tighter shared default. */
+@media (min-width: 768px) {
+  .fe-features-foot { margin-top: 4rem; }
 }
 
 /* Animation classes — each card gets its own --i index from the template
@@ -3076,8 +3124,8 @@ html[data-theme="dark"] .fe-event-date-year { color: #94a3b8; }
      Dark-mode override further down keeps the deep-navy surface so
      this only flips the light-mode appearance. */
   padding: 24px; border-radius: 14px;
-  background: var(--fe-color-surface, #ffffff);
-  border: 1px solid var(--fe-accent);
+  background: var(--fe-color-card-primary-bg, var(--fe-color-surface, #ffffff));
+  border: var(--fe-card-primary-border-width, 1px) solid var(--fe-color-card-primary-border, var(--fe-accent));
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 }
 /* Hover-lift mirrors the homepage `.fe-meeting-card:hover`: 2 px rise
@@ -3164,7 +3212,10 @@ html[data-theme="dark"] .fe-meeting-detail { background: #0b1026; }
 html[data-theme="dark"] .fe-meeting-detail-head h1 { color: #f1f5f9; }
 html[data-theme="dark"] .fe-meeting-detail-desc { color: #e2e8f0; }
 html[data-theme="dark"] .fe-meeting-detail-card,
-body.fe-frontend-force-dark .fe-meeting-detail-card { background: #131a33; border-color: transparent; }
+body.fe-frontend-force-dark .fe-meeting-detail-card {
+  background: var(--fe-color-card-primary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-primary-border-dark, transparent);
+}
 /* Dark-mode hover border for the Schedule / Location / Zoom cards
    AND the Files & Readings panel — same indigo tint the Pro Tips
    accordion + meetings-list cards use, so every detail surface
@@ -3295,8 +3346,8 @@ html[data-theme="dark"] .fe-meeting-detail-alert {
 }
 .fe-event-detail-card {
   padding: 24px; border-radius: 14px;
-  background: var(--fe-panel-soft, var(--fe-color-surface-alt, #f8fafc));
-  border: 1px solid var(--fe-border);
+  background: var(--fe-color-card-secondary-bg, var(--fe-panel-soft, var(--fe-color-surface-alt, #f8fafc)));
+  border: var(--fe-card-secondary-border-width, 1px) solid var(--fe-color-card-secondary-border, var(--fe-border));
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 }
 /* Same lift / accent-border / drop-shadow recipe as the Classic
@@ -3357,8 +3408,8 @@ html[data-theme="dark"] .fe-event-detail-desc,
 body.fe-frontend-force-dark .fe-event-detail-desc { color: var(--fe-dm-text); }
 html[data-theme="dark"] .fe-event-detail-card,
 body.fe-frontend-force-dark .fe-event-detail-card {
-  background: var(--fe-dm-surface);
-  border-color: var(--fe-dm-border);
+  background: var(--fe-color-card-secondary-bg-dark, var(--fe-dm-surface));
+  border-color: var(--fe-color-card-secondary-border-dark, var(--fe-dm-border));
   color: var(--fe-dm-text);
 }
 /* Indigo edge-highlight on hover — same treatment as every other
@@ -3472,29 +3523,30 @@ body.fe-frontend-force-dark .fe-event-detail-card .fe-btn-primary:hover {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 .fe-feature-card {
+  display: flex; flex-direction: column;
   padding: 28px 24px; border-radius: 18px;
-  background: var(--fe-panel-soft);
-  border: 1px solid var(--fe-border);
+  background: var(--fe-color-card-secondary-bg, var(--fe-panel-soft));
+  border: var(--fe-card-secondary-border-width, 1px) solid var(--fe-color-card-secondary-border, var(--fe-border));
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 }
 .fe-feature-card:hover {
   transform: translateY(-3px);
-  border-color: var(--fe-accent, var(--fe-border));
+  border-color: var(--fe-color-card-secondary-hover-border,
+                    var(--fe-accent, var(--fe-border)));
   box-shadow: 0 10px 32px rgba(15,23,42,0.08);
 }
-/* Linked variant: anchor element styled to match the article card. The
-   visual hover (lift + accent border + shadow) is shared with the article
-   variant — the rules above already cover both. We only need anchor
-   reset + a focus-visible outline here. */
-a.fe-feature-card,
-.fe-feature-card--linked {
-  display: block; text-decoration: none; color: inherit; cursor: pointer;
+/* Per-card CTA. Cards are always <article> now (the public template
+   doesn't wrap them in <a> any more) so the title + body never pick up
+   the global ``.fe-page a:hover`` underline. The link, when set, sits
+   inside the card as a real button using one of the two design-system
+   styles (Primary = ``.fe-btn-primary``, Secondary = ``.fe-btn-ghost``).
+   ``margin-top: auto`` on the actions row keeps the CTA aligned across
+   cards even when bodies differ in length. */
+.fe-feature-card-actions {
+  margin-top: auto; padding-top: 16px;
+  display: flex; flex-wrap: wrap; gap: 10px;
 }
-a.fe-feature-card:focus-visible,
-.fe-feature-card--linked:focus-visible {
-  outline: 2px solid var(--fe-accent, currentColor);
-  outline-offset: 3px;
-}
+.fe-feature-card-cta { align-self: flex-start; }
 .fe-feature-icon {
   display: inline-flex; align-items: center; justify-content: center;
   width: 44px; height: 44px; border-radius: 10px;
@@ -3515,7 +3567,11 @@ a.fe-feature-card:focus-visible,
 html[data-theme="dark"] .fe-feature-body { color: #94a3b8; }
 html[data-theme="dark"] .fe-feature-body strong { color: #e2e8f0; }
 html[data-theme="dark"] .fe-features { background: #0b1026; }
-html[data-theme="dark"] .fe-feature-card { background: #131a33; color: #e2e8f0; border-color: transparent; }
+html[data-theme="dark"] .fe-feature-card {
+  background: var(--fe-color-card-secondary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-secondary-border-dark, transparent);
+  color: #e2e8f0;
+}
 html[data-theme="dark"] .fe-feature-card p { color: #94a3b8; }
 html[data-theme="dark"] .fe-feature-icon { background: rgba(81,100,255,0.18); color: #7aa3ff; }
 
@@ -3574,9 +3630,93 @@ html[data-theme="dark"] .fe-testimonial cite { color: #94a3b8; }
 
 .fe-faq-list { display: flex; flex-direction: column; gap: 8px;
   max-width: 760px; margin: 24px auto 0; }
+
+/* Full-width variant — page-builder knob `width_mode=full`. Drops the
+   760px column cap so the accordion bleeds to the parent container's
+   edge. Pairs naturally with the 2-column layout below; on a 1-column
+   FAQ inside a wide page it produces a single very-wide column. */
+.fe-faq-w-full .fe-faq-list { max-width: none; }
+
+/* Bare FAQ — page-builder rendering inside a container drops the
+   `.fe-section` + `.fe-container` chrome. The accordion fills the
+   parent container edge-to-edge and lets the container own width +
+   horizontal padding. Section-head margin still reads as a top
+   separator without inheriting the 80-px section padding. */
+.fe-faq--bare { padding: 0; }
+/* Keep the default top/bottom margins on the inner blocks so vertical
+   rhythm survives; only zero out horizontal margins (auto-centering
+   was previously clamping width). The parent container's padding
+   handles any left/right gutter. */
+.fe-faq--bare .fe-faq-list { max-width: none; margin-left: 0; margin-right: 0; }
+.fe-faq--bare .fe-section-head { margin-left: 0; margin-right: 0; max-width: none; }
+/* Mobile floor — when the parent container has no horizontal padding
+   (common on full-bleed page-builder layouts), the bare FAQ would
+   otherwise sit flush against the viewport. Apply the site-wide
+   mobile container token (Site → Design → Layout → Container padding —
+   mobile, default 5vw) so the accordion always has a phone-friendly
+   gutter. Doesn't affect any parent background — only the FAQ's own
+   inner content is inset. */
+@media (max-width: 768px) {
+  .fe-faq--bare {
+    padding-left: var(--fe-container-pad-mobile, 5vw);
+    padding-right: var(--fe-container-pad-mobile, 5vw);
+  }
+}
+
+/* 2-column variant — page-builder knob `columns=2`. The template
+   renders two `.fe-faq-col` flex stacks (left + right) so each
+   column is its own independent stacking context. This is critical:
+   if both columns shared a CSS Grid row, items in the same row would
+   share that row's height — and the 56px stagger on the right
+   column's first item would inflate row 1, leaving a phantom gap
+   below the first left-column item. Separate stacks mean the right
+   column's heights cannot influence the left's.
+
+   The OUTER container is a flex row (not a grid) so we can use
+   `align-items: flex-start` to keep each column sized to its own
+   content rather than stretched to match its peer. Grid's default
+   `align-items: normal` resolves to `stretch` for auto-sized
+   tracks, which would stretch the shorter (right) column to the
+   row height and leave empty space below its last card — making
+   the cards visually appear to sit in the middle of the column.
+   Flex's `align-items: flex-start` keeps each column hugging its
+   content so cards always sit at the top of their column. */
+.fe-faq-cols-2 .fe-faq-list {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 16px;
+  max-width: 1080px;
+}
+.fe-faq-w-full.fe-faq-cols-2 .fe-faq-list { max-width: none; }
+.fe-faq-cols-2 .fe-faq-col {
+  flex: 1 1 0;
+  display: flex; flex-direction: column;
+  justify-content: flex-start;
+  gap: 8px; min-width: 0;
+}
+
+/* Both columns sit flush against the top — the right column's
+   first card aligns with the left column's first card. The
+   `.fe-faq-col2-start` class is still emitted by the template
+   (in case a future stagger variant wants to hook onto it) but
+   carries no positioning rule by default. */
+.fe-faq-cols-2 .fe-faq-col2-start { margin-top: 0; }
+
+@media (max-width: 720px) {
+  /* Drop back to a single-column stack on phones. The flex row
+     wraps so the two columns flow vertically. */
+  .fe-faq-cols-2 .fe-faq-list {
+    flex-direction: column;
+    max-width: 760px;
+  }
+  .fe-faq-cols-2 .fe-faq-col { flex: 1 1 auto; }
+}
 .fe-faq-item {
-  background: var(--fe-panel-soft); border-radius: 12px;
-  padding: 0; border: 1px solid var(--fe-border);
+  background: var(--fe-color-card-secondary-bg, var(--fe-panel-soft));
+  border-radius: 12px;
+  padding: 0;
+  border: var(--fe-card-secondary-border-width, 1px) solid var(--fe-color-card-secondary-border, var(--fe-border));
   overflow: hidden;
   transition: border-color 200ms ease, box-shadow 200ms ease;
 }
@@ -3637,7 +3777,10 @@ html[data-theme="dark"] .fe-testimonial cite { color: #94a3b8; }
 .fe-faq-body-inner a { color: var(--fe-color-link, var(--fe-accent)); }
 .fe-faq-body-inner strong { color: var(--fe-ink); }
 
-html[data-theme="dark"] .fe-faq-item { background: #131a33; border-color: transparent; }
+html[data-theme="dark"] .fe-faq-item {
+  background: var(--fe-color-card-secondary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-secondary-border-dark, transparent);
+}
 html[data-theme="dark"] .fe-faq-item:hover,
 html[data-theme="dark"] .fe-faq-item.is-open {
   border-color: rgba(122, 163, 255, 0.4);
@@ -3651,7 +3794,8 @@ html[data-theme="dark"] .fe-faq-body-inner strong { color: #e2e8f0; }
 .fe-inclusion { padding: 56px 0; }
 .fe-inclusion-card {
   max-width: 760px; margin: 0 auto;
-  background: var(--fe-panel-soft); border: 1px solid var(--fe-border);
+  background: var(--fe-color-card-secondary-bg, var(--fe-panel-soft));
+  border: var(--fe-card-secondary-border-width, 1px) solid var(--fe-color-card-secondary-border, var(--fe-border));
   border-radius: 18px; padding: 40px 32px;
   display: flex; flex-direction: column; gap: 18px;
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
@@ -3702,7 +3846,10 @@ html[data-theme="dark"] .fe-faq-body-inner strong { color: #e2e8f0; }
   border: 1px solid rgba(81, 100, 255, 0.18);
 }
 .fe-inclusion-cta { margin-top: 8px; }
-html[data-theme="dark"] .fe-inclusion-card { background: #131a33; border-color: transparent; }
+html[data-theme="dark"] .fe-inclusion-card {
+  background: var(--fe-color-card-secondary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-secondary-border-dark, transparent);
+}
 html[data-theme="dark"] .fe-inclusion-heading { color: #e2e8f0; }
 html[data-theme="dark"] .fe-inclusion-body { color: #94a3b8; }
 html[data-theme="dark"] .fe-inclusion-body strong { color: #e2e8f0; }
@@ -4068,9 +4215,9 @@ html[data-theme="dark"] .fe-meeting-stack-chip {
 @media (max-width: 800px) { .fe-meeting-mag-side { position: static; } }
 .fe-meeting-mag-side-card {
   padding: 18px 20px;
-  border: 1px solid var(--fe-color-border, var(--fe-border));
+  border: var(--fe-card-secondary-border-width, 1px) solid var(--fe-color-card-secondary-border, var(--fe-color-border, var(--fe-border)));
   border-radius: var(--fe-card-radius, 4px);
-  background: var(--fe-color-surface-alt, var(--fe-panel-soft));
+  background: var(--fe-color-card-secondary-bg, var(--fe-color-surface-alt, var(--fe-panel-soft)));
 }
 .fe-meeting-mag-side-label {
   display: inline-flex; align-items: center; gap: 6px;
@@ -4126,7 +4273,10 @@ html[data-theme="dark"] .fe-meeting-mag-side-day,
 html[data-theme="dark"] .fe-meeting-mag-side-time,
 html[data-theme="dark"] .fe-meeting-mag-side-addr { color: #f1f5f9; }
 html[data-theme="dark"] .fe-meeting-mag-rule { background: #f1f5f9; opacity: 0.6; }
-html[data-theme="dark"] .fe-meeting-mag-side-card { background: #131a33; border-color: transparent; }
+html[data-theme="dark"] .fe-meeting-mag-side-card {
+  background: var(--fe-color-card-secondary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-secondary-border-dark, transparent);
+}
 html[data-theme="dark"] .fe-meeting-mag-side-creds code {
   background: #0b1026; color: #e2e8f0; border-color: rgba(255,255,255,0.08);
 }
@@ -4660,8 +4810,8 @@ html[data-theme="dark"] .fe-event-min-cred code { background: #131a33; color: #e
   box-sizing: border-box;
   display: block;
   padding: 2rem;
-  background: var(--fe-color-surface, #ffffff);
-  border: 1px solid var(--fe-accent);
+  background: var(--fe-color-card-primary-bg, var(--fe-color-surface, #ffffff));
+  border: var(--fe-card-primary-border-width, 1px) solid var(--fe-color-card-primary-border, var(--fe-accent));
   border-radius: 14px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
@@ -4700,7 +4850,8 @@ html[data-theme="dark"] .fe-event-min-cred code { background: #131a33; color: #e
 }
 html[data-theme="dark"] .fe-meeting-extended-card,
 body.fe-frontend-force-dark .fe-meeting-extended-card {
-  background: #131a33; border-color: transparent;
+  background: var(--fe-color-card-primary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-primary-border-dark, transparent);
 }
 /* Dark-mode hover border matches the meetings-list cards + Pro Tips
    accordion — the indigo tint lights up the edge on hover so the
@@ -8165,13 +8316,25 @@ body.fe-frontend-force-dark .fe-submission-modal-body {
    the inline max-width applies. Horizontal padding reads from the
    same per-page custom property as the article above so a single
    `pad_x = 0` setting drops the gutter for a true edge-to-edge
-   layout (e.g. hero blocks that need to bleed). */
+   layout (e.g. hero blocks that need to bleed).
+
+   Desktop fallback chains through the design-token container padding
+   so a site-wide adjustment in Site → Design flows to every page that
+   hasn't explicitly set its own pad_x. Mobile is a separate, single
+   global knob — the per-page pad_x is overridden at ≤768px so the
+   admin can dial mobile gutter from one place. Edge-to-edge full-width
+   pages still set their own inline padding which beats this rule. */
 .fe-pp-shell {
   margin-left: auto; margin-right: auto;
   padding-left: var(--fe-pp-pad-x, 16px);
   padding-right: var(--fe-pp-pad-x, 16px);
 }
-.fe-pp-w-full .fe-pp-shell { padding-left: 0; padding-right: 0; }
+/* Full-width pages drive their own gutter through `--fe-pp-pad-x-full`
+   (set inline by the page template from `page.full_padding_pct`). */
+.fe-pp-w-full .fe-pp-shell {
+  padding-left: var(--fe-pp-pad-x-full, 0);
+  padding-right: var(--fe-pp-pad-x-full, 0);
+}
 
 /* Hero: title + lead + image + CTA, all centered, generous whitespace. */
 .fe-pp-hero { text-align: center; }
@@ -8727,6 +8890,33 @@ html[data-theme="dark"] .fe-pp {
    Each var defaults to its non-hover counterpart so an unset hover
    variable simply means "no change on hover". */
 .block-container {
+  /* Reset every container-scoped CSS variable to its default at the
+     start of each container instance. CSS custom properties inherit
+     by default — without this reset, a nested container would pick
+     up the OUTER container's `--block-cont-shadow` / `-bg` / etc.
+     through inheritance even when the inner container has none of
+     those properties configured. The reset means each container
+     starts from a clean slate; only the inline-stamped variables
+     on its own element take effect.
+
+     Inline styles on this element still win over this rule
+     (specificity 1,0,0,0 vs 0,0,1,0), so a container that DOES
+     declare its own shadow / bg / border / hover values keeps them
+     intact. */
+  --block-cont-padding: 1rem;
+  --block-cont-padding-mobile: initial;
+  --block-cont-bg: transparent;
+  --block-cont-border-color: currentColor;
+  --block-cont-border-width: 0;
+  --block-cont-shadow: none;
+  --block-cont-grid-cols: initial;
+  --block-cont-flex-dir: initial;
+  --block-cont-flex-dir-mobile: initial;
+  --block-cont-hover-bg: initial;
+  --block-cont-hover-border: initial;
+  --block-cont-hover-border-width: initial;
+  --block-cont-hover-shadow: initial;
+  --block-cont-hover-transform: initial;
   /* Smooth transitions across every property the hover recipe might
      touch — kept short so hover feels responsive even on touch.
      `border-width` is included so the "border appears on hover"
@@ -9988,22 +10178,22 @@ body.fe-frontend-force-dark .fe-site-index-row-link:hover {
 .fe-fellowships-card-cta a:hover { text-decoration: underline; }
 .fe-fellowships-card-cta a svg { width: 14px; height: 14px; }
 
-/* Dark-mode — fellowships card surface reads from the Card Dark
-   design token so admins control the swatch from Settings → Design
-   rather than wrangling per-component overrides. Border + hover
-   shadow follow the lineage the rest of the dark-mode cards use
-   (transparent-ish white border, deeper shadow on lift). The sort
-   <select> rides the same token so the dropdown sits on the same
-   surface as the cards instead of the page background. */
+/* Dark-mode — fellowships card surface reads from the Primary card
+   background (dark) design token so admins control the swatch from
+   Settings → Design rather than wrangling per-component overrides.
+   Border + hover shadow follow the lineage the rest of the dark-mode
+   cards use (transparent-ish white border, deeper shadow on lift).
+   The sort <select> rides the same token so the dropdown sits on the
+   same surface as the cards instead of the page background. */
 html[data-theme="dark"] .fe-fellowships-card {
-  background: var(--fe-color-card-dark, #131a33);
+  background: var(--fe-color-card-primary-bg-dark, #131a33);
   border-color: rgba(255, 255, 255, 0.08);
 }
 html[data-theme="dark"] .fe-fellowships-card:hover {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
 }
 html[data-theme="dark"] .fe-mlist-sort select {
-  background: var(--fe-color-card-dark, #131a33);
+  background: var(--fe-color-card-primary-bg-dark, #131a33);
   border-color: rgba(255, 255, 255, 0.10);
   color: var(--fe-color-text, #e2e8f0);
 }
@@ -10011,7 +10201,7 @@ html[data-theme="dark"] .fe-mlist-sort select {
    most platforms and don't inherit the select's bg in dark mode, so
    set it explicitly so the open list isn't a blinding white pane. */
 html[data-theme="dark"] .fe-mlist-sort select option {
-  background: var(--fe-color-card-dark, #131a33);
+  background: var(--fe-color-card-primary-bg-dark, #131a33);
   color: var(--fe-color-text, #e2e8f0);
 }
 
@@ -10065,3 +10255,89 @@ html[data-theme="dark"] .fe-mlist-sort select option {
 .fellowships-tbl tr.is-virtual .fellowship-cell-region-field { opacity: 0; pointer-events: none; }
 .fellowships-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
 .fellowship-virtual-toggle { display: inline-flex; align-items: center; }
+
+/* ===== Card-style token aggregator =====
+   Every card class that opts into the primary or secondary card style
+   shares one source of truth for shadow, transition timing, and
+   hover lift / shadow. Border-width + colour-tokens are applied
+   directly on each card's own rule (so different cards keep their
+   own radius / padding); the structural language is normalised here.
+   The `.fe-card-primary` / `.fe-card-secondary` classes at the
+   bottom of this block are the public opt-in classes builder
+   containers can apply to inherit the same look. */
+.fe-meeting-card,
+.fe-meeting-detail-card,
+.fe-meeting-extended-card,
+.fe-recovery-threeup-card,
+.fe-card-primary {
+  box-shadow: var(--fe-card-primary-shadow, none);
+  transition:
+    background-color var(--fe-card-primary-transition, 200ms ease),
+    border-color var(--fe-card-primary-transition, 200ms ease),
+    box-shadow var(--fe-card-primary-transition, 200ms ease),
+    transform var(--fe-card-primary-transition, 200ms ease);
+}
+.fe-meeting-card:hover,
+.fe-meeting-detail-card:hover,
+.fe-meeting-extended-card:hover,
+.fe-recovery-threeup-card:hover,
+.fe-card-primary:hover {
+  box-shadow: var(--fe-card-primary-hover-shadow, 0 8px 28px rgba(15, 23, 42, 0.10));
+  transform: var(--fe-card-primary-hover-transform, translateY(-2px));
+  border-color: var(--fe-color-card-primary-hover-border,
+                    var(--fe-color-card-primary-border, var(--fe-accent)));
+}
+
+.fe-feature-card,
+.fe-quick-card,
+.fe-faq-item,
+.fe-inclusion-card,
+.fe-meeting-mag-side-card,
+.fe-event-detail-card,
+.fe-card-secondary {
+  box-shadow: var(--fe-card-secondary-shadow, none);
+  transition:
+    background-color var(--fe-card-secondary-transition, 200ms ease),
+    border-color var(--fe-card-secondary-transition, 200ms ease),
+    box-shadow var(--fe-card-secondary-transition, 200ms ease),
+    transform var(--fe-card-secondary-transition, 200ms ease);
+}
+.fe-feature-card:hover,
+.fe-quick-card:hover,
+.fe-faq-item:hover,
+.fe-inclusion-card:hover,
+.fe-meeting-mag-side-card:hover,
+.fe-event-detail-card:hover,
+.fe-card-secondary:hover {
+  box-shadow: var(--fe-card-secondary-hover-shadow, 0 10px 32px rgba(15, 23, 42, 0.08));
+  transform: var(--fe-card-secondary-hover-transform, translateY(-3px));
+  border-color: var(--fe-color-card-secondary-hover-border,
+                    var(--fe-accent, var(--fe-border)));
+}
+
+/* Opt-in classes that turn any container into a primary / secondary
+   card surface — colour tokens for bg + border come along too so the
+   block reads like a meeting / feature card without further styling.
+   Used by the page builder's "Card style" option on container blocks. */
+.fe-card-primary {
+  background: var(--fe-color-card-primary-bg, #ffffff);
+  border: var(--fe-card-primary-border-width, 1px) solid
+          var(--fe-color-card-primary-border, var(--fe-accent));
+  border-radius: 14px;
+}
+html[data-theme="dark"] .fe-card-primary,
+body.fe-frontend-force-dark .fe-card-primary {
+  background: var(--fe-color-card-primary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-primary-border-dark, #1f2a44);
+}
+.fe-card-secondary {
+  background: var(--fe-color-card-secondary-bg, var(--fe-panel-soft));
+  border: var(--fe-card-secondary-border-width, 1px) solid
+          var(--fe-color-card-secondary-border, var(--fe-border));
+  border-radius: 14px;
+}
+html[data-theme="dark"] .fe-card-secondary,
+body.fe-frontend-force-dark .fe-card-secondary {
+  background: var(--fe-color-card-secondary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-secondary-border-dark, #131a33);
+}

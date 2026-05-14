@@ -4,6 +4,224 @@ All notable changes to this project will be documented in this file.
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+## [1.10.0] — 2026-05-14
+
+### Added — Hero block buttons: icon picker + design-token colour pickers
+
+The hero block edit modal's per-button "Advanced — icons + custom colours" panel rewired to use the same shared chrome the rest of the admin uses. The two icon fields (`icon_before`, `icon_after`) are now icon-picker triggers — click the dashed tile to open the global Lucide / custom-uploads picker (search, size slider, the lot); the trigger fills with a live SVG preview and a small `×` clear button. Wired through `[data-open-icon-picker]` + `data-icon-target` against per-row hidden inputs minted with random unique IDs so multiple button rows in the same modal don't collide.
+
+The four colour fields (`icon_before_color`, `icon_after_color`, `custom_bg_color`, `custom_text_color`) gained the full colour-cluster UI — editable hex text input + native `<input type="color">` swatch + auto-attached 🎨 design-token-palette button + read-only hex caption + matched-token chip (◈ Brand). The 🎨 button comes for free from the global `_design_token_picker.html` MutationObserver — every dynamically-injected `<input type="color">` picks up the chrome on insert. Two-way binding everywhere: editing hex syncs the swatch, picking a swatch updates the hex, picking a token writes both.
+
+### Changed — Dynamic background modal "Save" → "Done"
+
+The footer button on `#dynbg-picker-modal` (Choose a dynamic background) said **Save**, but the modal doesn't actually save — it commits the chosen preset back to the parent form's hidden inputs and the parent form is what eventually saves on its own submit. Renamed the button text to **Done** so the verb matches what the click actually does.
+
+### Added — Hover-background tokens for primary + secondary buttons
+
+Two more colour tokens — `color_btn_primary_hover_bg` and `color_btn_secondary_hover_bg` — drive the background colour applied on `:hover`. Rendered in their respective Buttons admin column right between bg and text, so admins can tune the hover wash from one place. Defaults approximate the previous `color-mix(in srgb, <bg> 88/92%, black)` auto-darken (`#0a51e0` / `#e4e6e8` for Classic; `#0a51e0` / `#e0e3e7` for Recovery Blue), so existing button hover visuals stay essentially the same. The CSS keeps the `color-mix` recipe as a fallback inside the new `var(...)` so unstyled environments still get auto-darken behaviour. Live preview button repaints hover bg in real time.
+
+### Added — Surface — Darkmode token + per-style button border tokens (8 new)
+
+A new colour token **Surface — Darkmode** (default `#0b1026`) under Site → Design → Colors becomes the source of truth for the dark-mode page background. Wired by replacing the hard-coded value in `--fe-dm-page-bg` with `var(--fe-color-surface-dark, #0b1026)` so every consumer that reads `--fe-dm-page-bg` (body bg, force-dark footer, etc.) tracks the token.
+
+The Buttons section gains **eight per-style border tokens** — for each of Primary and Secondary: border colour, border width, hover border colour, hover border width. Border widths flow through the existing `BORDER_WIDTH_SCALE` (0/1/2/3/4 px); colour fields use the standard hex picker. Defaults preserve current visuals: primary borders match the bg colour (visually invisible until the admin picks a contrasting value), secondary uses `color_border` at rest and `color_btn_secondary_text` on hover (the legacy `.fe-btn-ghost` recipe).
+
+- `.fe-btn-primary` / `.fe-btn-ghost` switched from shorthand `border:` declarations to longhand `border-width` + `border-style` + `border-color` so each can read its own token without fighting cascade order. Hover rules read the hover token with the resting token as fallback (so half-configured borders don't flicker between widths).
+- The four new fields per kind render in their respective Buttons column (Primary on the left, Secondary on the right) right after `bg` + `text`, and the live preview button stamps `--fe-btn-<kind>-border-width` + `--fe-color-btn-<kind>-border` (resting + hover) so the preview repaints in real time as the admin edits any field.
+- Existing dark-mode hardcoded `.fe-btn-ghost` border overrides (e.g. `border-color: #334155`) remain at higher specificity — these light-mode tokens drive light mode only.
+
+### Added — Buttons section: two-column layout with per-style live preview
+
+Mirrors the Card styles layout. Buttons now lays out as Primary on the left, Secondary on the right, each column carrying its own preview button at the top followed by the settings stack underneath. Drops to single column under 900 px. Shared structural settings (radius, padding-x, padding-y, weight, text-transform, decoration) live in a dedicated **Shared button settings** block below both columns with a one-liner clarifying they apply to every button regardless of style.
+
+- Each preview button is a self-contained `.fe-btn-style-preview-button` that re-implements just enough of the public `.fe-btn` recipe to render on the admin page (admin chrome doesn't load `frontend.css`). Reads the same `--fe-btn-*` + `--fe-color-btn-*` custom properties so the live JS can stamp tokens directly on the element.
+- New live preview JS block listens on form `input` / `change` and resolves every Buttons token (radius scale, padding text values, on/off effect toggles for `btn_shadow` / `btn_hover_transform` / `btn_hover_glow`) through the same recipes the Python emitter uses, so the preview matches the public render exactly.
+- Three primary-only effect tokens (`btn_shadow`, `btn_hover_transform`, `btn_hover_glow`) render only inside the Primary column.
+
+### Added — Card styles: two-column layout + per-card hover-border tokens
+
+The Card styles tab restructured into two side-by-side columns matching the new Buttons layout: Primary on the left, Secondary on the right, each with its preview card directly above its full settings stack so the visual + the controls that drive it stay grouped. Drops to single column under 900 px. The shared `data-card-preview` attribute moved to the wrapper so the existing live-preview JS still finds both target cards in one query.
+
+Two new colour tokens — `color_card_primary_hover_border` and `color_card_secondary_hover_border` — control the border colour applied on `:hover`. Defaults preserve current visuals: secondary cards (feature, FAQ, quick-link, inclusion, etc.) keep accent-on-hover, primary cards default to their resting border colour (no visual shift unless the admin overrides). Wired into the shared `.fe-card-primary:hover` / `.fe-card-secondary:hover` rules so every primary or secondary card surface picks them up. The legacy hardcoded `.fe-feature-card:hover` accent border now also reads the secondary token. Mirrored in each column with the existing colour-token mirror system; the live preview repaints hover-border in real time.
+
+### Changed — Button padding tokens wired through to `.fe-btn`
+
+`btn_padding_x` and `btn_padding_y` existed in the schema and emitted CSS variables but no rule consumed them — `.fe-btn` had a hardcoded `padding: 14px 28px`. Rewrote the `.fe-btn` rule to read `var(--fe-btn-padding-y, 14px) var(--fe-btn-padding-x, 28px)`, switched the field type from a fixed scale (`xs/sm/md/lg/xl`) to a free-form text input so admins get pixel-precise control, and updated theme defaults to `"14px"` / `"28px"` so existing button visuals are preserved bit-for-bit. Labels reworded to "Vertical padding (top/bottom)" / "Horizontal padding (left/right)" so the role of each axis is unambiguous; placeholder hints suggest legal CSS lengths (`14px`, `0.875rem`, `1vw`).
+
+### Added — Container padding design tokens (`container_pad_desktop` / `container_pad_mobile`)
+
+A 1.8.4-era CSS rule — `@media (max-width: 560px) { .frontend-body .fe-container { padding: 0 5vw; } }` — was lost in a later refactor, leaving every block that wraps in `.fe-container` sitting flush against the viewport on phones. Restored as two free-form text design tokens under Site → Design → Layout: **Container padding — desktop** (default `0`) and **Container padding — mobile** (default `5vw`, applied at ≤768 px). Accept any CSS length: `0`, `24px`, `2rem`, `5%`, `5vw`. Wired into `.fe-container` (used by hero/cta/inclusion/etc. blocks) and the page-builder shell `.fe-pp-shell`, with the per-page `pad_x` setting still winning on desktop and the mobile token acting as a single global lever at ≤768 px.
+
+Page-builder full-bleed pages emit their `full_padding_pct` as a `--fe-pp-pad-x-full` custom property instead of inline `padding-left/right`, so the mobile media query can override without an inline-style war. The bare FAQ block (`.fe-faq--bare`, used inside page-builder containers that drop the `.fe-section` + `.fe-container` chrome) gets a surgical mobile-only horizontal padding rule that reads the same token, so FAQ accordions inside zero-padding containers still get a phone-friendly gutter without forcing a margin around the whole page.
+
+### Changed — Frontend Features block: per-card buttons + section CTA + cleaner hover
+
+The features block stopped wrapping each card in an `<a>`. Cards are always `<article>` now; when a card has a link, it renders an inline `.fe-btn` (Primary or Secondary, admin-selectable) inside the card with an editable label (defaults to "Learn more" if blank). Removes the global `.fe-page a:hover` underline that was being applied to the card title + body whenever the whole card was the link target.
+
+- Two new per-card fields in the Features modal (`button_label`, `button_style`); modal layout adds a "Button label / Style" row beneath the existing link URL row. JS extends the default item shape so missing inputs still serialise cleanly. `_normalize_features` carries the new keys and clamps `button_style` to the allowlist (`primary`/`ghost`).
+- A section-level bottom CTA (`cta_label` / `cta_url` / `cta_style` / `cta_new_tab`) renders as a single centred `.fe-btn` under the cards when both label + URL are filled — matches the `.fe-events-foot` / `.fe-meetings-foot` pattern. `4rem` of space above the button at desktop widths (`@media (min-width: 768px)`); mobile keeps the tighter `28px` shared rule.
+- Card now uses flex column + `margin-top: auto` on the actions row so per-card CTAs align across rows even when bodies differ in length. Dead `.fe-feature-card--linked` selector + `cursor: pointer` rule removed (no longer needed).
+
+### Added — Container padding: per-side fields with unit selector
+
+The container block's Padding control used to be a single free-form text input accepting CSS shorthand (`1rem`, `24px 16px`, etc.) — readable only if you already think in CSS. Replaced with a box-style diagram: four numeric inputs positioned around a centre "Padding" tag, labelled **Top / Right / Bottom / Left** on the outer ring so the role of each input is unambiguous. Each input is a chip combining a `<input type="number">` with a `<select>` dropdown for the unit — admins can pick **px / rem / em / vh / vw / %** per side independently. Same layout repeats for the mobile-override row (centre tag reads "Mobile"; any side left blank inherits the matching desktop value at ≤720 px).
+
+- Storage shifts from a bare integer to a full CSS-value string (`"16px"`, `"2rem"`, `"5%"`). The first time a saved container with the legacy `padding` shorthand is opened, a one-shot parser seeds the four per-side fields with the equivalent values *preserving the original unit* — so a saved `padding: "1.5rem"` becomes four `1.5rem` fields, not a px equivalent.
+- Renderers (`_blocks.html`, `frontend/page.html`) read the new fields through a `_pad_side(v)` helper: empty/null → `0`, integer → `<n>px` (legacy compat), string → unchanged. The four sides assemble into `--block-cont-padding: T R B L`. When all four are empty, the legacy `d.padding` CSS shorthand still applies, so containers saved before the per-side editor split keep their look.
+- CSS for the box: 3×5 grid with axis labels on the outer ring + four input chips on the inner cross + a dashed-border "Padding" tag in the centre. Native number-input spinner suppressed; unit `<select>` borderless and muted so it reads as secondary chrome.
+
+### Added — Card styles design-token group + per-container card option
+
+A new **Card styles** tab under Frontend → Design houses every knob that drives the look of card surfaces site-wide. The eight existing colour tokens for primary + secondary cards (bg/border light + dark) are mirrored into this tab; the canonical inputs still live on the Colors tab, with bidirectional JS sync (dashed border + "Synced" badge on the mirror so admins know editing either copy updates both). On top of the colour tokens, ten new structural tokens — five per card kind — control **border width**, **shadow**, **hover shadow**, **transition**, and **hover transform**. Three new scales back the new fields: `BORDER_WIDTH_SCALE` (0 / 1 / 2 / 3 / 4 px), `TRANSITION_SCALE` (none / fast 120 ms / normal 200 ms / slow 320 ms), `TRANSFORM_SCALE` (none / lift-sm -1 px / lift-md -2 px / lift-lg -4 px), all on a custom cubic-bezier easing.
+
+- **Live preview pane** at the top of the tab — two sample cards (primary, secondary) styled by the current form values. Inline CSS custom properties are stamped onto each preview card on every form input / change, so the swatch + border-width + shadow + lift + timing update instantly without a save round-trip. Hover the cards to see the configured `hover_shadow` + `hover_transform`.
+- **Aggregator CSS** appended to `frontend.css` wires every existing card class (`.fe-meeting-card`, `.fe-meeting-detail-card`, `.fe-meeting-extended-card`, `.fe-recovery-threeup-card` — primary; `.fe-feature-card`, `.fe-quick-card`, `.fe-faq-item`, `.fe-inclusion-card`, `.fe-meeting-mag-side-card`, `.fe-event-detail-card` — secondary) to the new tokens for shadow / transition / hover behaviour. Border-width is patched on each card's own `border:` declaration (so the shorthand still wins over inline overrides), border-colour comes from the existing colour tokens.
+- **Opt-in classes** — `.fe-card-primary` / `.fe-card-secondary` turn any block into a card surface using the same tokens (bg + border + shadow + hover lift, in both light and dark modes).
+- **Container builder option** — every container block gains a new "Card style" panel in its settings modal with a select (`None / Primary card · meeting-card look / Secondary card · feature-card look`). The selection writes `d.card_style` onto the block; the public renderer (`_blocks.html`) emits the matching `fe-card-primary` / `fe-card-secondary` class on the rendered `<div>`. Per-block inline styles (bg / border / shadow) still layer on top, so admins can fine-tune one container without unlinking it from the global card style.
+- **Editable hex chip** — the colour-token rows (both Colors and Card styles tabs) replace the read-only `<code>` hex caption with an `<input type="text">`. Type or paste a hex value and the swatch updates, the Override checkbox ticks itself, the field gets the overridden styling, and the save bar lights up — same effect as opening the native colour dialog. Invalid input shows a red border (via `:invalid:not(:placeholder-shown)`) and rolls back to the picker's current colour on blur.
+
+### Added — Secondary card colour tokens (feature-block style propagated site-wide)
+
+Four new colour design tokens — `color_card_secondary_bg`, `color_card_secondary_bg_dark`, `color_card_secondary_border`, `color_card_secondary_border_dark` — with defaults derived from the homepage features-block visual (Classic: `#f4f7fb` panel-soft / `#e2e8f0` border / `#131a33` dark bg; Recovery-blue: `#f1f5f9` / `#cbd5e1` / `#131a33`). Every card matching that style — `.fe-feature-card` (the source), `.fe-quick-card`, `.fe-faq-item`, `.fe-inclusion-card`, `.fe-meeting-mag-side-card`, `.fe-event-detail-card` — now resolves its bg + border through the new tokens in both light and dark mode, with the previous hard-coded value retained as the fallback so existing installs render identically until the admin overrides anything. Tweak a secondary-card colour once and the homepage features block, quick-access cards, FAQ items, inclusion block, meeting-magazine sidebar, and event-detail panels all update uniformly.
+
+### Added — Primary card colour tokens (meeting-card style propagated site-wide)
+
+Four new colour design tokens — `color_card_primary_bg`, `color_card_primary_bg_dark`, `color_card_primary_border`, `color_card_primary_border_dark` — with defaults derived from the existing meeting card visual (`#ffffff` bg in light / `#131a33` dark; theme-accent border in light / `#1f2a44` dark). Applied to every card that shares the meeting-card style: `.fe-meeting-card` (the source), `.fe-meeting-detail-card`, `.fe-recovery-threeup-card`, `.fe-meeting-extended-card`. The previously-named `color_card_dark` token (which only fed the fellowships card dark surface + sort `<select>` background + `<option>` background) was removed and its three sites converted to `--fe-color-card-primary-bg-dark` — one token for "dark elevated card surface" instead of two redundant ones. Saved overrides for the removed key are silently ignored on load by `resolve_design`'s unknown-key guard, so no migration is needed.
+
+### Fixed — Block payloads no longer reset when moved between containers
+
+Dragging a heading (or any block) out of a nested container in the page builder was silently losing its text and other in-modal edits. Each structure-card pill stored its block data in a `data-block-payload` attribute set once at server render. When the user opened the modal block editor and edited a heading's text, that change lived only in the BlockEditor's internal `state.sections` — the pill's DOM attribute stayed stale. Then when the user dragged the block out of its container, `syncStateFromDom` rebuilt the hidden `blocks_json` field by reading those stale pill payloads, quietly clobbering the modal edits.
+
+Fix: keep pill payloads in sync with editor edits in real time. Two new helpers exposed from `page_structure.js`:
+
+- `window.tspSyncStructurePayloadsFromState(stateSections)` — walks an entire BlockEditor state, refreshing every matching pill's `data-block-payload` + `data-preview` and merging container settings into the live `containerPayloadById` map (preserving each container's `.data.blocks` since the structure card stays canonical for composition). Called from the editor modal's `input` listener on every keystroke.
+- `window.tspSyncStructurePayloadOne(id, payload)` — single-block variant for the dedicated modals (hero / meetings / events / features / FAQ). Called from each modal's `persistModalToBlock` after writing to `blocks_json`, so the in-session view also reflects edits without waiting for a save round-trip.
+
+Drag a heading out of a container after editing it in the modal — the text + every other setting now travel with the pill.
+
+### Added — Block + container duplication in the page builder
+
+Every block pill gains a `⧉` icon button next to the existing `×`, and every container row gains a "Duplicate" action alongside Settings + Remove. Clicking duplicate deep-clones the payload (re-uid'd top to bottom — nested container children get fresh ids too) and inserts the copy immediately after the original.
+
+- Top-level leaf pills are wrapped in a `.fe-page-structure-row--single`; duplicating them produces a fresh row at the same level rather than a sibling pill that would collide inside the original's single-block zone. Nested + orphan pills duplicate as straight sibling pills in the same drop zone.
+- Container duplication uses `makeRowFromPayload(clone)` so a duplicated container renders as a full row (with its own column cells, drop zones, and recursive children).
+- Wired through `bindRemoveButton` + the existing MutationObserver + delegated click handler so duplicate buttons on freshly-minted pills (palette drops, row-factory output, the duplicate itself) pick up the same behaviour automatically. The "open editor modal" pill-click guards now skip clicks on the duplicate buttons too, so duplicate doesn't double-fire as an edit.
+
+### Changed — Flex containers render as single-zone flow in builder
+
+Flex containers in the page builder used to split into N column cells (one per child) whenever `direction: row` — which misrepresented how flexbox actually works: children are siblings inside one container, not isolated tracks. Now every flex container renders as a single drop zone in the structure card, regardless of `direction`. The zone gets a flex-flow class (`fe-page-structure-block-list--flex-{row|column|row-reverse|column-reverse}`) that matches the configured direction, so pills inside lay out exactly how they will on the public site. Grid containers keep the N-cell visualisation (the public CSS Grid layout actually does map children to discrete tracks).
+
+- **Wording** — flex containers now label themselves "Flex row container" / "Flex column container" (matching the configured `direction`) in both the inline-edit placeholder and the chip below. Grid containers keep the existing "N-column container" wording.
+- **Column flow pills stretch full-width** — `align-items: stretch` on `.fe-page-structure-block-list--flex-column` + `width: 100%` on each pill, so vertical-flow containers read as a stack of equal-width pills (the way they'll render on the public site).
+- **Row flow pills size to content** — `width: auto; flex: 0 0 auto`, so several pills can sit side-by-side in a horizontal row.
+- **Auto-provisioning** — the showcase pattern (one inner-container shell per cell) only applies to multi-column GRID containers now. Flex containers hold their direct children flat.
+
+### Fixed — Nested container layout adapts on narrow viewports
+
+When containers were nested inside other containers, the inner row's 130-px label gutter (which holds the row-num chip + Settings + Remove + Duplicate buttons) at ≥720 px was eating the drop zone — three deep the zone collapsed to nothing at typical admin viewports. Nested rows (any `.fe-page-structure-row` inside a parent's `.fe-page-structure-col`) now always stack the label + action buttons above their columns grid, with the label laid out as a horizontal strip (input + chip + Settings + Duplicate + Remove) so the gutter stays compact above the full-width drop zone. Top-level rows are unaffected.
+
+### Changed — Block pills hover-expand so edit/delete stay reachable
+
+In narrow nested cells, the "Edit" hint chip + × remove button at the right edge of clickable pills used to clip against the cell border, making them unreachable. On hover (or keyboard focus-within), the pill now grows to `min-width: max-content` and lifts above neighbouring content with `position: relative; z-index: 5` + a soft drop shadow — so every control is visible and clickable no matter how tight the column. Cells aren't `overflow: hidden`, so the pill simply paints beyond its column without disturbing the surrounding layout.
+
+### Added — Collapsible sidebar sections
+
+The labelled sections in the main admin sidebar (Intergroup / External / Admin) collapse + expand independently. Each section's divider is now a `<button>` with an aria-expanded toggle + a chevron that rotates -90° when collapsed; the items wrapper hides via `[hidden]`. Per-section state persists in `localStorage` under the `tsp-sidebar-collapsed` key, and is re-applied after the AJAX nav refresh triggered by Settings saves so collapse state survives module-toggle round-trips. The unlabelled "main" section (top items) stays always-visible.
+
+### Changed — File browser: thumbnails, grid view, pagination, lightbox prev/next
+
+The File Browser (`/tspro/files`) is now a usable visual library instead of an opaque table:
+
+- **List view** — every row leads with a 48×48 thumbnail. Images render the actual file (lazy-loaded, `object-fit: cover`); PDFs / docs / video / audio render a typed icon + extension badge fallback. Clicking the thumbnail (or filename link, as before) opens the lightbox for previewable types.
+- **Grid view** — toggle in the top actions switches to a responsive `auto-fill, minmax(180px, …)` card grid with square thumbnail surfaces and filename + size below. Each card has hover-lift + brand-coloured border. The toggle's "List" / "Grid" preference persists in the existing `view-media` cookie alongside sort + direction.
+- **Lightbox** — collects every previewable item on the page and lets you step prev/next via on-screen chevron buttons or ← / → arrow keys, with a "3 / 17" counter in the header. Works for both views and the picker preview button. Image and PDF previews unchanged from before; other types fall back to opening in a new tab.
+- **Server-side pagination** — `/tspro/files` now paginates at **100 records per page**. The route builds a single SQL query that pushes the hidden-filename + pending-uploads + search filters and the chosen sort (with a SQL `CASE` for the `type` bucket so it groups by extension globally) before `.offset().limit()`, returning exactly one page's worth of rows regardless of catalog size. A pagination footer below the list/grid shows "Showing X–Y of N" + First / Prev / Page / Next / Last buttons (disabled at the ends).
+
+### Fixed — Frontend FAQ block fills its container in the page builder
+
+The shared FAQ partial (`frontend/blocks/faq.html`) always wrapped itself in `<section class="fe-section"><div class="fe-container">` — which on the page-builder render path was capping the accordion to the partial's own 1160-px `.fe-container` regardless of the surrounding builder container's width. New `faq_no_chrome` flag, passed from `frontend/page.html`'s FAQ branch, drops both wrappers in builder context and forces the inner `.fe-faq-list` to its full-width mode. The accordion now fills whatever container width the admin set on the parent. New `.fe-faq--bare` class zeroes section padding and the auto-centring margin (only horizontal — vertical rhythm on the list + section head is preserved); only kicks in on the builder path, so the homepage's full-section FAQ is unchanged.
+
+### Changed — Removed hidden 28 px / 5 vw padding on `.fe-container`
+
+The `.frontend-body .fe-container` selector had a baked-in `padding: 0 28px` (and `padding: 0 5vw` at ≤560 px) that admins couldn't see or override from the page-builder. The container now enforces only `max-width: var(--fe-container-max)` + horizontal centring; every gutter / horizontal padding decision lives in the per-section / per-container builder settings.
+
+### Added — Stories admin bulk actions
+
+The `/tspro/stories` admin page gains the same multi-select / bulk-action UI the Posts admin has had since 1.8: a row of checkboxes (per row + select-all in the header), a hidden pill-shaped action bar that slides in once you've selected at least one story, and one POST handler that processes the whole batch in a single transaction.
+
+- New `story_bulk` route (`POST /tspro/stories/bulk`) accepts `action` ∈ `{archive | unarchive | draft | publish | delete}` and a repeated `ids` field. Mirrors `post_bulk`'s shape exactly — id-parse with silent skip on stale ids, single `Story.id.in_(...)` lookup, action-specific commit. Delete path snapshots featured-image filenames + inline `/pub/` body image paths *before* row removal so `_cleanup_retired_asset` can run after commit with the row no longer pointing at the files (otherwise the residual-reference check would keep the asset alive forever).
+- Activity log writes a single `story.bulk_<action>` row per batch with the count and label, so the User Log shows "Bulk archived 12 stories" rather than 12 separate events.
+- Bulk-action bar adapts to the current tab — no `Archive` button while viewing Archived (would be a no-op), no `Move to drafts` on Drafts, no `Publish` on Published. `Delete` and `Clear` are always present.
+- Per-row action buttons (Edit / Publish / Drafts / Archive / Delete) now reference sibling `<form id="single-story-...">` stubs via `form="..."` so a row's individual archive/delete button can sit inside the bulk form without nested-form warnings.
+- Selected rows pick up a subtle brand-tinted background via `tr[data-story-row]:has(input:checked)` so it's obvious at a glance which rows are about to be bulk-actioned.
+- Inline JS (same shape as `posts.html`): row-check listeners refresh the counter and reveal the bar, select-all toggles every visible checkbox with proper indeterminate state when partially selected, each `[data-bulk]` button writes its action name into the hidden field and submits with an optional confirm prompt (count interpolated into the message — "Delete 7 selected stories permanently?").
+- Toolbar + bulk-bar styles (`.posts-toolbar`, `.posts-bulkbar`, `.posts-bulkbar-count`, `.posts-th-check`, `.posts-check-wrap`) were previously defined inline in `posts.html` and `blog_list.html`. Lifted into `stories.html` so the bulk pill chrome renders correctly on this page. `margin-bottom: 1rem` on the stories toolbar gives the "Showing N stories" line breathing room above the table — Posts and Blog keep their existing 0.85rem.
+
+### Added — FAQ block: 1/2-column layout, boxed/full-width, side-padding control
+
+The per-page FAQ block (page-builder modal `#page-faq-edit-modal`) gains three layout knobs above the items list. All three default to the historic single-column / boxed / no-extra-padding render, so unedited FAQ blocks are byte-for-byte identical post-upgrade.
+
+- **Columns** — `1` (default) or `2`. The 2-column variant splits items into two independent flex stacks at template render time (`ceil(N/2)` on the left, the remainder on the right) so each column is its own stacking context. Critical: a single CSS Grid would share row heights between columns, so a taller card on one side would push the other side's items down by inflating the shared row — separate stacks mean the right column's heights can never reach across and affect the left's. Both columns sit flush to the top of the FAQ list; items pack to the top of each column via the flex column's natural flow.
+- **Width** — `boxed` (default, 760px column on 1-col / 1080px on 2-col) or `full` (lifts the cap so the accordion bleeds to the parent container's edge — useful when paired with a wide page or the 2-column layout).
+- **Side padding** — integer-pixel slider (0..200px) that adds inner horizontal padding on the FAQ block's `.fe-container`. Lets the admin tuck the accordion inside a gutter without nesting it in a wrapper container block.
+- **Storage** — three new optional keys on the FAQ block's `data`: `columns`, `width_mode`, `pad_x`. Modal inputs carry `data-faq-field="<key>"` so the existing two-way binding in `page_faq_modal.js` picks them up alongside heading/subheading — generalised `readModal()` / `populateModalFromBlock()` so the JS walks every `[data-faq-field]` element rather than hardcoding each key.
+- **Pill preview** — the block-list pill's subtext now shows `N items · 2 col · full-width` (or `· 1 col` for the default) so you can see the layout at a glance without opening the modal.
+
+Public render lives in `frontend/blocks/faq.html`: applies `.fe-faq-cols-{1|2}` + `.fe-faq-w-{boxed|full}` classes; injects inline `padding-left/right` on `.fe-container` when `pad_x > 0`. The 2-column markup is two `.fe-faq-col` divs wrapping the item lists; CSS lays them out as a flex row with `align-items: flex-start` so each column sizes to its own content (grid's default `align-items: normal` was resolving to `stretch` in some browsers and stretching the shorter column, leaving its cards visually centered in the column). On phones (≤720px) the row wraps to a single-column stack.
+
+### Fixed — Nested page-builder containers were inheriting the parent container's shadow / bg / border / hover
+
+CSS custom properties inherit by default. When the outer container's inline style set `--block-cont-shadow: <value>`, that variable cascaded to every descendant — and any nested `.block-container` read it through `box-shadow: var(--block-cont-shadow, none)`, with the inherited value winning over the `none` fallback (which only applies when the variable is truly unset, not when inherited). Same latent leak affected `--block-cont-bg`, `--block-cont-border-color`, `--block-cont-border-width`, every `--block-cont-hover-*`, and the grid/flex layout vars.
+
+Fix: reset every container-scoped variable to its default at the top of the `.block-container` rule. Inline styles on the same element still win (specificity 1,0,0,0 > 0,0,1,0), so a container that DOES declare its own values keeps them intact — but inherited values from ancestors no longer leak through. Each container now starts from a clean slate, so a nested container with no shadow configured stays shadow-free even if its parent has one.
+
+### Added — Frontend visitor metrics (anonymous page-view analytics for the public site)
+
+A new admin-only analytics surface that tracks real human traffic to the public web frontend. Signed-in users (admins, editors, intergroup members, viewers) are excluded from every count — the metrics page reflects actual visitors only.
+
+**Schema:**
+
+- New `VisitorEvent` model (`app/models.py`) — one row per anonymous page view. Columns: `created_at`, `day` (UTC `YYYY-MM-DD` for cheap date-bucketed aggregations), `path`, `endpoint`, `referrer_host` (origin only — full referer URLs never persisted), `device` (`mobile`/`tablet`/`desktop`/`other`), `browser`, `os`, `visitor_hash`. Indexed on `(day, path)` and `(day, visitor_hash)` so the metrics-page rollups scan a small slice rather than the whole table.
+- **Privacy:** no IP, no User-Agent string, no full Referer URL is ever stored. `visitor_hash` is a daily-rotating BLAKE2b of `(SECRET_KEY, UTC date, IP, UA)` — the salt rotates at midnight UTC, so a hash is a stable identifier within a single day but a different hash the next day. Uniques are estimated from `COUNT(DISTINCT visitor_hash)` per day.
+- New `User.dash_show_visitor_metrics` boolean column (default true, migration entry added to `_migrate_sqlite`) — drives the per-user dashboard customize toggle.
+
+**Recording pipeline (`app/visitor_metrics.py`):**
+
+- Mounted as a `before_request` hook on the `frontend` blueprint so admin-portal traffic is never recorded.
+- Drops requests that are: authenticated (`current_user.is_authenticated`), non-GET, asset fetches (any of `/static/`, `/pub/`, `/site-branding/`, `/favicon` or extension `.png|jpg|jpeg|gif|webp|avif|svg|ico|css|js|woff|woff2|ttf|otf|eot|mp4|webm|mp3|ogg|m4a|pdf|zip|json|xml|txt|map`), browser prefetches (`Sec-Purpose: prefetch`, `Purpose: prefetch`), empty UA, or bot UA (~30-token allowlist covering Googlebot, Bingbot, Facebook/Twitter/LinkedIn link previews, Discord/Telegram/WhatsApp previews, Yandex/Baidu/DuckDuck, SEO crawlers Ahrefs/Semrush/MJ12/Petal, monitoring bots Pingdom/UptimeRobot, headless Chrome / Lighthouse / PageSpeed, and common HTTP libraries curl/wget/requests/axios/okhttp/go-http-client).
+- Cross-blueprint guard: even if a future change accidentally registers the hook elsewhere, the recorder bails when `request.endpoint` doesn't start with `frontend.` — admin-portal traffic can never leak into the table.
+- User-Agent parsing is a small dependency-free lookup (`_BROWSER_PATTERNS` / `_OS_PATTERNS`). Edge/Brave/Vivaldi/Opera are matched before Chrome (they all carry "chrome" in the UA); iPads masquerading as Macs are routed to `tablet` via the touch-event tiebreaker.
+- Defensive at every step — any exception in the recorder is swallowed (with a session rollback) so a flaky write can't break the public page render.
+
+**Admin metrics page** (`/tspro/frontend/metrics`, admin-only, inside the Web Frontend subnav under Overview):
+
+- Five top-line summary tiles — Views in window (with inline 14-day sparkline), Unique visitors in window (+ derived views-per-visitor), Today (with `↑/↓` delta vs yesterday), Yesterday, Last 7 days.
+- Full-width inline-SVG time-series chart — filled area for total views (brand gradient) overlaid with a dashed purple→cyan stroke for unique visitors. Horizontal grid lines + tick labels on the Y axis; adaptive X-axis label density (every 1/3/7 days depending on window length). One `circle` per day wires up a hover tooltip that shows the day + both counts.
+- Hour-of-day distribution — 24 vertical bars showing average traffic per hour (UTC, last 30 days).
+- Three donut charts — Devices, Browsers, Operating systems. Each donut renders as concentric `circle` arcs with `stroke-dasharray` slices (no external chart library), centered with the total view count, alongside a legend list with swatch / label / count.
+- Two top-N tables — Top pages (links to the public URL, opens in new tab) and Top referrers (`Direct / bookmark` for null referrers, external link icon otherwise). Each row carries an inline bar gauge showing its share of the top result.
+- Window selector top-right (`7 / 14 / 30 / 90 days`); the route's `_resolve_metrics_window` only accepts those four values so hand-crafted query strings can't widen the scan.
+- Page renders inside `fe-admin-layout` with `_frontend_subnav.html` so the Visitor Metrics entry highlights as active and the page reads as part of the Web Frontend module.
+
+**Dashboard widget** (admin-only, draggable, "Frontend Visitor Metrics"):
+
+- Three stat tiles — Today, Last 7 days, Unique · 30d — with the Today tile in brand-tinted accent style.
+- Inline-SVG 14-day sparkline (filled area + stroke). When there's no traffic yet, shows a friendly "No visits yet — once the public site sees real traffic, the chart will populate." message instead of a flat line.
+- "Open metrics →" link in the card header navigates to the full metrics page.
+- Widget participates in the existing dashboard drag-drop reorder; per-user toggle in the Customize Dashboard modal (admin-only section, default on).
+- New JSON endpoint `/tspro/frontend/api/visitor-metrics/summary` returns the summary numbers + sparkline series — wired for future polling refresh, currently used as the canonical shape definition.
+
+**Sidebar wiring:**
+
+- The Web Frontend subnav (`_frontend_subnav.html`) gains a "Visitor Metrics" entry right under "Overview" (Lucide `bar-chart` icon). Active-state highlight matches when `request.endpoint == 'main.visitor_metrics_page'`.
+- No entry in the top-level admin sidebar — the page is conceptually part of the Web Frontend module and lives entirely within its URL space (`/tspro/frontend/metrics`) and its admin layout.
+
+**CSS** — ~200 lines added under `/* ===== Visitor metrics admin page ===== */`. Tile grid responsive 5→3→2→1 columns; chart hover dots animate radius on `:hover`; donut slices animate `stroke-width` on container hover; tooltip uses absolute-positioned `position: absolute` inside the chart wrapper so SVG↔HTML coordinates line up; dark-mode-aware trend arrows (`#16a34a` light / `#4ade80` dark for up; `#dc2626` / `#f87171` for down).
+
+Verified end-to-end on the live install: hit the public site as Chrome/macOS, Safari/iOS, Firefox/Windows, Chrome/Android — all four recorded with correct device/browser/OS parsing; Googlebot UA and `/static/*` asset hits correctly skipped; admin metrics page and dashboard widget both render with live data including the chart, donuts, and top-pages tables.
+
 ## [1.9.1] — 2026-05-13
 
 ### Fixed — Frontend export/import now produces a verbatim 1-to-1 copy (bundle v3 → v4)

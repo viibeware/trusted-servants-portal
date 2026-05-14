@@ -75,10 +75,17 @@
     }
 
     // ── Read all modal inputs into a block-data shape ─────────────
+    // Every `[data-faq-field="<key>"]` input contributes one key on
+    // the block.data dict. Generic walk so adding a new field row in
+    // the template needs no JS change — the columns / width_mode /
+    // pad_x knobs ride this path alongside heading + subheading.
     function readModal() {
       const data = {};
-      data.heading = (modal.querySelector('[data-faq-field="heading"]') || {}).value || '';
-      data.subheading = (modal.querySelector('[data-faq-field="subheading"]') || {}).value || '';
+      modal.querySelectorAll('[data-faq-field]').forEach(inp => {
+        const key = inp.dataset.faqField;
+        if (!key) return;
+        data[key] = inp.value || '';
+      });
       const items = [];
       list.querySelectorAll('[data-faq-item]').forEach(card => {
         const item = { question: '', answer: '', icon: '', icon_size: '' };
@@ -138,24 +145,49 @@
       edits.set(activeBlockId, modalData);
       const sections = readSections();
       let touched = false;
+      let touchedBlock = null;
       for (const sec of sections) {
         walkBlocks(sec.blocks || [], (b) => {
           if (b.id === activeBlockId) {
             b.data = Object.assign({}, b.data || {}, modalData);
             touched = true;
+            touchedBlock = b;
           }
         });
       }
-      if (touched) writeSections(sections);
+      if (touched) {
+        writeSections(sections);
+        if (touchedBlock && typeof window.tspSyncStructurePayloadOne === 'function') {
+          try { window.tspSyncStructurePayloadOne(activeBlockId, touchedBlock); }
+          catch (_) {}
+        }
+      }
     }
 
     function populateModalFromBlock(block) {
       if (!block || !block.data) return;
       const data = block.data;
-      const headingInp = modal.querySelector('[data-faq-field="heading"]');
-      if (headingInp) headingInp.value = data.heading || '';
-      const subInp = modal.querySelector('[data-faq-field="subheading"]');
-      if (subInp) subInp.value = data.subheading || '';
+      // Generic walk over every `data-faq-field` input — heading,
+      // subheading, columns, width_mode, pad_x all flow through this
+      // path. Selects + range inputs both accept assignment to .value.
+      // Defaults are encoded in the rendered <option selected> / range
+      // value=, so an empty / missing key on the saved block falls
+      // back to the input's HTML default rather than going blank.
+      modal.querySelectorAll('[data-faq-field]').forEach(inp => {
+        const key = inp.dataset.faqField;
+        if (!key) return;
+        const v = data[key];
+        if (v != null && v !== '') {
+          inp.value = v;
+        }
+      });
+      // Range output is updated by its 'input' listener (registered
+      // below), but on initial populate we need to fire that update
+      // synthetically so the readout shows the saved value rather
+      // than the slider's HTML default.
+      const padInp = modal.querySelector('[data-faq-pad-input]');
+      const padOut = modal.querySelector('[data-faq-pad-out]');
+      if (padInp && padOut) padOut.textContent = (padInp.value || '0') + 'px';
       list.innerHTML = '';
       nextIdx = 0;
       const items = Array.isArray(data.items) ? data.items : [];
@@ -317,6 +349,18 @@
           try { e.formData.set('blocks_json', json); } catch (_) {}
         }
       });
+    }
+
+    // Live readout for the side-padding range slider. The existing
+    // generic `input` listener at the bottom of this file already
+    // serialises every change into the block — this only handles the
+    // cosmetic "<value>px" text next to the slider label.
+    const padInp = modal.querySelector('[data-faq-pad-input]');
+    const padOut = modal.querySelector('[data-faq-pad-out]');
+    if (padInp && padOut) {
+      const syncPadOut = () => { padOut.textContent = (padInp.value || '0') + 'px'; };
+      padInp.addEventListener('input', syncPadOut);
+      syncPadOut();
     }
 
     refreshCount();

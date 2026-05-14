@@ -749,20 +749,28 @@ def create_app():
         resolve_design as _resolve_design,
         derive_dark_color as _derive_dark_color,
         DESIGN_FIELDS as _DESIGN_FIELDS,
+        DESIGN_FIELDS_BY_KEY as _DESIGN_FIELDS_BY_KEY,
         DESIGN_GROUPS as _DESIGN_GROUPS,
         SPACING_SCALE as _SPACING_SCALE,
         RADIUS_SCALE as _RADIUS_SCALE,
         SHADOW_SCALE as _SHADOW_SCALE,
+        BORDER_WIDTH_SCALE as _BORDER_WIDTH_SCALE,
+        TRANSITION_SCALE as _TRANSITION_SCALE,
+        TRANSFORM_SCALE as _TRANSFORM_SCALE,
         THEME_DEFAULTS as _DESIGN_THEME_DEFAULTS,
     )
     app.jinja_env.globals["design_css_vars"] = _design_css_vars
     app.jinja_env.globals["resolve_design"] = _resolve_design
     app.jinja_env.globals["derive_dark_color"] = _derive_dark_color
     app.jinja_env.globals["design_fields"] = _DESIGN_FIELDS
+    app.jinja_env.globals["design_fields_by_key"] = _DESIGN_FIELDS_BY_KEY
     app.jinja_env.globals["design_groups"] = _DESIGN_GROUPS
     app.jinja_env.globals["design_spacing_scale"] = _SPACING_SCALE
     app.jinja_env.globals["design_radius_scale"] = _RADIUS_SCALE
     app.jinja_env.globals["design_shadow_scale"] = _SHADOW_SCALE
+    app.jinja_env.globals["design_border_width_scale"] = _BORDER_WIDTH_SCALE
+    app.jinja_env.globals["design_transition_scale"] = _TRANSITION_SCALE
+    app.jinja_env.globals["design_transform_scale"] = _TRANSFORM_SCALE
     app.jinja_env.globals["design_theme_defaults"] = _DESIGN_THEME_DEFAULTS
 
     # Sidebar data layer — single source of truth for what shows up in
@@ -1247,6 +1255,7 @@ def _migrate_sqlite(app):
                          ("dash_show_contact_form", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("dash_show_deletions", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("dash_show_currently_online", "BOOLEAN NOT NULL DEFAULT 1"),
+                         ("dash_show_visitor_metrics", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("dash_order_json", "TEXT"),
                          ("last_seen_at", "DATETIME"),
                          ("phone", "VARCHAR(64)"),

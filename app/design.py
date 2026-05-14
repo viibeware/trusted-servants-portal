@@ -44,8 +44,38 @@ SHADOW_SCALE = {
     "sm":   "0 1px 2px rgba(15, 23, 42, 0.06)",
     "md":   "0 4px 12px rgba(15, 23, 42, 0.10)",
     "lg":   "0 12px 28px rgba(15, 23, 42, 0.14)",
+    "xl":   "0 12px 32px rgba(15, 23, 42, 0.18)",
 }
 SHADOW_KEYS = list(SHADOW_SCALE.keys())
+
+# Card-style scales — small dedicated vocabularies for the card-token
+# group's structural knobs. Concrete pixel / millisecond / transform
+# values keep these usable straight from the CSS `var(...)` reads in
+# every card class without needing per-component arithmetic.
+BORDER_WIDTH_SCALE = {
+    "0": "0",
+    "1": "1px",
+    "2": "2px",
+    "3": "3px",
+    "4": "4px",
+}
+BORDER_WIDTH_KEYS = list(BORDER_WIDTH_SCALE.keys())
+
+TRANSITION_SCALE = {
+    "none":   "none",
+    "fast":   "120ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "normal": "200ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+    "slow":   "320ms cubic-bezier(0.2, 0.8, 0.2, 1)",
+}
+TRANSITION_KEYS = list(TRANSITION_SCALE.keys())
+
+TRANSFORM_SCALE = {
+    "none":    "none",
+    "lift-sm": "translateY(-1px)",
+    "lift-md": "translateY(-2px)",
+    "lift-lg": "translateY(-4px)",
+}
+TRANSFORM_KEYS = list(TRANSFORM_SCALE.keys())
 
 WEIGHT_KEYS = ["400", "500", "600", "700", "800"]
 TEXT_TRANSFORM_KEYS = ["none", "uppercase"]
@@ -61,7 +91,7 @@ THEME_DEFAULTS = {
         "color_accent":       "#f59e0b",
         "color_surface":      "#ffffff",
         "color_surface_alt":  "#f8fafc",
-        "color_card_dark":    "#1f2937",
+        "color_surface_dark": "#0b1026",
         "color_border":       "#e2e8f0",
         "color_text":         "#0f172a",
         "color_text_soft":    "#475569",
@@ -71,19 +101,88 @@ THEME_DEFAULTS = {
         "color_nav_link_hover":    "#0b5cff",
         "color_megamenu_link":       "#ffffff",
         "color_megamenu_link_hover": "#ffffff",
-        "color_btn_primary_bg":     "#0b5cff",
-        "color_btn_primary_text":   "#ffffff",
-        "color_btn_secondary_bg":   "#f8fafc",
-        "color_btn_secondary_text": "#0f172a",
+        "color_btn_primary_bg":         "#0b5cff",
+        "color_btn_primary_hover_bg":   "#0a51e0",
+        "color_btn_primary_text":       "#ffffff",
+        "color_btn_secondary_bg":       "#f8fafc",
+        "color_btn_secondary_hover_bg": "#e4e6e8",
+        "color_btn_secondary_text":     "#0f172a",
+        # Per-style button border colours + widths. Defaults preserve
+        # the historic visual: primary borders match the bg colour
+        # (visually invisible at any width) while secondary picks up
+        # the page border colour at rest and the secondary-text colour
+        # on hover (the legacy `.fe-btn-ghost` recipe).
+        "color_btn_primary_border":         "#0b5cff",
+        "color_btn_primary_hover_border":   "#0b5cff",
+        "color_btn_secondary_border":       "#e2e8f0",
+        "color_btn_secondary_hover_border": "#0f172a",
+        # Primary card colors — the meeting-card visual is the source.
+        # Anywhere the public site uses this same "elevated card" style
+        # (homepage meeting cards, meeting-detail panels, three-up
+        # cards, etc.) resolves through these four tokens so admins can
+        # rebrand every primary card from one place.
+        "color_card_primary_bg":          "#ffffff",
+        "color_card_primary_bg_dark":     "#131a33",
+        "color_card_primary_border":      "#f59e0b",
+        "color_card_primary_border_dark": "#1f2a44",
+        # Secondary card colors — the homepage features-block visual is
+        # the source. Anywhere the public site uses this softer "panel"
+        # card style (feature cards, FAQ items, quick-access cards,
+        # inclusion blocks, event-detail panels, meeting magazine side
+        # cards, etc.) resolves through these four tokens.
+        "color_card_secondary_bg":          "#f4f7fb",
+        "color_card_secondary_bg_dark":     "#131a33",
+        "color_card_secondary_border":      "#e2e8f0",
+        "color_card_secondary_border_dark": "#131a33",
+        # Hover-state border colours — applied on `:hover` so admins
+        # can dial in a colour shift independent of the resting border.
+        # Defaults preserve current visual: primary stays on its
+        # resting border (no shift), secondary picks up the accent
+        # (matches the legacy `.fe-feature-card:hover` recipe).
+        "color_card_primary_hover_border":   "#f59e0b",
+        "color_card_secondary_hover_border": "#f59e0b",
+
+        # Card-style structural tokens — width, shadow, transition,
+        # hover affordance — same defaults across both themes since the
+        # meeting + feature cards already shared the same hover language.
+        "card_primary_border_width":     "1",
+        "card_primary_shadow":           "none",
+        "card_primary_hover_shadow":     "md",
+        "card_primary_transition":       "normal",
+        "card_primary_hover_transform":  "lift-md",
+
+        "card_secondary_border_width":    "1",
+        "card_secondary_shadow":          "none",
+        "card_secondary_hover_shadow":    "md",
+        "card_secondary_transition":      "normal",
+        "card_secondary_hover_transform": "lift-md",
 
         "section_gap":        "lg",
         "container_max_px":   1160,
+        # Horizontal padding applied inside `.fe-container`. Desktop
+        # defaults to 0 (the max-width cap + auto margins already gutter
+        # content on wide screens); mobile defaults to 5vw so content
+        # doesn't crash into the screen edges on phones.
+        "container_pad_desktop": "0",
+        "container_pad_mobile":  "5vw",
         "card_radius":        "lg",
         "card_shadow":        "md",
 
         "btn_radius":         "md",
-        "btn_padding_x":      "md",
-        "btn_padding_y":      "sm",
+        # Button padding is admin-tunable as a free-form CSS length so
+        # `14px`, `0.875rem`, `2vw`, etc. all work. Defaults preserve the
+        # historic 14px/28px visual the public site shipped with before
+        # the tokens were wired into `.fe-btn`.
+        "btn_padding_x":      "28px",
+        "btn_padding_y":      "14px",
+        # Per-style border widths. Defaults match what `.fe-btn` shipped
+        # with: 1px border on every button, transparent on primary so
+        # the box stays visually borderless until the admin sets a
+        # contrasting border colour.
+        "btn_primary_border_width":         "1",
+        "btn_primary_hover_border_width":   "1",
+        "btn_secondary_border_width":       "1",
+        "btn_secondary_hover_border_width": "1",
         "btn_weight":         "600",
         "btn_text_transform": "none",
         "btn_decoration":     "none",
@@ -108,7 +207,7 @@ THEME_DEFAULTS = {
         "color_accent":       "#0ea5e9",
         "color_surface":      "#ffffff",
         "color_surface_alt":  "#f1f5f9",
-        "color_card_dark":    "#1f2937",
+        "color_surface_dark": "#0b1026",
         "color_border":       "#cbd5e1",
         "color_text":         "#1e293b",
         "color_text_soft":    "#64748b",
@@ -118,19 +217,53 @@ THEME_DEFAULTS = {
         "color_nav_link_hover":    "#0b5cff",
         "color_megamenu_link":       "#ffffff",
         "color_megamenu_link_hover": "#ffffff",
-        "color_btn_primary_bg":     "#0b5cff",
-        "color_btn_primary_text":   "#ffffff",
-        "color_btn_secondary_bg":   "#f4f7fb",
-        "color_btn_secondary_text": "#1e293b",
+        "color_btn_primary_bg":         "#0b5cff",
+        "color_btn_primary_hover_bg":   "#0a51e0",
+        "color_btn_primary_text":       "#ffffff",
+        "color_btn_secondary_bg":       "#f4f7fb",
+        "color_btn_secondary_hover_bg": "#e0e3e7",
+        "color_btn_secondary_text":     "#1e293b",
+        "color_btn_primary_border":         "#0b5cff",
+        "color_btn_primary_hover_border":   "#0b5cff",
+        "color_btn_secondary_border":       "#cbd5e1",
+        "color_btn_secondary_hover_border": "#1e293b",
+        "color_card_primary_bg":          "#ffffff",
+        "color_card_primary_bg_dark":     "#131a33",
+        "color_card_primary_border":      "#0ea5e9",
+        "color_card_primary_border_dark": "#1f2a44",
+        "color_card_secondary_bg":          "#f1f5f9",
+        "color_card_secondary_bg_dark":     "#131a33",
+        "color_card_secondary_border":      "#cbd5e1",
+        "color_card_secondary_border_dark": "#131a33",
+        "color_card_primary_hover_border":   "#0ea5e9",
+        "color_card_secondary_hover_border": "#0ea5e9",
+
+        "card_primary_border_width":     "1",
+        "card_primary_shadow":           "none",
+        "card_primary_hover_shadow":     "md",
+        "card_primary_transition":       "normal",
+        "card_primary_hover_transform":  "lift-md",
+
+        "card_secondary_border_width":    "1",
+        "card_secondary_shadow":          "none",
+        "card_secondary_hover_shadow":    "md",
+        "card_secondary_transition":      "normal",
+        "card_secondary_hover_transform": "lift-md",
 
         "section_gap":        "lg",
         "container_max_px":   1200,
+        "container_pad_desktop": "0",
+        "container_pad_mobile":  "5vw",
         "card_radius":        "md",
         "card_shadow":        "sm",
 
         "btn_radius":         "md",
-        "btn_padding_x":      "md",
-        "btn_padding_y":      "sm",
+        "btn_padding_x":      "28px",
+        "btn_padding_y":      "14px",
+        "btn_primary_border_width":         "1",
+        "btn_primary_hover_border_width":   "1",
+        "btn_secondary_border_width":       "1",
+        "btn_secondary_hover_border_width": "1",
         "btn_weight":         "700",
         "btn_text_transform": "uppercase",
         "btn_decoration":     "none",
@@ -167,7 +300,9 @@ DESIGN_FIELDS = [
     {"key": "color_accent",      "kind": "color",  "group": "Colors", "label": "Accent"},
     {"key": "color_surface",     "kind": "color",  "group": "Colors", "label": "Surface (page bg)"},
     {"key": "color_surface_alt", "kind": "color",  "group": "Colors", "label": "Surface — alt"},
-    {"key": "color_card_dark",   "kind": "color",  "group": "Colors", "label": "Card Dark"},
+    {"key": "color_surface_dark", "kind": "color", "group": "Colors",
+     "label": "Surface — Darkmode",
+     "help": "Default dark-mode background for pages, containers, and any element without an explicit colour. Sections that hardcoded #0b1026 also inherit this token."},
     {"key": "color_border",      "kind": "color",  "group": "Colors", "label": "Border"},
     {"key": "color_text",        "kind": "color",  "group": "Colors", "label": "Text"},
     {"key": "color_text_soft",   "kind": "color",  "group": "Colors", "label": "Text — muted"},
@@ -177,6 +312,32 @@ DESIGN_FIELDS = [
     {"key": "color_nav_link_hover",   "kind": "color", "group": "Colors", "label": "Header nav link — hover"},
     {"key": "color_megamenu_link",       "kind": "color", "group": "Colors", "label": "Mega-menu link"},
     {"key": "color_megamenu_link_hover", "kind": "color", "group": "Colors", "label": "Mega-menu link — hover"},
+    {"key": "color_card_primary_bg",          "kind": "color", "group": "Colors",
+     "label": "Primary card — background",
+     "help": "Default background for meeting cards and every elevated card that shares the meeting-card style."},
+    {"key": "color_card_primary_bg_dark",     "kind": "color", "group": "Colors",
+     "label": "Primary card — background (dark)",
+     "help": "Background used when the public site renders in dark mode."},
+    {"key": "color_card_primary_border",      "kind": "color", "group": "Colors",
+     "label": "Primary card — border"},
+    {"key": "color_card_primary_border_dark", "kind": "color", "group": "Colors",
+     "label": "Primary card — border (dark)"},
+    {"key": "color_card_secondary_bg",          "kind": "color", "group": "Colors",
+     "label": "Secondary card — background",
+     "help": "Default background for feature cards and every soft-surface card that shares the features-block style."},
+    {"key": "color_card_secondary_bg_dark",     "kind": "color", "group": "Colors",
+     "label": "Secondary card — background (dark)",
+     "help": "Background used when the public site renders in dark mode."},
+    {"key": "color_card_secondary_border",      "kind": "color", "group": "Colors",
+     "label": "Secondary card — border"},
+    {"key": "color_card_secondary_border_dark", "kind": "color", "group": "Colors",
+     "label": "Secondary card — border (dark)"},
+    {"key": "color_card_primary_hover_border",   "kind": "color", "group": "Colors",
+     "label": "Primary card — hover border",
+     "help": "Border colour applied on hover. Defaults to the primary card's resting border (no visible shift)."},
+    {"key": "color_card_secondary_hover_border", "kind": "color", "group": "Colors",
+     "label": "Secondary card — hover border",
+     "help": "Border colour applied on hover. Defaults to the accent colour (matches the legacy feature-card hover)."},
 
     # ----- Layout -----
     {"key": "section_gap",      "kind": "scale", "scale": "spacing",
@@ -184,6 +345,14 @@ DESIGN_FIELDS = [
      "help": "Vertical rhythm between top-level sections."},
     {"key": "container_max_px", "kind": "int", "min": 720, "max": 1600, "step": 20,
      "group": "Layout", "label": "Container max width (px)"},
+    {"key": "container_pad_desktop", "kind": "text", "max_len": 16,
+     "group": "Layout", "label": "Container padding — desktop",
+     "placeholder": "0",
+     "help": "Horizontal padding inside the container at desktop widths. Any CSS length: 0, 24px, 2rem, 5vw, 5%."},
+    {"key": "container_pad_mobile",  "kind": "text", "max_len": 16,
+     "group": "Layout", "label": "Container padding — mobile",
+     "placeholder": "5vw",
+     "help": "Horizontal padding inside the container at mobile widths (≤768px). Default 5vw keeps a small gutter so content doesn't crash into the screen edges."},
     {"key": "card_radius", "kind": "scale", "scale": "radius",
      "group": "Layout", "label": "Card radius"},
     {"key": "card_shadow", "kind": "scale", "scale": "shadow",
@@ -192,18 +361,42 @@ DESIGN_FIELDS = [
     # ----- Buttons -----
     {"key": "color_btn_primary_bg",     "kind": "color",
      "group": "Buttons", "label": "Primary — background"},
+    {"key": "color_btn_primary_hover_bg", "kind": "color",
+     "group": "Buttons", "label": "Primary — hover background"},
     {"key": "color_btn_primary_text",   "kind": "color",
      "group": "Buttons", "label": "Primary — text"},
+    {"key": "color_btn_primary_border",       "kind": "color",
+     "group": "Buttons", "label": "Primary — border"},
+    {"key": "color_btn_primary_hover_border", "kind": "color",
+     "group": "Buttons", "label": "Primary — hover border"},
+    {"key": "btn_primary_border_width",       "kind": "scale", "scale": "border_width",
+     "group": "Buttons", "label": "Primary — border width"},
+    {"key": "btn_primary_hover_border_width", "kind": "scale", "scale": "border_width",
+     "group": "Buttons", "label": "Primary — hover border width"},
     {"key": "color_btn_secondary_bg",   "kind": "color",
      "group": "Buttons", "label": "Secondary — background"},
+    {"key": "color_btn_secondary_hover_bg", "kind": "color",
+     "group": "Buttons", "label": "Secondary — hover background"},
     {"key": "color_btn_secondary_text", "kind": "color",
      "group": "Buttons", "label": "Secondary — text"},
+    {"key": "color_btn_secondary_border",       "kind": "color",
+     "group": "Buttons", "label": "Secondary — border"},
+    {"key": "color_btn_secondary_hover_border", "kind": "color",
+     "group": "Buttons", "label": "Secondary — hover border"},
+    {"key": "btn_secondary_border_width",       "kind": "scale", "scale": "border_width",
+     "group": "Buttons", "label": "Secondary — border width"},
+    {"key": "btn_secondary_hover_border_width", "kind": "scale", "scale": "border_width",
+     "group": "Buttons", "label": "Secondary — hover border width"},
     {"key": "btn_radius",         "kind": "scale", "scale": "radius",
      "group": "Buttons", "label": "Radius"},
-    {"key": "btn_padding_x",      "kind": "scale", "scale": "spacing",
-     "group": "Buttons", "label": "Horizontal padding"},
-    {"key": "btn_padding_y",      "kind": "scale", "scale": "spacing",
-     "group": "Buttons", "label": "Vertical padding"},
+    {"key": "btn_padding_x", "kind": "text", "max_len": 16,
+     "group": "Buttons", "label": "Horizontal padding (left/right)",
+     "placeholder": "28px",
+     "help": "Any CSS length: 28px, 1.75rem, 2vw."},
+    {"key": "btn_padding_y", "kind": "text", "max_len": 16,
+     "group": "Buttons", "label": "Vertical padding (top/bottom)",
+     "placeholder": "14px",
+     "help": "Any CSS length: 14px, 0.875rem, 1vw."},
     {"key": "btn_weight",         "kind": "select", "choices": WEIGHT_KEYS,
      "group": "Buttons", "label": "Font weight"},
     {"key": "btn_text_transform", "kind": "select", "choices": TEXT_TRANSFORM_KEYS,
@@ -236,12 +429,41 @@ DESIGN_FIELDS = [
      "group": "Text", "label": "Base size", "placeholder": "1rem"},
     {"key": "text_line_height", "kind": "text", "max_len": 16,
      "group": "Text", "label": "Line height", "placeholder": "1.6"},
+
+    # ----- Card styles -----
+    # The 8 card colour tokens above (in Colors) are mirrored into this
+    # group by the admin template: same canonical form inputs, rendered
+    # twice with bidirectional JS sync, so an admin can tune the look
+    # from either tab without losing changes.
+    {"key": "card_primary_border_width",    "kind": "scale", "scale": "border_width",
+     "group": "Card styles", "label": "Primary card — border width"},
+    {"key": "card_primary_shadow",          "kind": "scale", "scale": "shadow",
+     "group": "Card styles", "label": "Primary card — shadow"},
+    {"key": "card_primary_hover_shadow",    "kind": "scale", "scale": "shadow",
+     "group": "Card styles", "label": "Primary card — hover shadow"},
+    {"key": "card_primary_transition",      "kind": "scale", "scale": "transition",
+     "group": "Card styles", "label": "Primary card — transition"},
+    {"key": "card_primary_hover_transform", "kind": "scale", "scale": "transform",
+     "group": "Card styles", "label": "Primary card — hover transform"},
+
+    {"key": "card_secondary_border_width",    "kind": "scale", "scale": "border_width",
+     "group": "Card styles", "label": "Secondary card — border width"},
+    {"key": "card_secondary_shadow",          "kind": "scale", "scale": "shadow",
+     "group": "Card styles", "label": "Secondary card — shadow"},
+    {"key": "card_secondary_hover_shadow",    "kind": "scale", "scale": "shadow",
+     "group": "Card styles", "label": "Secondary card — hover shadow"},
+    {"key": "card_secondary_transition",      "kind": "scale", "scale": "transition",
+     "group": "Card styles", "label": "Secondary card — transition"},
+    {"key": "card_secondary_hover_transform", "kind": "scale", "scale": "transform",
+     "group": "Card styles", "label": "Secondary card — hover transform"},
 ]
 DESIGN_FIELDS_BY_KEY = {f["key"]: f for f in DESIGN_FIELDS}
-DESIGN_GROUPS = ["Colors", "Layout", "Buttons", "Links", "Text"]
+DESIGN_GROUPS = ["Colors", "Layout", "Card styles", "Buttons", "Links", "Text"]
 
 # Map "scale" name → the actual scale dict.
-SCALES = {"spacing": SPACING_SCALE, "radius": RADIUS_SCALE, "shadow": SHADOW_SCALE}
+SCALES = {"spacing": SPACING_SCALE, "radius": RADIUS_SCALE, "shadow": SHADOW_SCALE,
+          "border_width": BORDER_WIDTH_SCALE,
+          "transition": TRANSITION_SCALE, "transform": TRANSFORM_SCALE}
 
 
 _HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
@@ -368,18 +590,33 @@ def design_css_vars(site):
         parts.append(f"--fe-radius-{k}: {v};")
     for k, v in SHADOW_SCALE.items():
         parts.append(f"--fe-shadow-{k}: {v};")
+    for k, v in BORDER_WIDTH_SCALE.items():
+        parts.append(f"--fe-bw-{k}: {v};")
+    for k, v in TRANSITION_SCALE.items():
+        # Dashes are CSS-safe; transition keys already use them ("fast", "slow")
+        parts.append(f"--fe-transition-{k}: {v};")
+    for k, v in TRANSFORM_SCALE.items():
+        parts.append(f"--fe-transform-{k}: {v};")
 
     chosen = resolve_design(site)
 
     # Colors (raw hex).
     for key in ("color_brand", "color_accent", "color_surface", "color_surface_alt",
-                "color_card_dark",
+                "color_surface_dark",
                 "color_border", "color_text", "color_text_soft",
                 "color_link", "color_link_hover",
                 "color_nav_link", "color_nav_link_hover",
                 "color_megamenu_link", "color_megamenu_link_hover",
-                "color_btn_primary_bg", "color_btn_primary_text",
-                "color_btn_secondary_bg", "color_btn_secondary_text"):
+                "color_btn_primary_bg", "color_btn_primary_hover_bg", "color_btn_primary_text",
+                "color_btn_primary_border", "color_btn_primary_hover_border",
+                "color_btn_secondary_bg", "color_btn_secondary_hover_bg", "color_btn_secondary_text",
+                "color_btn_secondary_border", "color_btn_secondary_hover_border",
+                "color_card_primary_bg", "color_card_primary_bg_dark",
+                "color_card_primary_border", "color_card_primary_border_dark",
+                "color_card_secondary_bg", "color_card_secondary_bg_dark",
+                "color_card_secondary_border", "color_card_secondary_border_dark",
+                "color_card_primary_hover_border",
+                "color_card_secondary_hover_border"):
         parts.append("--fe-{}: {};".format(key.replace("_", "-"), chosen[key]))
 
     # Auto-derived dark-mode variants for chrome links that sit on dark
@@ -394,13 +631,24 @@ def design_css_vars(site):
     # Layout.
     parts.append(f"--fe-section-gap: var(--fe-space-{chosen['section_gap']});")
     parts.append(f"--fe-container-max: {chosen['container_max_px']}px;")
+    parts.append(f"--fe-container-pad-desktop: {chosen.get('container_pad_desktop', '0')};")
+    parts.append(f"--fe-container-pad-mobile: {chosen.get('container_pad_mobile', '5vw')};")
     parts.append(f"--fe-card-radius: var(--fe-radius-{chosen['card_radius']});")
     parts.append(f"--fe-card-shadow: var(--fe-shadow-{chosen['card_shadow']});")
 
     # Buttons.
     parts.append(f"--fe-btn-radius: var(--fe-radius-{chosen['btn_radius']});")
-    parts.append(f"--fe-btn-padding-x: var(--fe-space-{chosen['btn_padding_x']});")
-    parts.append(f"--fe-btn-padding-y: var(--fe-space-{chosen['btn_padding_y']});")
+    parts.append(f"--fe-btn-padding-x: {chosen['btn_padding_x']};")
+    parts.append(f"--fe-btn-padding-y: {chosen['btn_padding_y']};")
+    # Per-style border widths — resolved through the BORDER_WIDTH_SCALE
+    # so the consumer can write a plain `border-width: var(--fe-btn-…)`.
+    for kind in ("primary", "secondary"):
+        for which in ("border_width", "hover_border_width"):
+            key = f"btn_{kind}_{which}"
+            parts.append(
+                f"--fe-btn-{kind}-{which.replace('_', '-')}: "
+                f"var(--fe-bw-{chosen[key]});"
+            )
     parts.append(f"--fe-btn-weight: {chosen['btn_weight']};")
     parts.append(f"--fe-btn-text-transform: {chosen['btn_text_transform']};")
     parts.append(f"--fe-btn-decoration: {chosen['btn_decoration']};")
@@ -423,5 +671,30 @@ def design_css_vars(site):
     # Text.
     parts.append(f"--fe-text-size-base: {chosen['text_size_base']};")
     parts.append(f"--fe-text-line-height: {chosen['text_line_height']};")
+
+    # Card-style structural tokens — resolved to the underlying scale
+    # values so cards can write a plain `border-width: var(--fe-card-
+    # primary-border-width)` without indirection.
+    for which in ("primary", "secondary"):
+        parts.append(
+            f"--fe-card-{which}-border-width: "
+            f"var(--fe-bw-{chosen['card_' + which + '_border_width']});"
+        )
+        parts.append(
+            f"--fe-card-{which}-shadow: "
+            f"var(--fe-shadow-{chosen['card_' + which + '_shadow']});"
+        )
+        parts.append(
+            f"--fe-card-{which}-hover-shadow: "
+            f"var(--fe-shadow-{chosen['card_' + which + '_hover_shadow']});"
+        )
+        parts.append(
+            f"--fe-card-{which}-transition: "
+            f"var(--fe-transition-{chosen['card_' + which + '_transition']});"
+        )
+        parts.append(
+            f"--fe-card-{which}-hover-transform: "
+            f"var(--fe-transform-{chosen['card_' + which + '_hover_transform']});"
+        )
 
     return " ".join(parts)

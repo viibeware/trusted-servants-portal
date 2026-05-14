@@ -118,28 +118,41 @@ def site_blocks(site):
 
 
 _FEATURE_ITEM_FIELDS = ("icon", "icon_color", "icon_size", "title", "body",
-                        "href", "open_in_new_tab")
+                        "href", "open_in_new_tab",
+                        "button_label", "button_style")
+_FEATURE_BUTTON_STYLES = ("primary", "ghost")
 
 
 def _normalize_features(v, default):
     """Coerce stored features content into the canonical dict shape.
     The legacy shape was a bare list of card dicts; the new shape is
-    ``{heading, subheading, items: [...]}``. We accept either so old
-    saved data keeps rendering after the upgrade."""
+    ``{heading, subheading, cta_*, items: [...]}``. We accept either
+    so old saved data keeps rendering after the upgrade."""
     if not v:
         return default
     if isinstance(v, list):
-        return {"heading":    default["heading"],
-                "subheading": default["subheading"],
-                "items":      [_coerce_feature_item(it) for it in v if isinstance(it, dict)]}
+        return {"heading":     default["heading"],
+                "subheading":  default["subheading"],
+                "cta_label":   "",
+                "cta_url":     "",
+                "cta_style":   "primary",
+                "cta_new_tab": False,
+                "items":       [_coerce_feature_item(it) for it in v if isinstance(it, dict)]}
     if isinstance(v, dict):
         items = v.get("items")
         if not isinstance(items, list):
             items = default["items"]
+        cta_style = (v.get("cta_style") or "").strip().lower()
+        if cta_style not in _FEATURE_BUTTON_STYLES:
+            cta_style = "primary"
         return {
-            "heading":    v.get("heading",    default["heading"]),
-            "subheading": v.get("subheading", default["subheading"]),
-            "items":      [_coerce_feature_item(it) for it in items if isinstance(it, dict)],
+            "heading":     v.get("heading",    default["heading"]),
+            "subheading":  v.get("subheading", default["subheading"]),
+            "cta_label":   v.get("cta_label", "") or "",
+            "cta_url":     v.get("cta_url", "") or "",
+            "cta_style":   cta_style,
+            "cta_new_tab": bool(v.get("cta_new_tab")),
+            "items":       [_coerce_feature_item(it) for it in items if isinstance(it, dict)],
         }
     return default
 
@@ -152,6 +165,8 @@ def _coerce_feature_item(it):
         if f in it:
             out[f] = it[f]
     out["open_in_new_tab"] = bool(out.get("open_in_new_tab"))
+    bs = (out.get("button_style") or "").strip().lower()
+    out["button_style"] = bs if bs in _FEATURE_BUTTON_STYLES else "primary"
     return out
 
 

@@ -114,7 +114,8 @@
   // is never visually obscured — it's also a clearer affordance
   // (the popover competing with the × is busy chrome).
   document.addEventListener('mouseover', e => {
-    if (e.target.closest('[data-be-remove-block], [data-be-remove-row]')) {
+    if (e.target.closest('[data-be-remove-block], [data-be-remove-row], '
+                       + '[data-be-duplicate-block], [data-be-duplicate-row]')) {
       hidePreview();
       return;
     }
@@ -336,22 +337,27 @@
   }
 
   function makeRowSplit(payload, nCols) {
-    // Container row — single-column or N-column. Two patterns:
-    //   • Showcase: all direct children are containers, one per
-    //     column cell. Each cell hydrates from that inner
-    //     container's blocks.
-    //   • Flat: direct children are leaf blocks (or a mix). Children
-    //     are distributed round-robin into the cells preserving
-    //     order.
-    // Multi-column containers AUTO-PROVISION inner-container
-    // children when missing so the showcase pattern is the default
-    // for new multi-column drops. Single-column containers do NOT
-    // auto-provision — they hold their direct children flat (no
-    // wrapper) which matches what the user expects from "I just
-    // dropped a Container into this cell".
+    // Container row — single-zone (flex) or N-column (grid).
+    //
+    // Flex containers ALWAYS render as a single drop zone here,
+    // regardless of `direction`. The cell receives a flow-direction
+    // class so pills inside lay out row / row-reverse / column /
+    // column-reverse to match what the public site will render. Grid
+    // containers keep the N-cell visualisation since the CSS grid
+    // layout actually does map children to discrete tracks.
+    //
+    // Multi-column GRID containers AUTO-PROVISION inner-container
+    // children when missing so the "showcase" pattern (one inner
+    // container per cell) is the default for new grid drops.
+    // Flex / single-column containers do NOT auto-provision — they
+    // hold their direct children flat (no wrapper) which matches
+    // what the user expects from "I just dropped a Container".
     if (!payload.data) payload.data = {};
     if (!Array.isArray(payload.data.blocks)) payload.data.blocks = [];
-    if (nCols > 1) {
+    const d = payload.data;
+    const isFlex = (d.display || 'flex') === 'flex';
+    const flexDir = (d.direction || 'column');
+    if (!isFlex && nCols > 1) {
       while (payload.data.blocks.length < nCols) {
         payload.data.blocks.push({
           id: uid(), type: 'container', data: BLANK_DATA.container(),
@@ -361,9 +367,20 @@
     const isSingle = nCols === 1;
     const colsClass = nCols >= 1 && nCols <= 4 ? nCols : 4;
     const userLabel = ((payload.data && payload.data.label) || '').trim();
-    const placeholder = isSingle ? 'Container' : (nCols + '-column row');
+    let placeholder, chip;
+    if (isFlex) {
+      placeholder = 'Flex ' + flexDir + ' container';
+      chip = 'Flex ' + flexDir + ' container';
+    } else if (isSingle) {
+      placeholder = 'Container';
+      chip = 'container · single column';
+    } else {
+      placeholder = nCols + '-column row';
+      chip = nCols + '-column container';
+    }
     let html = '<div class="fe-page-structure-row fe-page-structure-row--split'
              + (isSingle ? ' fe-page-structure-row--single-container' : '')
+             + (isFlex ? ' fe-page-structure-row--flex fe-page-structure-row--flex-' + flexDir : '')
              + '" data-be-row-block-id="' + payload.id + '">'
              + '<div class="fe-page-structure-row-label">';
     // Inline-editable label input — mirrors the server template's
@@ -377,14 +394,17 @@
           + 'aria-label="Container label" '
           + 'data-be-row-label-input '
           + 'data-be-row-block-id="' + payload.id + '">'
-          + '<span class="muted smaller">'
-          + (isSingle ? 'container · single column' : (nCols + '-column container'))
-          + '</span>';
+          + '<span class="muted smaller">' + escapeHtml(chip) + '</span>';
     html += '<button type="button" class="btn btn-sm fe-page-structure-row-action"'
           + ' data-open-modal="page-layout-edit-modal"'
           + ' data-page-block-id="' + payload.id + '"'
           + ' title="Edit container settings">'
           + '<span class="icon-slot">⚙</span><span>Settings</span>'
+          + '</button>'
+          + '<button type="button" class="btn btn-sm fe-page-structure-row-action fe-page-structure-row-duplicate"'
+          + ' data-be-duplicate-row aria-label="Duplicate this container"'
+          + ' title="Duplicate container with all nested blocks">'
+          + '<span class="icon-slot">⧉</span><span>Duplicate</span>'
           + '</button>'
           + '<button type="button" class="btn btn-sm fe-page-structure-row-action fe-page-structure-row-remove"'
           + ' data-be-remove-row aria-label="Remove this row"'
@@ -398,7 +418,9 @@
       if (!isSingle) {
         html += '<div class="fe-page-structure-col-label muted smaller">Column ' + (i + 1) + '</div>';
       }
-      html += '<div class="fe-page-structure-block-list" data-be-zone="container-col"'
+      html += '<div class="fe-page-structure-block-list'
+            + (isFlex ? ' fe-page-structure-block-list--flex fe-page-structure-block-list--flex-' + flexDir : '')
+            + '" data-be-zone="container-col"'
             + ' data-be-parent-block-id="' + payload.id + '"'
             + ' data-be-col-index="' + i + '"></div>'
             + '</div>';
@@ -501,6 +523,9 @@
       '<span class="fe-page-structure-block-icon">' + iconHtml + '</span>' +
       '<span class="fe-page-structure-block-name">' + escapeHtml(meta[0]) + '</span>' +
       '<span class="fe-page-structure-block-edit-hint" aria-hidden="true">Edit</span>' +
+      '<button type="button" class="fe-page-structure-block-duplicate"' +
+        ' data-be-duplicate-block aria-label="Duplicate this block"' +
+        ' title="Duplicate block">⧉</button>' +
       '<button type="button" class="fe-page-structure-block-remove"' +
         ' data-be-remove-block aria-label="Remove this block"' +
         ' title="Remove block">×</button>';
@@ -811,6 +836,86 @@
     }
   }
 
+  // Push the modal BlockEditor's authoritative block data back into
+  // the structure-card representations so the next drag-drop reads
+  // fresh values instead of the stale `data-block-payload` snapshot
+  // we rendered at server-time.
+  //
+  // Without this hook, the flow was:
+  //   1. User opens the modal, edits a heading's text.
+  //   2. BlockEditor mutates ONLY its own internal `state.sections`.
+  //      The pill's `data-block-payload` attribute (the canonical
+  //      source for reconstructBlocksFromZone) is unchanged.
+  //   3. User drags the heading out of its container.
+  //   4. syncStateFromDom rebuilds `sections` from pill payloads —
+  //      now grabbing the pre-edit text — and writes that stale data
+  //      to the hidden input. The modal's edits are silently lost.
+  //
+  // Called from frontend_page_edit.html's editModal `input` listener
+  // (and on modal close, defensively). For leaves we update the pill's
+  // `data-block-payload` and `data-preview`; for containers we merge
+  // the editor's `data` into the live containerPayloadById entry so
+  // settings like display/gap/padding survive a sibling drag — but we
+  // PRESERVE the existing `.data.blocks` because the structure card
+  // is the canonical composition view and any move there will rebuild
+  // children from the DOM regardless.
+  // Single-block variant for the dedicated modals (hero / meetings /
+  // events / features / FAQ) — they already know which block they're
+  // mutating, so they call this with that id + the freshly-merged
+  // payload instead of handing in a whole sections tree.
+  window.tspSyncStructurePayloadOne = function(blockId, payload) {
+    if (!blockId || !payload) return;
+    const escId = (window.CSS && CSS.escape) ? CSS.escape(blockId) : blockId;
+    if (payload.type === 'container') {
+      const existing = containerPayloadById.get(blockId);
+      if (existing) {
+        const keepBlocks = (existing.data && existing.data.blocks) || [];
+        existing.data = Object.assign({}, payload.data || {}, { blocks: keepBlocks });
+      } else {
+        containerPayloadById.set(blockId, payload);
+      }
+      return;
+    }
+    const pill = document.querySelector(
+      '.fe-page-structure-block[data-page-block-id="' + escId + '"]');
+    if (!pill) return;
+    try {
+      pill.setAttribute('data-block-payload', JSON.stringify(payload));
+      pill.setAttribute('data-preview', JSON.stringify(buildPreview(payload)));
+    } catch (_) {}
+  };
+
+  window.tspSyncStructurePayloadsFromState = function(stateSections) {
+    if (!Array.isArray(stateSections)) return;
+    const escId = (id) => (window.CSS && CSS.escape) ? CSS.escape(id) : id;
+    function walk(blocks) {
+      for (const b of (blocks || [])) {
+        if (!b || !b.id || !b.type) continue;
+        if (b.type === 'container') {
+          const existing = containerPayloadById.get(b.id);
+          if (existing) {
+            const keepBlocks = (existing.data && existing.data.blocks) || [];
+            existing.data = Object.assign({}, b.data || {}, { blocks: keepBlocks });
+          } else {
+            containerPayloadById.set(b.id, b);
+          }
+          walk((b.data && b.data.blocks) || []);
+          continue;
+        }
+        const pill = document.querySelector(
+          '.fe-page-structure-block[data-page-block-id="' + escId(b.id) + '"]');
+        if (!pill) continue;
+        try {
+          pill.setAttribute('data-block-payload', JSON.stringify(b));
+          pill.setAttribute('data-preview', JSON.stringify(buildPreview(b)));
+        } catch (_) {}
+      }
+    }
+    for (const sec of stateSections) {
+      if (sec && typeof sec === 'object') walk(sec.blocks || []);
+    }
+  };
+
   // Block ids the admin has deliberately deleted via the × button.
   // The drag-drop safety net below sweeps blocks that disappear from
   // the DOM unexpectedly into the Unplaced bin, on the assumption that
@@ -1013,7 +1118,8 @@
     // buttons (which carry data-page-block-id at the row-label
     // level) should fall through; the focus flow is exactly what
     // they're meant to trigger.
-    if (e.target.closest('[data-be-remove-block], [data-be-remove-row]')) return;
+    if (e.target.closest('[data-be-remove-block], [data-be-remove-row], '
+                       + '[data-be-duplicate-block], [data-be-duplicate-row]')) return;
     const pill = e.target.closest(
       '.fe-page-structure-block[data-page-block-id][data-open-modal]');
     if (!pill) return;
@@ -1102,6 +1208,63 @@
   //      from palette drops, mutations from BlockEditor, etc.).
   //   A MutationObserver picks up newly-inserted × buttons so future
   //   pills get the per-button listener too.
+  // Deep-clone a block payload (JSON tree) and re-uid every block
+  // inside — top-level + nested container children — so the resulting
+  // payload can coexist in the same page with the original. Used by
+  // the Duplicate buttons on pills and container rows.
+  function freshIds(payload) {
+    const copy = JSON.parse(JSON.stringify(payload));
+    (function walk(p) {
+      if (!p || typeof p !== 'object') return;
+      p.id = uid();
+      if (p.type === 'container' && p.data && Array.isArray(p.data.blocks)) {
+        for (const k of p.data.blocks) walk(k);
+      }
+    })(copy);
+    return copy;
+  }
+
+  function handleDuplicateBlock(btn) {
+    const pill = btn.closest('.fe-page-structure-block[data-block-payload]');
+    if (!pill) return;
+    let payload = null;
+    try { payload = JSON.parse(pill.getAttribute('data-block-payload') || 'null'); }
+    catch (_) {}
+    if (!payload || !payload.type) return;
+    const clone = freshIds(payload);
+    // A pill sitting in the top-level row-single wrapper is the
+    // ONLY child of that wrapper. Duplicating means we need a whole
+    // new row alongside the original, not a sibling pill that would
+    // collide inside the same row's single-block zone. Pills nested
+    // in container cells or parked in the orphan bin can just sit
+    // beside the original in the same drop zone.
+    const rowSingle = pill.closest('.fe-page-structure-row--single');
+    const inRootRow = rowSingle && rowSingle.parentElement &&
+      (rowSingle.parentElement.hasAttribute('data-be-tree') ||
+       rowSingle.parentElement.matches('[data-be-zone="root"]'));
+    if (inRootRow) {
+      rowSingle.after(makeRowSingle(clone));
+    } else {
+      pill.after(makePillEl(clone.type, clone));
+    }
+    syncStateFromDom();
+  }
+
+  function handleDuplicateRow(btn) {
+    const row = btn.closest('.fe-page-structure-row');
+    if (!row) return;
+    const containerId = row.getAttribute('data-be-row-block-id');
+    const original = containerId ? findContainerPayload(containerId) : null;
+    if (!original) return;
+    const clone = freshIds(original);
+    // Register the cloned container (recursively) so subsequent
+    // reconstructions can resolve its id via findContainerPayload.
+    registerContainerPayload(clone);
+    const newRow = makeRowFromPayload(clone);
+    if (newRow) row.after(newRow);
+    syncStateFromDom();
+  }
+
   function bindRemoveButton(btn) {
     if (!btn || btn.__feRemoveBound) return;
     btn.__feRemoveBound = true;
@@ -1110,22 +1273,23 @@
       e.stopImmediatePropagation();
       if (btn.matches('[data-be-remove-block]')) handleRemoveBlock(btn);
       else if (btn.matches('[data-be-remove-row]')) handleRemoveRow(btn);
+      else if (btn.matches('[data-be-duplicate-block]')) handleDuplicateBlock(btn);
+      else if (btn.matches('[data-be-duplicate-row]')) handleDuplicateRow(btn);
     });
   }
-  document.querySelectorAll('[data-be-remove-block], [data-be-remove-row]')
-    .forEach(bindRemoveButton);
+  const _ACTION_SEL = '[data-be-remove-block], [data-be-remove-row], '
+                    + '[data-be-duplicate-block], [data-be-duplicate-row]';
+  document.querySelectorAll(_ACTION_SEL).forEach(bindRemoveButton);
   if (window.MutationObserver) {
     const moRemove = new MutationObserver(records => {
       for (const r of records) {
         for (const n of r.addedNodes) {
           if (n.nodeType !== 1) continue;
-          if (n.matches && (n.matches('[data-be-remove-block]')
-                           || n.matches('[data-be-remove-row]'))) {
+          if (n.matches && n.matches(_ACTION_SEL)) {
             bindRemoveButton(n);
           }
           if (n.querySelectorAll) {
-            n.querySelectorAll('[data-be-remove-block], [data-be-remove-row]')
-              .forEach(bindRemoveButton);
+            n.querySelectorAll(_ACTION_SEL).forEach(bindRemoveButton);
           }
         }
       }
@@ -1133,6 +1297,18 @@
     moRemove.observe(document.body, { childList: true, subtree: true });
   }
   document.addEventListener('click', e => {
+    const db = e.target.closest('[data-be-duplicate-block]');
+    if (db) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      handleDuplicateBlock(db);
+      return;
+    }
+    const dr = e.target.closest('[data-be-duplicate-row]');
+    if (dr) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      handleDuplicateRow(dr);
+      return;
+    }
     const rb = e.target.closest('[data-be-remove-block]');
     if (rb) {
       e.preventDefault(); e.stopImmediatePropagation();

@@ -14,6 +14,17 @@ from .models import SiteSetting, Meeting, FrontendNavItem, Post, Story, BlogPost
 bp = Blueprint("frontend", __name__)
 
 
+@bp.before_request
+def _record_visitor_event():
+    """Anonymous visitor-metrics tap. Logs one VisitorEvent row per
+    real human page view; logged-in users, bots, asset requests, and
+    prefetches are dropped inside the recorder. The recorder is
+    fully defensive — any failure is swallowed so a flaky write
+    can't break the public site."""
+    from . import visitor_metrics
+    visitor_metrics.record_visit()
+
+
 # ---------------------------------------------------------------------------
 # Public-section registry.
 #

@@ -34,11 +34,16 @@
           title="Use theme default">↺</button>
 {% endmacro %}
 
-{% macro render_field(f) %}
+{% macro render_field(f, mirror=False) %}
   {% set has_override = f.key in _overrides %}
   {% set current = _overrides[f.key] if has_override else _theme_default[f.key] %}
-  <div class="fe-design-field{% if has_override %} fe-design-field--overridden{% endif %}"
-       data-field-key="{{ f.key }}">
+  {# `mirror=True` renders a second copy of an existing field for the
+     Card styles tab. Form inputs drop their `name` attribute so only
+     the canonical copy in the Colors tab is submitted; the JS sync
+     handler keeps both copies in lock-step so editing in either
+     place updates the other. #}
+  <div class="fe-design-field{% if has_override %} fe-design-field--overridden{% endif %}{% if mirror %} fe-design-field--mirror{% endif %}"
+       {% if mirror %}data-mirror-of="{{ f.key }}"{% else %}data-field-key="{{ f.key }}"{% endif %}>
     {{ field_label(f) }}
 
     {% if f.kind == 'color' %}
@@ -54,24 +59,37 @@
          instead of a stray checkbox. #}
       <div class="fe-design-field-control fe-design-color-row">
         <label class="fe-design-color-on">
-          <input type="checkbox" name="design_{{ f.key }}_enabled" value="1"
+          <input type="checkbox" {% if not mirror %}name="design_{{ f.key }}_enabled" value="1"{% endif %}
                  {% if has_override %}checked{% endif %}
                  class="fe-design-color-toggle"
                  title="Off = use theme default">
           <span class="muted small">Override</span>
         </label>
-        <input type="color" name="design_{{ f.key }}"
+        <input type="color" {% if not mirror %}name="design_{{ f.key }}"{% endif %}
                value="{{ current }}"
                class="fe-design-color-input"
                data-no-token-picker
                aria-label="{{ f.label }} colour">
-        <code class="fe-design-color-hex" aria-live="polite">{{ current }}</code>
+        {# Editable hex chip — admins can paste / type a hex value
+           straight in and the picker + override toggle keep up. Kept
+           outside the form post (no `name`) so the color input remains
+           the single source of truth on save. #}
+        <input type="text" class="fe-design-color-hex"
+               value="{{ current }}"
+               maxlength="7" spellcheck="false" autocomplete="off"
+               inputmode="text"
+               pattern="^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+               aria-label="{{ f.label }} hex value"
+               placeholder="#000000">
         {{ reset_btn(f) }}
       </div>
 
     {% elif f.kind == 'scale' %}
       {% set scale_dict = design_spacing_scale if f.scale == 'spacing'
                           else design_radius_scale if f.scale == 'radius'
+                          else design_border_width_scale if f.scale == 'border_width'
+                          else design_transition_scale if f.scale == 'transition'
+                          else design_transform_scale if f.scale == 'transform'
                           else design_shadow_scale %}
       <div class="fe-design-field-control">
         <select name="design_{{ f.key }}">
@@ -185,15 +203,122 @@
       <h2>{{ grp }}</h2>
       <span class="muted smaller">{% if grp == 'Colors' %}Brand palette + neutral surfaces, links, and text colors.
       {% elif grp == 'Layout' %}Container width, default section rhythm, card radius + shadow.
+      {% elif grp == 'Card styles' %}Every card surface — meeting cards, feature cards, FAQ items, containers tagged as primary / secondary cards — reads from these tokens. Edit a colour either here or on the Colors tab; the two stay in sync.
       {% elif grp == 'Buttons' %}Primary + secondary button colors, radius, padding, font weight, and text transform.
       {% elif grp == 'Links' %}How links read in body copy (decoration on/off, hover behavior).
       {% elif grp == 'Text' %}Base text size and line height for body copy.{% endif %}</span>
     </div>
+    {% if grp == 'Card styles' %}
+      {# Two side-by-side columns — Primary on the left, Secondary on
+         the right. Each column carries its own preview card AT THE TOP
+         followed by the full settings stack BELOW so it's visually
+         obvious which set of inputs drives which surface. The data-
+         card-preview attribute moves up to the wrapper so the live-
+         preview JS can still find both target cards via one query. #}
+      <div class="fe-card-style-cols" data-card-preview>
+        {% for card_kind in ['primary', 'secondary'] %}
+        <div class="fe-card-style-col">
+          <div class="fe-card-style-preview-card fe-card-style-preview-card--{{ card_kind }}"
+               data-card-preview-target="{{ card_kind }}">
+            <div class="fe-card-style-preview-label">{{ card_kind|capitalize }} card</div>
+            <div class="fe-card-style-preview-body">
+              <h4 class="fe-card-style-preview-title">
+                {% if card_kind == 'primary' %}Meeting card style{% else %}Feature card style{% endif %}
+              </h4>
+              <p class="muted small">Hover to see the lift + shadow recipe.</p>
+            </div>
+          </div>
+          <h3 class="fe-design-subhead fe-card-style-col-head">
+            {{ card_kind|capitalize }} card settings
+          </h3>
+          <div class="fe-design-grid fe-card-style-col-fields">
+            {% for color_key in [
+              'color_card_' ~ card_kind ~ '_bg',
+              'color_card_' ~ card_kind ~ '_bg_dark',
+              'color_card_' ~ card_kind ~ '_border',
+              'color_card_' ~ card_kind ~ '_border_dark',
+              'color_card_' ~ card_kind ~ '_hover_border',
+            ] %}
+              {% set _cf = design_fields_by_key[color_key] %}
+              {{ render_field(_cf, mirror=True) }}
+            {% endfor %}
+            {% for f in design_fields if f.group == 'Card styles' and f.key.startswith('card_' ~ card_kind ~ '_') %}
+              {{ render_field(f) }}
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% elif grp == 'Buttons' %}
+      {# Two side-by-side columns mirroring the Card styles layout —
+         Primary on the left (bg/text + the 3 primary-only effects),
+         Secondary on the right (bg/text only). The shared structural
+         settings (radius, padding, weight, transform, decoration)
+         drop below the columns under their own subhead so it's clear
+         they apply to every button on the public site. The data-btn-
+         preview attribute lets the live-preview JS find both target
+         buttons via one query. #}
+      {% set _btn_primary_only = ['btn_shadow', 'btn_hover_transform', 'btn_hover_glow'] %}
+      {% set _btn_shared = ['btn_radius', 'btn_padding_x', 'btn_padding_y',
+                             'btn_weight', 'btn_text_transform', 'btn_decoration'] %}
+      {# Per-kind border keys — emitted in each column right after the
+         bg/text colours so resting + hover border live next to the
+         colour controls they relate to. #}
+      {% set _btn_border_keys = [
+        'color_btn_KIND_border',
+        'btn_KIND_border_width',
+        'color_btn_KIND_hover_border',
+        'btn_KIND_hover_border_width',
+      ] %}
+      <div class="fe-btn-style-cols" data-btn-preview>
+        {% for btn_kind in ['primary', 'secondary'] %}
+        <div class="fe-btn-style-col">
+          <div class="fe-btn-style-preview-wrap">
+            <button type="button"
+                    class="fe-btn-style-preview-button fe-btn-style-preview-button--{{ btn_kind }}"
+                    data-btn-preview-target="{{ btn_kind }}">
+              {{ btn_kind|capitalize }} button
+            </button>
+          </div>
+          <h3 class="fe-design-subhead fe-btn-style-col-head">
+            {{ btn_kind|capitalize }} button settings
+          </h3>
+          <div class="fe-design-grid fe-btn-style-col-fields">
+            {% for color_key in [
+              'color_btn_' ~ btn_kind ~ '_bg',
+              'color_btn_' ~ btn_kind ~ '_hover_bg',
+              'color_btn_' ~ btn_kind ~ '_text',
+            ] %}
+              {{ render_field(design_fields_by_key[color_key]) }}
+            {% endfor %}
+            {% for tmpl in _btn_border_keys %}
+              {{ render_field(design_fields_by_key[tmpl|replace('KIND', btn_kind)]) }}
+            {% endfor %}
+            {% if btn_kind == 'primary' %}
+              {% for k in _btn_primary_only %}
+                {{ render_field(design_fields_by_key[k]) }}
+              {% endfor %}
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <h3 class="fe-design-subhead">Shared button settings</h3>
+      <p class="muted small" style="margin: -2px 0 8px;">
+        These apply to every public-site button regardless of style.
+      </p>
+      <div class="fe-design-grid">
+        {% for k in _btn_shared %}
+          {{ render_field(design_fields_by_key[k]) }}
+        {% endfor %}
+      </div>
+    {% else %}
     <div class="fe-design-grid">
       {% for f in design_fields if f.group == grp %}
         {{ render_field(f) }}
       {% endfor %}
     </div>
+    {% endif %}
   </section>
   {% endfor %}
 
@@ -213,6 +338,15 @@
 // state (which the save endpoint reads as "no override → theme default").
 // For colors we also flip the gating checkbox off.
 (function () {
+  var HEX_RE = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+  function normalizeHex(v) {
+    if (!v) return null;
+    var m = String(v).trim().match(HEX_RE);
+    if (!m) return null;
+    var h = m[1];
+    if (h.length === 3) h = h.split('').map(function (c) { return c + c; }).join('');
+    return ('#' + h).toLowerCase();
+  }
   document.querySelectorAll('[data-design-reset]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var field = btn.closest('.fe-design-field');
@@ -221,34 +355,395 @@
       if (sel) sel.value = '';
       var num = field.querySelector('input[type=number]');
       if (num) num.value = '';
-      var txt = field.querySelector('input[type=text]');
-      if (txt) txt.value = '';
+      // Restore the editable hex text input to the resolved theme
+      // default. The display-only text field (`.fe-design-color-hex`)
+      // is excluded here; the form's other text-kind tokens still use
+      // the generic clear-to-empty path.
+      var txts = field.querySelectorAll('input[type=text]:not(.fe-design-color-hex)');
+      txts.forEach(function (t) { t.value = ''; });
       var cb = field.querySelector('.fe-design-color-toggle');
       if (cb) cb.checked = false;
+      // Re-sync the hex caption + picker to the theme default so the
+      // chip doesn't keep showing the old override colour after reset.
+      var picker = field.querySelector('.fe-design-color-input');
+      var hex = field.querySelector('.fe-design-color-hex');
+      var def = field.querySelector('.fe-design-field-default code');
+      if (picker && def && def.textContent) {
+        var norm = normalizeHex(def.textContent);
+        if (norm) {
+          picker.value = norm;
+          if (hex) hex.value = norm;
+        }
+      }
       field.classList.remove('fe-design-field--overridden');
     });
   });
   // Color picker flips the gating checkbox on automatically (same pattern
-  // as the split bg pickers). Also keeps the native hex caption beside
+  // as the split bg pickers). Also keeps the editable hex chip beside
   // each picker in sync so admins always see the current value as a
   // readable hex string — without needing to open the colour-picker
   // dialog to read it.
   document.querySelectorAll('.fe-design-color-input').forEach(function (picker) {
     var row = picker.closest('.fe-design-color-row');
     var hex = row ? row.querySelector('.fe-design-color-hex') : null;
-    function syncHex() {
-      if (hex) hex.textContent = (picker.value || '').toLowerCase();
+    var field = picker.closest('.fe-design-field');
+    var cb = row ? row.querySelector('.fe-design-color-toggle') : null;
+    function markOverridden() {
+      if (cb) cb.checked = true;
+      if (field) field.classList.add('fe-design-field--overridden');
+    }
+    function syncHexFromPicker() {
+      if (hex) hex.value = (picker.value || '').toLowerCase();
     }
     picker.addEventListener('input', function () {
-      var cb = picker.parentElement.querySelector('.fe-design-color-toggle');
-      if (cb) cb.checked = true;
-      var field = picker.closest('.fe-design-field');
-      if (field) field.classList.add('fe-design-field--overridden');
-      syncHex();
+      markOverridden();
+      syncHexFromPicker();
     });
-    picker.addEventListener('change', syncHex);
-    syncHex();
+    picker.addEventListener('change', syncHexFromPicker);
+    if (hex) {
+      // Typing / pasting a hex value into the editable chip drives the
+      // colour picker, flips the override checkbox on, and bubbles an
+      // `input` event from the picker so any form-level dirty trackers
+      // (save bar, formdata handlers) see the change exactly as if the
+      // admin had opened the native colour dialog.
+      function commitHex() {
+        var norm = normalizeHex(hex.value);
+        if (!norm) return false;
+        if (picker.value.toLowerCase() === norm) {
+          // Even when the value didn't move, retyping the same hex
+          // should still mark the override on — the admin's explicit
+          // intent is "I want this colour locked in".
+          markOverridden();
+          return true;
+        }
+        picker.value = norm;
+        markOverridden();
+        try { picker.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+        try { picker.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+        return true;
+      }
+      hex.addEventListener('input', function () {
+        // Live update while typing: only commit when the in-progress
+        // value parses to a complete hex. Partial typing (e.g. "#a")
+        // leaves the picker alone so the user can keep typing without
+        // the chip rewriting their input under them.
+        if (normalizeHex(hex.value)) commitHex();
+      });
+      hex.addEventListener('change', function () {
+        if (!commitHex()) {
+          // On blur, an invalid value rolls back to the picker's
+          // current colour so the chip never displays a junk value.
+          hex.value = (picker.value || '').toLowerCase();
+        }
+      });
+      hex.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (!commitHex()) hex.value = (picker.value || '').toLowerCase();
+          hex.blur();
+        }
+      });
+    }
+    syncHexFromPicker();
   });
+
+  // ── Mirror sync (Card styles ↔ Colors) ────────────────────────────
+  // Card colour tokens render twice: the canonical `.fe-design-field`
+  // in the Colors tab carries the real form inputs; the mirror in the
+  // Card styles tab carries display-only inputs (no `name=` attrs).
+  // Editing either side should reflect in the other AND drive the
+  // canonical form state so the save round-trip stays correct.
+  function fieldByKey(key) {
+    return document.querySelector(
+      '.fe-design-field[data-field-key="' + key + '"]:not(.fe-design-field--mirror)');
+  }
+  function mirrorsOf(key) {
+    return document.querySelectorAll(
+      '.fe-design-field--mirror[data-mirror-of="' + key + '"]');
+  }
+  function copyColorState(src, dst) {
+    if (!src || !dst) return;
+    var srcPicker = src.querySelector('.fe-design-color-input');
+    var dstPicker = dst.querySelector('.fe-design-color-input');
+    if (srcPicker && dstPicker && dstPicker.value !== srcPicker.value) {
+      dstPicker.value = srcPicker.value;
+    }
+    var srcHex = src.querySelector('.fe-design-color-hex');
+    var dstHex = dst.querySelector('.fe-design-color-hex');
+    if (srcHex && dstHex && dstHex.value !== srcHex.value) {
+      dstHex.value = srcHex.value;
+    }
+    var srcCb = src.querySelector('.fe-design-color-toggle');
+    var dstCb = dst.querySelector('.fe-design-color-toggle');
+    if (srcCb && dstCb && dstCb.checked !== srcCb.checked) {
+      dstCb.checked = srcCb.checked;
+    }
+    dst.classList.toggle('fe-design-field--overridden',
+      src.classList.contains('fe-design-field--overridden'));
+  }
+  document.querySelectorAll('.fe-design-field--mirror[data-mirror-of]').forEach(function (mirror) {
+    var key = mirror.getAttribute('data-mirror-of');
+    var canonical = fieldByKey(key);
+    if (!canonical) return;
+    // Mirror → canonical: forward picker / hex / checkbox edits onto
+    // the real form inputs so the save round-trip picks them up. We
+    // dispatch native input events on the canonical so any other
+    // listeners (the editable hex commit handler, form-level dirty
+    // trackers) fire identically to a direct edit on the Colors tab.
+    var mPicker = mirror.querySelector('.fe-design-color-input');
+    var mHex    = mirror.querySelector('.fe-design-color-hex');
+    var mCb     = mirror.querySelector('.fe-design-color-toggle');
+    var cPicker = canonical.querySelector('.fe-design-color-input');
+    var cHex    = canonical.querySelector('.fe-design-color-hex');
+    var cCb     = canonical.querySelector('.fe-design-color-toggle');
+    if (mPicker && cPicker) {
+      mPicker.addEventListener('input', function () {
+        cPicker.value = mPicker.value;
+        try { cPicker.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+      });
+      mPicker.addEventListener('change', function () {
+        try { cPicker.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+      });
+    }
+    if (mHex && cHex) {
+      mHex.addEventListener('input', function () {
+        cHex.value = mHex.value;
+        try { cHex.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+      });
+      mHex.addEventListener('change', function () {
+        cHex.value = mHex.value;
+        try { cHex.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+      });
+    }
+    if (mCb && cCb) {
+      mCb.addEventListener('change', function () {
+        cCb.checked = mCb.checked;
+        canonical.classList.toggle('fe-design-field--overridden', mCb.checked);
+        try { cCb.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+      });
+    }
+    // Canonical → mirror: when any of the canonical inputs change
+    // (typed-hex commit, native picker open, reset button, etc.), pull
+    // the resulting state across so the mirror tracks the truth.
+    function pushToMirror() { copyColorState(canonical, mirror); }
+    if (cPicker) {
+      cPicker.addEventListener('input', pushToMirror);
+      cPicker.addEventListener('change', pushToMirror);
+    }
+    if (cHex) {
+      cHex.addEventListener('input', pushToMirror);
+      cHex.addEventListener('change', pushToMirror);
+    }
+    if (cCb) cCb.addEventListener('change', pushToMirror);
+    // Reset button on the canonical fires a synchronous DOM update —
+    // observe the canonical for class changes to catch resets.
+    if (window.MutationObserver) {
+      var mo = new MutationObserver(pushToMirror);
+      mo.observe(canonical, { attributes: true, attributeFilter: ['class'] });
+    }
+  });
+  // Reset button on a mirror routes to the canonical so the canonical's
+  // own reset handler runs (already wired above).
+  document.querySelectorAll('.fe-design-field--mirror [data-design-reset]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      var key = btn.getAttribute('data-design-reset');
+      var canonical = fieldByKey(key);
+      var canonicalBtn = canonical && canonical.querySelector('[data-design-reset]');
+      if (canonicalBtn) canonicalBtn.click();
+    });
+  }, true);
+
+  // ── Live card preview ─────────────────────────────────────────────
+  // Two sample cards on the Card styles tab read their current style
+  // from the form's resolved values via CSS custom properties stamped
+  // on the preview wrapper. Updated on every form input so the admin
+  // sees changes before saving.
+  var previewWrap = document.querySelector('[data-card-preview]');
+  if (previewWrap) {
+    var WIDTH_PX  = { '0': '0', '1': '1px', '2': '2px', '3': '3px', '4': '4px' };
+    var SHADOW    = {
+      'none': 'none',
+      'sm':   '0 1px 2px rgba(15, 23, 42, 0.06)',
+      'md':   '0 4px 12px rgba(15, 23, 42, 0.10)',
+      'lg':   '0 12px 28px rgba(15, 23, 42, 0.14)',
+      'xl':   '0 12px 32px rgba(15, 23, 42, 0.18)',
+    };
+    var TRANSITION = {
+      'none':   'none',
+      'fast':   '120ms cubic-bezier(0.2, 0.8, 0.2, 1)',
+      'normal': '200ms cubic-bezier(0.2, 0.8, 0.2, 1)',
+      'slow':   '320ms cubic-bezier(0.2, 0.8, 0.2, 1)',
+    };
+    var TRANSFORM = {
+      'none':    'none',
+      'lift-sm': 'translateY(-1px)',
+      'lift-md': 'translateY(-2px)',
+      'lift-lg': 'translateY(-4px)',
+    };
+    function readField(key) {
+      // Return the current value the form would submit for `key`,
+      // following the same "override on / off" semantics as the
+      // server: colour fields without the override checkbox return
+      // null so the preview falls back to the theme default.
+      var f = document.querySelector(
+        '.fe-design-field[data-field-key="' + key + '"]:not(.fe-design-field--mirror)');
+      if (!f) return null;
+      var picker = f.querySelector('.fe-design-color-input');
+      if (picker) {
+        var cb = f.querySelector('.fe-design-color-toggle');
+        if (cb && !cb.checked) return null;
+        return picker.value;
+      }
+      var sel = f.querySelector('select');
+      if (sel) return sel.value || null;
+      return null;
+    }
+    var THEME = (window.__feDesignTheme = window.__feDesignTheme || {});
+    // Theme defaults are emitted as data-attrs on each field's
+    // ".fe-design-field-default code" so we can fall back to them
+    // when no override is set.
+    function defaultFor(key) {
+      var f = document.querySelector(
+        '.fe-design-field[data-field-key="' + key + '"]:not(.fe-design-field--mirror)');
+      if (!f) return null;
+      var code = f.querySelector('.fe-design-field-default code');
+      return code ? code.textContent.trim() : null;
+    }
+    function resolve(key) {
+      var v = readField(key);
+      return v != null && v !== '' ? v : defaultFor(key);
+    }
+    function applyPreview() {
+      ['primary', 'secondary'].forEach(function (kind) {
+        var card = previewWrap.querySelector(
+          '[data-card-preview-target="' + kind + '"]');
+        if (!card) return;
+        var bw   = resolve('card_' + kind + '_border_width');
+        var sh   = resolve('card_' + kind + '_shadow');
+        var hsh  = resolve('card_' + kind + '_hover_shadow');
+        var tr   = resolve('card_' + kind + '_transition');
+        var hxf  = resolve('card_' + kind + '_hover_transform');
+        var bg   = resolve('color_card_' + kind + '_bg');
+        var br   = resolve('color_card_' + kind + '_border');
+        var hbr  = resolve('color_card_' + kind + '_hover_border');
+        var s = card.style;
+        s.setProperty('--fe-card-' + kind + '-border-width', WIDTH_PX[bw] || '1px');
+        s.setProperty('--fe-card-' + kind + '-shadow',        SHADOW[sh]    || 'none');
+        s.setProperty('--fe-card-' + kind + '-hover-shadow',  SHADOW[hsh]   || '0 4px 12px rgba(15,23,42,0.10)');
+        s.setProperty('--fe-card-' + kind + '-transition',    TRANSITION[tr] || '200ms ease');
+        s.setProperty('--fe-card-' + kind + '-hover-transform', TRANSFORM[hxf] || 'none');
+        if (bg)  s.setProperty('--fe-color-card-' + kind + '-bg', bg);
+        if (br)  s.setProperty('--fe-color-card-' + kind + '-border', br);
+        if (hbr) s.setProperty('--fe-color-card-' + kind + '-hover-border', hbr);
+      });
+    }
+    // Apply on every form-level input so colour pickers, hex chips,
+    // scale selects, mirror edits — all routes update the preview.
+    document.addEventListener('input', applyPreview, true);
+    document.addEventListener('change', applyPreview, true);
+    applyPreview();
+  }
+
+  // ── Live button preview ───────────────────────────────────────────
+  // Mirrors the card preview but for the two button styles. Reads
+  // every form-level button token and stamps the matching CSS custom
+  // property on each preview button so the visual updates live.
+  var btnPreviewWrap = document.querySelector('[data-btn-preview]');
+  if (btnPreviewWrap) {
+    var BTN_RADIUS = { 'none':'0', 'sm':'4px', 'md':'8px', 'lg':'16px', 'pill':'999px' };
+    // Local copy so this block doesn't rely on `WIDTH_PX` being hoisted
+    // out of the card-preview block above (it's inside an `if`, so the
+    // assignment may not have run if the card section was missing).
+    var BTN_WIDTH_PX = { '0': '0', '1': '1px', '2': '2px', '3': '3px', '4': '4px' };
+    function readField2(key) {
+      // Same readField behaviour but local — text/select/color all
+      // resolve through `.fe-design-field[data-field-key="…"]`. Mirror
+      // fields are skipped so the canonical input wins (Buttons has no
+      // mirror today but kept for consistency with the card preview).
+      var f = document.querySelector(
+        '.fe-design-field[data-field-key="' + key + '"]:not(.fe-design-field--mirror)');
+      if (!f) return null;
+      var picker = f.querySelector('.fe-design-color-input');
+      if (picker) {
+        var cb = f.querySelector('.fe-design-color-toggle');
+        if (cb && !cb.checked) return null;
+        return picker.value;
+      }
+      var sel = f.querySelector('select');
+      if (sel) return sel.value || null;
+      var inp = f.querySelector('input[type="text"]');
+      if (inp) return inp.value || null;
+      return null;
+    }
+    function defaultFor2(key) {
+      var f = document.querySelector(
+        '.fe-design-field[data-field-key="' + key + '"]:not(.fe-design-field--mirror)');
+      if (!f) return null;
+      var code = f.querySelector('.fe-design-field-default code');
+      return code ? code.textContent.trim() : null;
+    }
+    function resolve2(key) {
+      var v = readField2(key);
+      return v != null && v !== '' ? v : defaultFor2(key);
+    }
+    function applyBtnPreview() {
+      // Shared tokens — apply to BOTH primary and secondary previews.
+      var radius = BTN_RADIUS[resolve2('btn_radius')] || '999px';
+      var padX   = resolve2('btn_padding_x') || '28px';
+      var padY   = resolve2('btn_padding_y') || '14px';
+      var weight = resolve2('btn_weight') || '600';
+      var ttx    = resolve2('btn_text_transform') || 'none';
+      var deco   = resolve2('btn_decoration') || 'none';
+      // Primary-only effect tokens — `on` / `off` resolves to the same
+      // recipes the python emitter (design.design_css_vars) uses so the
+      // preview matches exactly what the public site will render.
+      var shadow  = resolve2('btn_shadow') === 'off'
+                    ? 'none' : '0 8px 20px rgba(15, 23, 42, 0.18)';
+      var hoverT  = resolve2('btn_hover_transform') === 'off'
+                    ? 'none' : 'translateY(-1px)';
+      var hoverG  = resolve2('btn_hover_glow') === 'off'
+                    ? 'none' : '0 10px 28px rgba(81, 100, 255, 0.32)';
+      ['primary', 'secondary'].forEach(function (kind) {
+        var btn = btnPreviewWrap.querySelector(
+          '[data-btn-preview-target="' + kind + '"]');
+        if (!btn) return;
+        var s = btn.style;
+        s.setProperty('--fe-btn-radius',          radius);
+        s.setProperty('--fe-btn-padding-x',       padX);
+        s.setProperty('--fe-btn-padding-y',       padY);
+        s.setProperty('--fe-btn-weight',          weight);
+        s.setProperty('--fe-btn-text-transform',  ttx);
+        s.setProperty('--fe-btn-decoration',      deco);
+        var bg  = resolve2('color_btn_' + kind + '_bg');
+        var hbg = resolve2('color_btn_' + kind + '_hover_bg');
+        var tx  = resolve2('color_btn_' + kind + '_text');
+        if (bg)  s.setProperty('--fe-color-btn-' + kind + '-bg', bg);
+        if (hbg) s.setProperty('--fe-color-btn-' + kind + '-hover-bg', hbg);
+        if (tx)  s.setProperty('--fe-color-btn-' + kind + '-text', tx);
+        // Per-style border tokens. Width is a scale key (0/1/2/3/4),
+        // resolve via WIDTH_PX before stamping so the preview applies a
+        // real CSS length without depending on the public-side scale
+        // vars (which aren't on the admin body).
+        var bw  = resolve2('btn_' + kind + '_border_width');
+        var hbw = resolve2('btn_' + kind + '_hover_border_width');
+        var br  = resolve2('color_btn_' + kind + '_border');
+        var hbr = resolve2('color_btn_' + kind + '_hover_border');
+        s.setProperty('--fe-btn-' + kind + '-border-width',       BTN_WIDTH_PX[bw]  || '1px');
+        s.setProperty('--fe-btn-' + kind + '-hover-border-width', BTN_WIDTH_PX[hbw] || BTN_WIDTH_PX[bw] || '1px');
+        if (br)  s.setProperty('--fe-color-btn-' + kind + '-border', br);
+        if (hbr) s.setProperty('--fe-color-btn-' + kind + '-hover-border', hbr);
+        if (kind === 'primary') {
+          s.setProperty('--fe-btn-shadow',         shadow);
+          s.setProperty('--fe-btn-hover-transform', hoverT);
+          s.setProperty('--fe-btn-hover-glow',     hoverG);
+        }
+      });
+    }
+    document.addEventListener('input', applyBtnPreview, true);
+    document.addEventListener('change', applyBtnPreview, true);
+    applyBtnPreview();
+  }
 })();
 </script>
 {% endblock %}

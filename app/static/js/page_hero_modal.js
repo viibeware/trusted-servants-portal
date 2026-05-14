@@ -259,15 +259,27 @@
     heroEdits.set(activeBlockId, modalData);
     const sections = readSections();
     let touched = false;
+    let touchedBlock = null;
     for (const sec of sections) {
       walkBlocks(sec.blocks || [], (b) => {
         if (b.id === activeBlockId) {
           b.data = Object.assign({}, b.data || {}, modalData);
           touched = true;
+          touchedBlock = b;
         }
       });
     }
-    if (touched) writeSections(sections);
+    if (touched) {
+      writeSections(sections);
+      // Mirror the new payload into the structure-card pill so a
+      // later drag-drop (e.g. moving the hero out of a container)
+      // doesn't rebuild sections from the stale pre-edit DOM
+      // attribute and clobber the work.
+      if (touchedBlock && typeof window.tspSyncStructurePayloadOne === 'function') {
+        try { window.tspSyncStructurePayloadOne(activeBlockId, touchedBlock); }
+        catch (_) {}
+      }
+    }
   }
 
   // ── Populate modal inputs from a block's data ─────────────────
@@ -791,6 +803,140 @@
         wrap.appendChild(span);
         return wrap;
       }
+      // Icon-picker trigger + hidden input + clear, styled like the
+      // features-card icon trigger. The shared icon picker is a global
+      // delegated handler (see app.js), wired via [data-open-icon-picker]
+      // with `data-icon-target` pointing at the hidden input we mint
+      // here. We listen for `input` on the hidden input — that's the
+      // event the picker dispatches after writing — and use it to
+      // update btn[key] + persist + repaint the preview.
+      function iconField(key, lblText) {
+        const wrap = document.createElement('div');
+        wrap.className = 'be-hero-button-field be-hero-button-icon-field';
+        wrap.dataset.iconField = '';
+        if (btn[key]) wrap.classList.add('has-icon');
+        const lbl = document.createElement('span');
+        lbl.className = 'be-hero-button-field-lbl';
+        lbl.textContent = lblText;
+        wrap.appendChild(lbl);
+        const row2 = document.createElement('div');
+        row2.className = 'be-hero-button-icon-row';
+        // Unique id so the picker's `data-icon-target` selector can
+        // find the right hidden input when the trigger is clicked.
+        const hiddenId = 'hero-btn-' + key + '-' + idx + '-' +
+                          Math.floor(Math.random() * 1e9).toString(36);
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'icon-picker-trigger be-hero-button-icon-trigger';
+        trigger.setAttribute('data-open-icon-picker', '');
+        trigger.setAttribute('data-icon-target', '#' + hiddenId);
+        trigger.title = 'Choose icon';
+        const preview = document.createElement('span');
+        preview.className = 'icon-picker-preview';
+        preview.setAttribute('data-icon-preview', '');
+        if (btn[key] && window.tspRenderIconHtml) {
+          preview.innerHTML = window.tspRenderIconHtml(btn[key]);
+        }
+        const empty = document.createElement('span');
+        empty.className = 'icon-picker-trigger-empty';
+        empty.setAttribute('data-icon-empty', '');
+        empty.textContent = 'Choose…';
+        trigger.appendChild(preview);
+        trigger.appendChild(empty);
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.id = hiddenId;
+        hidden.value = btn[key] || '';
+        hidden.setAttribute('data-icon-input', '');
+        hidden.addEventListener('input', () => {
+          btn[key] = hidden.value;
+          if (hidden.value) {
+            wrap.classList.add('has-icon');
+            if (window.tspRenderIconHtml) {
+              preview.innerHTML = window.tspRenderIconHtml(hidden.value);
+            }
+          } else {
+            wrap.classList.remove('has-icon');
+            preview.innerHTML = '';
+          }
+          persistButtons(buttons);
+        });
+        const clear = document.createElement('button');
+        clear.type = 'button';
+        clear.className = 'icon-picker-clear be-hero-button-icon-clear';
+        clear.setAttribute('data-icon-clear', '');
+        clear.title = 'Clear icon';
+        clear.innerHTML = '×';
+        row2.appendChild(trigger);
+        row2.appendChild(hidden);
+        row2.appendChild(clear);
+        wrap.appendChild(row2);
+        return wrap;
+      }
+      // Colour cluster: native swatch + editable hex text input + the
+      // auto-attached 🎨 token-palette button + read-only hex caption +
+      // matched-token chip (the latter three come for free from the
+      // global `_design_token_picker.html` MutationObserver — every
+      // <input type="color"> in the DOM gets the chrome injected). Hex
+      // text input ↔ swatch are two-way bound; persisting writes the
+      // hex string into btn[key] on every input.
+      function colorField(key, lblText, ph) {
+        const wrap = document.createElement('div');
+        wrap.className = 'be-hero-button-field be-hero-button-color-field';
+        const lbl = document.createElement('span');
+        lbl.className = 'be-hero-button-field-lbl';
+        lbl.textContent = lblText;
+        wrap.appendChild(lbl);
+        const cluster = document.createElement('div');
+        cluster.className = 'be-hero-button-color-cluster';
+        const initial = btn[key] || '';
+        const hex = document.createElement('input');
+        hex.type = 'text';
+        hex.className = 'be-hero-button-color-text';
+        hex.value = initial;
+        hex.placeholder = ph || '#000000';
+        hex.maxLength = 9;
+        hex.spellcheck = false;
+        hex.autocomplete = 'off';
+        const swatch = document.createElement('input');
+        swatch.type = 'color';
+        swatch.className = 'be-hero-button-color-swatch';
+        // Native swatch needs a 6-digit hex; fall back to a sensible
+        // default colour when btn[key] is empty so the dialog still
+        // opens on a visible value.
+        const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+        function expand(v) {
+          if (v && v.length === 4 && v[0] === '#') {
+            return '#' + v[1] + v[1] + v[2] + v[2] + v[3] + v[3];
+          }
+          return v;
+        }
+        swatch.value = HEX_RE.test(initial) ? expand(initial).slice(0, 7) : '#000000';
+        swatch.addEventListener('input', () => {
+          hex.value = swatch.value;
+          btn[key] = swatch.value;
+          persistButtons(buttons);
+        });
+        hex.addEventListener('input', () => {
+          let v = (hex.value || '').trim();
+          if (!v) {
+            btn[key] = '';
+            persistButtons(buttons);
+            return;
+          }
+          if (v[0] !== '#') v = '#' + v;
+          if (HEX_RE.test(v)) {
+            swatch.value = expand(v).slice(0, 7);
+            btn[key] = v;
+            persistButtons(buttons);
+          }
+          // Invalid hex → don't commit; admin can keep typing.
+        });
+        cluster.appendChild(hex);
+        cluster.appendChild(swatch);
+        wrap.appendChild(cluster);
+        return wrap;
+      }
 
       // ── Main grid: Label + URL side by side ─────────────────
       const main = document.createElement('div');
@@ -819,14 +965,14 @@
       adv.appendChild(sum);
       const advGrid = document.createElement('div');
       advGrid.className = 'be-hero-button-grid';
-      advGrid.appendChild(textField('icon_before', 'Icon before', 'lucide name'));
-      advGrid.appendChild(textField('icon_before_color', 'Before-icon colour', '#ffffff'));
+      advGrid.appendChild(iconField('icon_before', 'Icon before'));
+      advGrid.appendChild(colorField('icon_before_color', 'Before-icon colour', '#ffffff'));
       advGrid.appendChild(textField('icon_before_size', 'Before-icon size (px)', '20', 'number'));
-      advGrid.appendChild(textField('icon_after', 'Icon after', 'lucide name'));
-      advGrid.appendChild(textField('icon_after_color', 'After-icon colour', '#ffffff'));
+      advGrid.appendChild(iconField('icon_after', 'Icon after'));
+      advGrid.appendChild(colorField('icon_after_color', 'After-icon colour', '#ffffff'));
       advGrid.appendChild(textField('icon_after_size', 'After-icon size (px)', '20', 'number'));
-      advGrid.appendChild(textField('custom_bg_color', 'Background (primary only)', '#1d4ed8'));
-      advGrid.appendChild(textField('custom_text_color', 'Text colour (primary only)', '#ffffff'));
+      advGrid.appendChild(colorField('custom_bg_color', 'Background (primary only)', '#1d4ed8'));
+      advGrid.appendChild(colorField('custom_text_color', 'Text colour (primary only)', '#ffffff'));
       adv.appendChild(advGrid);
       row.appendChild(adv);
 

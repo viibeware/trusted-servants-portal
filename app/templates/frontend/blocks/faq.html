@@ -10,36 +10,141 @@
    original hardcoded strings (zero diff for the homepage). The
    per-page FAQ block (pp_block in frontend/page.html) passes
    admin-edited values through these keys so the page-builder can
-   override the wording per block. #}
+   override the wording per block.
+
+   Page-builder layout knobs (also optional — homepage doesn't pass
+   them, defaults match the pre-knobs render):
+
+     • `faq_columns` — `1` (default) | `2`. The 2-column variant uses
+       CSS Grid with `grid-auto-flow: column` so accordion items flow
+       column-first, with the first item in the right column starting
+       halfway-staggered from the left so the two streams don't sit
+       shoulder-to-shoulder. The row count is stamped server-side
+       (`ceil(count / 2)`) so columns pack to the START of the grid
+       — no `column-fill: balance` redistribution that would otherwise
+       space items evenly across the column on odd counts.
+
+     • `faq_width_mode` — `boxed` (default) | `full`. Boxed keeps the
+       historic 760px cap so the accordion reads as a column; full
+       lets the block bleed to the parent's edge — meaningful when
+       paired with the 2-column layout or a wider parent container.
+
+     • `faq_pad_x` — integer pixels, optional. Adds inner horizontal
+       padding on the inner container so the FAQ list sits inside a
+       gutter without needing a wrapping container block. Empty /
+       omitted = no extra padding (the container's own gutter wins).
+#}
 {% set _faq = (block_content.faq if block_content else []) %}
 {% set _faq_heading = (block_content.get('faq_heading') if block_content else '') or 'Frequently asked questions' %}
 {% set _faq_subheading = (block_content.get('faq_subheading') if block_content else '') or 'Common questions from people who are about to attend their first meeting.' %}
-<section class="fe-section fe-faq" aria-label="{{ _faq_heading }}">
-  <div class="fe-container">
+{% set _faq_cols = (block_content.get('faq_columns') if block_content else None) %}
+{% set _faq_cols = 2 if _faq_cols in (2, '2') else 1 %}
+{# When the FAQ block is dropped inside a page-builder container the
+   parent container already controls width + padding. Skip the
+   `<section class="fe-section"><div class="fe-container">` chrome
+   AND drop the inner 760-px column cap so the accordion fills the
+   parent edge-to-edge. The width-mode and pad-x knobs only apply on
+   the standalone (homepage / fully-section) render where the FAQ is
+   its own section. #}
+{% set _faq_no_chrome = (block_content.get('faq_no_chrome') if block_content else False) %}
+{% set _faq_width = (block_content.get('faq_width_mode') if block_content else None) or 'boxed' %}
+{% if _faq_width not in ('boxed', 'full') %}{% set _faq_width = 'boxed' %}{% endif %}
+{# Inside a page-builder container, treat the FAQ as full-width by
+   default so the accordion sits flush against the container's edge.
+   The container itself owns the gutter. #}
+{% if _faq_no_chrome %}{% set _faq_width = 'full' %}{% endif %}
+{% set _faq_pad_x = (block_content.get('faq_pad_x') if block_content else None) %}
+{% set _faq_pad_x_int = (_faq_pad_x | int) if (_faq_pad_x is not none and (_faq_pad_x | string | trim) != '') else 0 %}
+{% set _faq_classes = 'fe-faq fe-faq-cols-' ~ _faq_cols ~ ' fe-faq-w-' ~ _faq_width %}
+{% set _faq_inner_style = ('padding-left: ' ~ _faq_pad_x_int ~ 'px; padding-right: ' ~ _faq_pad_x_int ~ 'px;') if _faq_pad_x_int > 0 else '' %}
+{# Split items into two independent columns at render time when
+   `columns == 2`. Each column is its own stacking context (flex
+   `flex-direction: column`), so the heights of items in the right
+   column never influence the heights of items in the left column —
+   which is the only way to make sure the 56px stagger on the first
+   right-column item doesn't leave a phantom gap under the first
+   left-column item.
+
+   Left column gets `ceil(N / 2)` items; the right column gets the
+   remainder. For odd counts (5 items → 3 left, 2 right) the right
+   column simply ends shorter — its items pack to the top via the
+   flex column's natural flow, no extra alignment needed.
+
+   Single-column render stays a flat list (the original markup), so
+   `columns == 1` produces exactly the historic FAQ output. #}
+{% set _faq_count = (_faq | list) | length %}
+{% if _faq_cols == 2 and _faq_count > 0 %}
+  {% set _faq_split = (_faq_count + 1) // 2 %}
+  {% set _faq_left = _faq[:_faq_split] %}
+  {% set _faq_right = _faq[_faq_split:] %}
+{% endif %}
+{% macro _faq_item(q, is_col2_start=False) %}
+<div class="fe-faq-item{% if is_col2_start %} fe-faq-col2-start{% endif %}" data-faq-item>
+  <button type="button" class="fe-faq-summary"
+          data-faq-toggle aria-expanded="false">
+    {% if q.icon %}
+    <span class="fe-faq-summary-icon"
+          {% if q.icon_size %}style="--icon-size: {{ q.icon_size }}px;"{% endif %}
+          aria-hidden="true">
+      {{ icon(q.icon) }}
+    </span>
+    {% endif %}
+    <span class="fe-faq-summary-q">{{ q.question | safe_html }}</span>
+    <span class="fe-faq-summary-chevron" aria-hidden="true">{{ icon('chevron-down') }}</span>
+  </button>
+  <div class="fe-faq-body">
+    <div class="fe-faq-body-inner">{{ q.answer | markdown_block }}</div>
+  </div>
+</div>
+{% endmacro %}
+{% if _faq_no_chrome %}
+{# Page-builder container path: drop the `.fe-section` / `.fe-container`
+   wrappers so the parent container owns width + padding + section
+   rhythm. The accordion list takes the parent's full inner width. #}
+<div class="{{ _faq_classes }} fe-faq--bare" aria-label="{{ _faq_heading }}"
+     {% if _faq_inner_style %}style="{{ _faq_inner_style }}"{% endif %}>
+  {% if (_faq_heading or '').strip() or (_faq_subheading or '').strip() %}
+  <div class="fe-section-head">
+    <h2>{{ _faq_heading | safe_html }}</h2>
+    <p>{{ _faq_subheading | safe_html }}</p>
+  </div>
+  {% endif %}
+  {% if _faq_cols == 2 and _faq_count > 0 %}
+  <div class="fe-faq-list" data-faq-list>
+    <div class="fe-faq-col">
+      {% for q in _faq_left %}{{ _faq_item(q) }}{% endfor %}
+    </div>
+    <div class="fe-faq-col">
+      {% for q in _faq_right %}{{ _faq_item(q, is_col2_start=loop.first) }}{% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div class="fe-faq-list" data-faq-list>
+    {% for q in _faq %}{{ _faq_item(q) }}{% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<section class="fe-section {{ _faq_classes }}" aria-label="{{ _faq_heading }}">
+  <div class="fe-container"{% if _faq_inner_style %} style="{{ _faq_inner_style }}"{% endif %}>
     <div class="fe-section-head">
       <h2>{{ _faq_heading | safe_html }}</h2>
       <p>{{ _faq_subheading | safe_html }}</p>
     </div>
+    {% if _faq_cols == 2 and _faq_count > 0 %}
     <div class="fe-faq-list" data-faq-list>
-      {% for q in _faq %}
-      <div class="fe-faq-item" data-faq-item>
-        <button type="button" class="fe-faq-summary"
-                data-faq-toggle aria-expanded="false">
-          {% if q.icon %}
-          <span class="fe-faq-summary-icon"
-                {% if q.icon_size %}style="--icon-size: {{ q.icon_size }}px;"{% endif %}
-                aria-hidden="true">
-            {{ icon(q.icon) }}
-          </span>
-          {% endif %}
-          <span class="fe-faq-summary-q">{{ q.question | safe_html }}</span>
-          <span class="fe-faq-summary-chevron" aria-hidden="true">{{ icon('chevron-down') }}</span>
-        </button>
-        <div class="fe-faq-body">
-          <div class="fe-faq-body-inner">{{ q.answer | markdown_block }}</div>
-        </div>
+      <div class="fe-faq-col">
+        {% for q in _faq_left %}{{ _faq_item(q) }}{% endfor %}
       </div>
-      {% endfor %}
+      <div class="fe-faq-col">
+        {% for q in _faq_right %}{{ _faq_item(q, is_col2_start=loop.first) }}{% endfor %}
+      </div>
     </div>
+    {% else %}
+    <div class="fe-faq-list" data-faq-list>
+      {% for q in _faq %}{{ _faq_item(q) }}{% endfor %}
+    </div>
+    {% endif %}
   </div>
 </section>
+{% endif %}

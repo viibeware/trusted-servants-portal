@@ -657,7 +657,8 @@ window.tspBlogTags = [
       // data-page-block-id at the row-label level) should fall
       // THROUGH to the focus flow, since "click Settings → edit this
       // container" is the whole point.
-      if (e.target.closest('[data-be-remove-block], [data-be-remove-row]')) {
+      if (e.target.closest('[data-be-remove-block], [data-be-remove-row], '
+                         + '[data-be-duplicate-block], [data-be-duplicate-row]')) {
         return;
       }
       requestAnimationFrame(() => {
@@ -696,6 +697,19 @@ window.tspBlogTags = [
       const m = bar.querySelector('.fe-save-bar-msg');
       if (m) m.textContent = 'Unsaved changes';
     }
+    // Keep the structure-card pill payloads + container settings map
+    // in sync with the editor's authoritative state. Without this,
+    // dragging a block out of a container later in the session reads
+    // the pill's stale `data-block-payload` and clobbers anything the
+    // admin edited in the modal (heading text resetting on move was
+    // the canonical reproduction). The hook is a no-op until the
+    // editor is mounted and the structure script is loaded.
+    try {
+      if (editor && typeof editor.getState === 'function'
+          && typeof window.tspSyncStructurePayloadsFromState === 'function') {
+        window.tspSyncStructurePayloadsFromState(editor.getState());
+      }
+    } catch (_) {}
   }, true);
   editModal.addEventListener('change', () => {
     try { form.dispatchEvent(new Event('change', { bubbles: true })); }

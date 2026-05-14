@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block heading %}Stories{% endblock %}
-{% block heading_help %}Recovery stories — long-form first-person posts. Each story has an author, a featured image, optional sobriety / story dates, and a body. Click a column header to sort.{% endblock %}
+{% block heading_help %}Recovery stories — long-form first-person posts. Each story has an author, a featured image, optional sobriety / story dates, and a body. Click a column header to sort. Tick the checkboxes to bulk delete, move to drafts, or archive.{% endblock %}
 {% block top_actions %}
   <div class="view-controls">
     <div class="view-toggle">
@@ -37,10 +37,46 @@
   </a>
 {%- endmacro -%}
 {% if stories %}
+{# Bulk-action wrapper — same shape as posts.html. Per-row action
+   buttons sit OUTSIDE this form (referenced via `form="single-<id>-..."`)
+   so they don't trip nested-form warnings. #}
+<form id="stories-bulk-form" method="post" action="{{ url_for('main.story_bulk') }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" name="action" id="stories-bulk-action" value="">
+
+<div class="posts-toolbar">
+  <div class="posts-meta muted small">
+    Showing <b>{{ stories|length }}</b> stor{{ 'ies' if stories|length != 1 else 'y' }}
+  </div>
+  <div class="posts-bulkbar" data-stories-bulkbar hidden>
+    <span class="posts-bulkbar-count" data-bulk-count>0 selected</span>
+    {% if show != 'archived' %}
+    <button type="button" class="btn btn-sm" data-bulk="archive">Archive</button>
+    {% endif %}
+    {% if show == 'archived' %}
+    <button type="button" class="btn btn-sm" data-bulk="unarchive">Restore</button>
+    {% endif %}
+    {% if show != 'drafts' %}
+    <button type="button" class="btn btn-sm" data-bulk="draft">Move to drafts</button>
+    {% endif %}
+    {% if show != 'active' %}
+    <button type="button" class="btn btn-sm btn-primary" data-bulk="publish">Publish</button>
+    {% endif %}
+    <button type="button" class="btn btn-sm btn-danger" data-bulk="delete"
+            data-bulk-confirm="Delete the selected stories permanently? Featured images will be cleaned up. This cannot be undone.">Delete</button>
+    <button type="button" class="btn btn-sm posts-bulk-clear" data-bulk-clear>Clear</button>
+  </div>
+</div>
+
 <section class="card posts-card">
   <table class="tbl posts-tbl">
     <thead>
       <tr>
+        <th class="posts-th-check">
+          <label class="posts-check-wrap" title="Select all on this page">
+            <input type="checkbox" data-stories-selectall>
+          </label>
+        </th>
         <th class="posts-th-thumb"></th>
         <th>{{ sort_link('title', 'Title') }}</th>
         <th class="hide-sm">{{ sort_link('author', 'Author') }}</th>
@@ -52,7 +88,12 @@
     </thead>
     <tbody>
     {% for s in stories %}
-      <tr>
+      <tr data-story-row>
+        <td class="posts-td-check">
+          <label class="posts-check-wrap">
+            <input type="checkbox" name="ids" value="{{ s.id }}" data-stories-row-check>
+          </label>
+        </td>
         <td class="posts-td-thumb">
           {% if s.featured_image_filename %}
           <img class="posts-thumb"
@@ -99,32 +140,17 @@
                     data-modal-src="{{ url_for('main.story_edit', sid=s.id, embed=1) }}"
                     data-modal-title="Edit story">Edit</button>
             {% if s.is_draft %}
-            <form method="post" action="{{ url_for('main.story_publish', sid=s.id) }}" style="display:inline">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-sm btn-primary" title="Publish this draft">Publish</button>
-            </form>
+            <button type="submit" form="single-story-publish-{{ s.id }}-form" class="btn btn-sm btn-primary" title="Publish this draft">Publish</button>
             {% elif not s.is_archived %}
-            <form method="post" action="{{ url_for('main.story_unpublish', sid=s.id) }}" style="display:inline">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-sm" title="Move to Drafts">Move to Drafts</button>
-            </form>
+            <button type="submit" form="single-story-unpublish-{{ s.id }}-form" class="btn btn-sm" title="Move to Drafts">Move to Drafts</button>
             {% endif %}
             {% if s.is_archived %}
-              <form method="post" action="{{ url_for('main.story_unarchive', sid=s.id) }}" style="display:inline">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-sm" title="Restore">Restore</button>
-              </form>
+              <button type="submit" form="single-story-unarchive-{{ s.id }}-form" class="btn btn-sm" title="Restore">Restore</button>
             {% else %}
-              <form method="post" action="{{ url_for('main.story_archive', sid=s.id) }}" style="display:inline">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-sm" title="Archive">Archive</button>
-              </form>
+              <button type="submit" form="single-story-archive-{{ s.id }}-form" class="btn btn-sm" title="Archive">Archive</button>
             {% endif %}
-            <form method="post" action="{{ url_for('main.story_delete', sid=s.id) }}" style="display:inline"
-                  onsubmit="return confirm('Delete this story permanently? Featured image will be cleaned up.');">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-            </form>
+            <button type="submit" form="single-story-delete-{{ s.id }}-form" class="btn btn-sm btn-danger"
+                    onclick="return confirm('Delete this story permanently? Featured image will be cleaned up.');">Delete</button>
           </div>
         </td>
       </tr>
@@ -132,6 +158,36 @@
     </tbody>
   </table>
 </section>
+
+</form>
+
+{# Per-row action stubs — separate forms (referenced by `form=` on the
+   button) so the row-action buttons can sit inside the bulk form
+   without nesting. Each one POSTs to a single-row endpoint. #}
+{% for s in stories %}
+{% if s.is_draft %}
+<form id="single-story-publish-{{ s.id }}-form" method="post" action="{{ url_for('main.story_publish', sid=s.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% elif not s.is_archived %}
+<form id="single-story-unpublish-{{ s.id }}-form" method="post" action="{{ url_for('main.story_unpublish', sid=s.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endif %}
+{% if s.is_archived %}
+<form id="single-story-unarchive-{{ s.id }}-form" method="post" action="{{ url_for('main.story_unarchive', sid=s.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% else %}
+<form id="single-story-archive-{{ s.id }}-form" method="post" action="{{ url_for('main.story_archive', sid=s.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endif %}
+<form id="single-story-delete-{{ s.id }}-form" method="post" action="{{ url_for('main.story_delete', sid=s.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endfor %}
+
 {% else %}
 <section class="card">
   <p class="muted">
@@ -179,5 +235,103 @@
     text-decoration: none;
   }
   .posts-title-btn:hover { text-decoration: underline; }
+
+  /* Bulk-action toolbar + bar — same chrome as the Posts admin
+     (defined locally there). Lifted here so the bulk-bar pill renders
+     correctly on /tspro/stories. The 1rem bottom margin separates the
+     "Showing N stories" line from the card below it. */
+  .posts-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;
+  }
+  .posts-meta { font-size: .88rem; }
+  .posts-bulkbar {
+    display: flex; align-items: center; gap: .4rem; flex-wrap: wrap;
+    background: var(--panel-2, var(--panel));
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: .35rem .55rem .35rem 1rem;
+  }
+  .posts-bulkbar[hidden] { display: none; }
+  .posts-bulkbar-count {
+    font-weight: 600; font-size: .88rem;
+    color: var(--text);
+  }
+  .posts-bulk-clear { margin-left: .25rem; }
+
+  .posts-th-check, .posts-td-check { width: 2.4rem; text-align: center; }
+  .posts-check-wrap {
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; padding: 4px;
+  }
+  .posts-check-wrap input { margin: 0; cursor: pointer; }
+
+  /* Visual emphasis on selected rows so it's obvious what's about to
+     get bulk-actioned. Matches the highlight used on the Posts admin. */
+  tr[data-story-row]:has(input[data-stories-row-check]:checked) {
+    background: color-mix(in srgb, var(--brand) 8%, transparent);
+  }
 </style>
+
+{% if stories %}
+<script>
+(function () {
+  // Bulk action wiring — same shape as the Posts admin. The host form
+  // owns the hidden `action` field and the `ids` checkboxes; clicking
+  // a bulk button writes the action name into the hidden field and
+  // submits. Selectall covers visible rows; per-row click syncs the
+  // counter and reveals the bar.
+  var form = document.getElementById('stories-bulk-form');
+  if (!form) return;
+  var bar = form.querySelector('[data-stories-bulkbar]');
+  var counter = form.querySelector('[data-bulk-count]');
+  var actionField = document.getElementById('stories-bulk-action');
+  var checkboxes = form.querySelectorAll('[data-stories-row-check]');
+  var selectAll = form.querySelector('[data-stories-selectall]');
+
+  function refresh() {
+    var n = 0;
+    checkboxes.forEach(function (c) { if (c.checked) n++; });
+    if (counter) counter.textContent = n + ' selected';
+    if (bar) bar.hidden = n === 0;
+    if (selectAll) {
+      selectAll.checked = n === checkboxes.length && n > 0;
+      selectAll.indeterminate = n > 0 && n < checkboxes.length;
+    }
+  }
+  checkboxes.forEach(function (c) {
+    c.addEventListener('change', refresh);
+  });
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      checkboxes.forEach(function (c) { c.checked = selectAll.checked; });
+      refresh();
+    });
+  }
+  form.querySelectorAll('[data-bulk]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var action = btn.dataset.bulk;
+      var n = 0;
+      checkboxes.forEach(function (c) { if (c.checked) n++; });
+      if (n === 0) return;
+      var confirmMsg = btn.dataset.bulkConfirm;
+      if (confirmMsg) {
+        if (!confirm(confirmMsg.replace('the selected stories', n + ' selected stor' + (n === 1 ? 'y' : 'ies')))) return;
+      }
+      actionField.value = action;
+      form.submit();
+    });
+  });
+  var clearBtn = form.querySelector('[data-bulk-clear]');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function () {
+      checkboxes.forEach(function (c) { c.checked = false; });
+      if (selectAll) { selectAll.checked = false; selectAll.indeterminate = false; }
+      refresh();
+    });
+  }
+  refresh();
+})();
+</script>
+{% endif %}
 {% endblock %}

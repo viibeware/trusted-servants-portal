@@ -82,6 +82,7 @@ class User(UserMixin, db.Model):
     dash_show_contact_form = db.Column(db.Boolean, nullable=False, default=True)
     dash_show_deletions = db.Column(db.Boolean, nullable=False, default=True)
     dash_show_currently_online = db.Column(db.Boolean, nullable=False, default=True)
+    dash_show_visitor_metrics = db.Column(db.Boolean, nullable=False, default=True)
     dash_order_json = db.Column(db.Text)
     last_seen_at = db.Column(db.DateTime)
     # Current navigation location for the live "who's online" widget.
@@ -2035,3 +2036,58 @@ class Page(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow,
                            onupdate=datetime.utcnow)
+
+
+class VisitorEvent(db.Model):
+    """One row per anonymous page view on the public frontend.
+
+    Logged-in users (anyone authenticated through the admin portal) are
+    excluded from this table — these are visitor metrics, not staff
+    metrics. The recording hook also skips asset requests, prefetches,
+    obvious bot traffic, and HEAD/OPTIONS pings, so the row count tracks
+    real human navigations on the public site.
+
+    `visitor_hash` is a daily-rotating one-way hash of (IP, UA, salt) used
+    to approximate "unique visitors" without storing the IP itself. The
+    salt rotates each UTC day so the same hash can't be linked back to a
+    person across days — the column is a privacy-preserving cardinality
+    estimator, not a stable identifier.
+    """
+    __tablename__ = "visitor_event"
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow,
+                           index=True)
+    # The path the visitor landed on (e.g. "/meetings", "/blog/foo"). Capped
+    # at 500 chars to match the rest of the codebase's path columns.
+    path = db.Column(db.String(500), nullable=False, index=True)
+    # Flask endpoint name when resolvable (e.g. "frontend.meeting_detail").
+    # Lets the metrics page bucket views by section without re-parsing the
+    # path. Nullable for catch-all routes the router couldn't resolve.
+    endpoint = db.Column(db.String(128), index=True)
+    # The Referer header trimmed to its origin (scheme + host). Full URLs
+    # would carry referral search terms / query strings we don't want to
+    # store; the origin is enough for "where did this visitor come from"
+    # reporting. None = direct / no referer.
+    referrer_host = db.Column(db.String(255))
+    # Parsed device class — one of "mobile" | "tablet" | "desktop" | "bot"
+    # | "other". The bot bucket is mostly a backstop; the recording hook
+    # already drops obvious crawlers before insert.
+    device = db.Column(db.String(16), index=True)
+    # Parsed browser family (e.g. "Chrome", "Safari", "Firefox", "Edge").
+    browser = db.Column(db.String(32), index=True)
+    # Parsed OS family (e.g. "macOS", "Windows", "iOS", "Android", "Linux").
+    os = db.Column(db.String(32), index=True)
+    # Daily-rotating one-way hash for unique-visitor approximation. Same
+    # visitor on the same UTC day → same hash; same visitor the next day
+    # → different hash. See VisitorEvent docstring above.
+    visitor_hash = db.Column(db.String(32), index=True)
+    # Stored separately from `created_at`'s indexed timestamp so the
+    # metrics query can compute "today" / "yesterday" / "7d" buckets in
+    # SQLite without a Python-side date conversion per row. Date-only,
+    # UTC, format YYYY-MM-DD.
+    day = db.Column(db.String(10), nullable=False, index=True)
+
+    __table_args__ = (
+        db.Index("ix_visitor_event_day_path", "day", "path"),
+        db.Index("ix_visitor_event_day_visitor", "day", "visitor_hash"),
+    )

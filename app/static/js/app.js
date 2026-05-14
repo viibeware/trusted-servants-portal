@@ -77,6 +77,50 @@
       a.addEventListener("click", () => side.classList.remove("open")));
   }
 
+  // ── Sidebar section collapse/expand ───────────────────────────────
+  // The labelled sections in #sidebar-nav (Intergroup / External /
+  // Admin) render with a toggle button as their divider. Click flips
+  // aria-expanded + hides the items wrapper; per-section state is
+  // persisted in localStorage so it survives reloads and the AJAX
+  // nav refresh fired after Settings saves.
+  const SIDEBAR_COLLAPSE_KEY = "tsp-sidebar-collapsed";
+  function readCollapsed() {
+    try {
+      const raw = localStorage.getItem(SIDEBAR_COLLAPSE_KEY);
+      if (!raw) return {};
+      const v = JSON.parse(raw);
+      return (v && typeof v === "object") ? v : {};
+    } catch (_) { return {}; }
+  }
+  function writeCollapsed(map) {
+    try { localStorage.setItem(SIDEBAR_COLLAPSE_KEY, JSON.stringify(map)); }
+    catch (_) {}
+  }
+  function applySidebarSectionState() {
+    const state = readCollapsed();
+    document.querySelectorAll(".sidebar-section-toggle").forEach(btn => {
+      const key = btn.dataset.sidebarSection;
+      if (!key) return;
+      const collapsed = !!state[key];
+      btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      const items = document.getElementById(btn.getAttribute("aria-controls"));
+      if (items) items.hidden = collapsed;
+    });
+  }
+  document.addEventListener("click", e => {
+    const btn = e.target.closest(".sidebar-section-toggle");
+    if (!btn) return;
+    e.preventDefault();
+    const key = btn.dataset.sidebarSection;
+    if (!key) return;
+    const state = readCollapsed();
+    const nowCollapsed = !state[key];
+    if (nowCollapsed) state[key] = true; else delete state[key];
+    writeCollapsed(state);
+    applySidebarSectionState();
+  });
+  applySidebarSectionState();
+
   document.addEventListener("click", (e) => {
     const btn = e.target.closest(".help-btn");
     const openEls = document.querySelectorAll(".heading-help.open");
@@ -670,6 +714,7 @@
           .then(html => {
             const nav = document.getElementById("sidebar-nav");
             if (nav) nav.innerHTML = html;
+            applySidebarSectionState();
           }),
         refreshManual ? fetch("/tspro/_sidebar/order-manual", {
           credentials: "same-origin",

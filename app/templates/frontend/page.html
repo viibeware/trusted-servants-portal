@@ -13,6 +13,21 @@
   'xl':   '0 24px 60px rgba(15,23,42,0.18)',
 } -%}
 
+{# Normalise a per-side padding value into a CSS-ready string. The
+   editor now stores per-side fields as full CSS-value strings ("16px",
+   "2rem", "5%"). Legacy saves carried bare integers interpreted as px;
+   handle both forms so existing containers keep their look. #}
+{%- macro pad_side(v) -%}
+  {%- if v in (none, '') -%}0
+  {%- elif v is number -%}{{ v }}px
+  {%- else -%}
+    {%- set _vs = v | string | trim -%}
+    {%- if _vs.lstrip('-').replace('.', '', 1).isdigit() -%}{{ _vs }}px
+    {%- else -%}{{ _vs }}
+    {%- endif -%}
+  {%- endif -%}
+{%- endmacro -%}
+
 {%- macro pp_container_styles(d) -%}
   {%- set _styles = [] -%}
   {%- set _disp = d.display or 'flex' -%}
@@ -45,11 +60,45 @@
   {%- set _ = _styles.append('gap: ' ~ (d.gap or '1rem')) -%}
   {# Padding emitted as a CSS var (not a direct `padding:` declaration)
      so the mobile media query can override it without an inline-style
-     specificity war. `padding_mobile` adds a second var the mobile
-     breakpoint prefers; blank means "mobile padding = desktop". #}
-  {%- set _ = _styles.append('--block-cont-padding: ' ~ (d.padding or '1rem')) -%}
-  {%- set _padm = (d.get('padding_mobile') or '') | string | trim -%}
-  {%- if _padm -%}{%- set _ = _styles.append('--block-cont-padding-mobile: ' ~ _padm) -%}{%- endif -%}
+     specificity war. Per-side fields (`padding_top` / `_right` / `_bottom`
+     / `_left`) take precedence when any is non-empty; legacy
+     `d.padding` shorthand still applies as a fallback for containers
+     saved before the per-side editor split. `padding_mobile`
+     (per-side `padding_mobile_top` etc., or legacy shorthand)
+     overrides at ≤720 px. #}
+  {%- set _pt = d.get('padding_top') -%}
+  {%- set _pr = d.get('padding_right') -%}
+  {%- set _pb = d.get('padding_bottom') -%}
+  {%- set _pl = d.get('padding_left') -%}
+  {%- set _per_side_any =
+        (_pt not in (none, '')) or (_pr not in (none, ''))
+     or (_pb not in (none, '')) or (_pl not in (none, '')) -%}
+  {%- if _per_side_any -%}
+    {# Per-side values: full CSS-value strings ("16px", "2rem", "5%"
+       — what the editor saves now). Legacy fields carried bare ints
+       (px); the `_pad_side` helper macro at the top of this template
+       normalises both forms. #}
+    {%- set _ptv = pad_side(_pt) -%}
+    {%- set _prv = pad_side(_pr) -%}
+    {%- set _pbv = pad_side(_pb) -%}
+    {%- set _plv = pad_side(_pl) -%}
+    {%- set _ = _styles.append('--block-cont-padding: ' ~ _ptv ~ ' ' ~ _prv ~ ' ' ~ _pbv ~ ' ' ~ _plv) -%}
+  {%- else -%}
+    {%- set _ = _styles.append('--block-cont-padding: ' ~ (d.padding or '1rem')) -%}
+  {%- endif -%}
+  {%- set _pmt = d.get('padding_mobile_top') -%}
+  {%- set _pmr = d.get('padding_mobile_right') -%}
+  {%- set _pmb = d.get('padding_mobile_bottom') -%}
+  {%- set _pml = d.get('padding_mobile_left') -%}
+  {%- set _per_side_mob_any =
+        (_pmt not in (none, '')) or (_pmr not in (none, ''))
+     or (_pmb not in (none, '')) or (_pml not in (none, '')) -%}
+  {%- if _per_side_mob_any -%}
+    {%- set _ = _styles.append('--block-cont-padding-mobile: ' ~ pad_side(_pmt) ~ ' ' ~ pad_side(_pmr) ~ ' ' ~ pad_side(_pmb) ~ ' ' ~ pad_side(_pml)) -%}
+  {%- else -%}
+    {%- set _padm = (d.get('padding_mobile') or '') | string | trim -%}
+    {%- if _padm -%}{%- set _ = _styles.append('--block-cont-padding-mobile: ' ~ _padm) -%}{%- endif -%}
+  {%- endif -%}
   {# Background / border-color / shadow are emitted as INLINE CSS
      VARIABLES, not direct properties. A global `.block-container`
      rule in frontend.css reads the variables for the rest state.
@@ -355,6 +404,10 @@
               'faq': d.get('items') or [],
               'faq_heading': d.get('heading'),
               'faq_subheading': d.get('subheading'),
+              'faq_columns': d.get('columns'),
+              'faq_width_mode': d.get('width_mode'),
+              'faq_pad_x': d.get('pad_x'),
+              'faq_no_chrome': True,
             } -%}
       {%- include "frontend/blocks/faq.html" -%}
     {%- endwith -%}
@@ -538,7 +591,13 @@
 {%- set _width_mode = (page.width_mode or 'boxed') -%}
 {%- if _width_mode == 'full' -%}
   {%- set _pad_pct = (page.full_padding_pct if page.full_padding_pct is not none else 4) | int -%}
-  {%- set _shell_style = 'max-width: none; padding-left: ' ~ _pad_pct ~ 'vw; padding-right: ' ~ _pad_pct ~ 'vw' -%}
+  {# Emit the per-page full-width padding as a custom property rather
+     than as direct `padding-left/right` so the public CSS can override
+     it under media queries (specifically the mobile breakpoint at
+     ≤768px, where the site-wide design token wins so admins always
+     have a single global lever for mobile gutter even on full-bleed
+     pages). The inline declaration still takes precedence on desktop. #}
+  {%- set _shell_style = 'max-width: none; --fe-pp-pad-x-full: ' ~ _pad_pct ~ 'vw' -%}
 {%- else -%}
   {%- set _mw = (page.max_width or 1160) | int -%}
   {%- set _shell_style = 'max-width: ' ~ _mw ~ 'px' -%}

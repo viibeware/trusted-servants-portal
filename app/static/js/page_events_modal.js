@@ -86,15 +86,23 @@
       edits.set(activeBlockId, modalData);
       const sections = readSections();
       let touched = false;
+      let touchedBlock = null;
       for (const sec of sections) {
         walkBlocks(sec.blocks || [], (b) => {
           if (b.id === activeBlockId) {
             b.data = Object.assign({}, b.data || {}, modalData);
             touched = true;
+            touchedBlock = b;
           }
         });
       }
-      if (touched) writeSections(sections);
+      if (touched) {
+        writeSections(sections);
+        if (touchedBlock && typeof window.tspSyncStructurePayloadOne === 'function') {
+          try { window.tspSyncStructurePayloadOne(activeBlockId, touchedBlock); }
+          catch (_) {}
+        }
+      }
     }
 
     function populateModalFromBlock(block) {
