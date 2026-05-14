@@ -129,6 +129,56 @@
 </div>
 {% endmacro %}
 
+{# One row of the Sidebar custom-links editor (Sidebar template only —
+   below the day-pill rail). `idx` scopes the form-field names; the JS
+   swaps `__INDEX__` with a fresh integer when cloning the empty
+   template. Each row carries: label, URL, link-type radio toggle
+   (internal → chevron-right; external → external-link icon), and an
+   open-in-new-tab checkbox. Parser keys off `sidebar_link_present`
+   so submission order = render order. #}
+{% macro _sidebar_link_row(idx, item) %}
+{%- set _lt = (item.link_type if item else 'internal') or 'internal' -%}
+<div class="fe-mlist-link-card" data-mlist-link-item data-item-index="{{ idx }}">
+  <input type="hidden" name="sidebar_link_present" value="{{ idx }}">
+  <div class="fe-mlist-link-fields">
+    <input class="fe-mlist-link-label" type="text"
+           name="sidebar_link_{{ idx }}_label"
+           value="{{ (item.label if item else '') or '' }}"
+           placeholder="Link label — e.g. Pro Tips, Code of Conduct"
+           maxlength="200">
+    <input class="fe-mlist-link-url" type="text"
+           name="sidebar_link_{{ idx }}_url"
+           value="{{ (item.url if item else '') or '' }}"
+           placeholder="/page-slug or https://example.org"
+           maxlength="600">
+    <div class="fe-mlist-link-options">
+      <div class="fe-mlist-link-type" role="radiogroup" aria-label="Link icon">
+        <label class="fe-mlist-link-type-opt">
+          <input type="radio"
+                 name="sidebar_link_{{ idx }}_type" value="internal"
+                 {% if _lt == 'internal' %}checked{% endif %}>
+          <span>{{ icon('chevron-right') }} Internal</span>
+        </label>
+        <label class="fe-mlist-link-type-opt">
+          <input type="radio"
+                 name="sidebar_link_{{ idx }}_type" value="external"
+                 {% if _lt == 'external' %}checked{% endif %}>
+          <span>{{ icon('external-link') }} External</span>
+        </label>
+      </div>
+      <label class="fe-mlist-link-newtab">
+        <input type="checkbox"
+               name="sidebar_link_{{ idx }}_new_tab" value="1"
+               {% if item and item.open_in_new_tab %}checked{% endif %}>
+        <span>Open in new tab</span>
+      </label>
+    </div>
+  </div>
+  <button type="button" class="fe-mlist-link-remove" data-mlist-link-remove
+          title="Remove link" aria-label="Remove link">{{ icon('trash') }}</button>
+</div>
+{% endmacro %}
+
 {# Reusable customize panel — Background / Fonts / Sizes 3-column
    grid wrapped in a <details> dropdown, with its own form posting
    to `frontend_template_settings_save`. Pulled into its own macro
@@ -1043,6 +1093,24 @@
         </button>
       </div>
     </fieldset>
+    {%- set _slinks = meetings_list_sidebar_links -%}
+    <fieldset class="fieldset fe-mlist-links-fieldset">
+      <legend>Sidebar custom links</legend>
+      <p class="muted small" style="margin: 0 0 8px;">Renders below the day-of-week filters in the <b>Sidebar</b> meetings-list template, separated by a divider line. Use for in-site shortcuts (Pro Tips, Code of Conduct) or external resources (your fellowship's main site, an outside-issues page). Internal links render with a chevron; external links render with an external-link icon and can open in a new tab.</p>
+      <div class="fe-mlist-links-editor" data-mlist-links-editor>
+        <div class="fe-mlist-links-list" data-mlist-links-list>
+          {% for ln in _slinks %}
+            {{ _sidebar_link_row(loop.index0, ln) }}
+          {% endfor %}
+        </div>
+        <template data-mlist-links-template>
+          {{ _sidebar_link_row('__INDEX__', None) }}
+        </template>
+        <button type="button" class="btn btn-sm" data-mlist-links-add>
+          {{ icon('plus') }} <span>Add link</span>
+        </button>
+      </div>
+    </fieldset>
     <div class="form-actions">
       <a class="btn" href="{{ url_for('frontend.meetings_list') }}" target="_blank" rel="noopener">Preview /meetings ↗</a>
       <button class="btn btn-primary">Save Meetings list</button>
@@ -1852,6 +1920,40 @@
     });
 
     refreshCount();
+  });
+
+  // ---- Sidebar custom-links editor: add / remove row -------------
+  // Same `__INDEX__` cloning pattern as Pro Tips, keyed off
+  // `sidebar_link_present` so submission order = render order.
+  document.querySelectorAll('[data-mlist-links-editor]').forEach(editor => {
+    const list = editor.querySelector('[data-mlist-links-list]');
+    const tpl = editor.querySelector('[data-mlist-links-template]');
+    const addBtn = editor.querySelector('[data-mlist-links-add]');
+    if (!list || !tpl || !addBtn) return;
+
+    let nextIdx = 0;
+    list.querySelectorAll('[data-mlist-link-item]').forEach(card => {
+      const i = parseInt(card.dataset.itemIndex, 10);
+      if (Number.isFinite(i) && i >= nextIdx) nextIdx = i + 1;
+    });
+
+    list.addEventListener('click', e => {
+      const btn = e.target.closest('[data-mlist-link-remove]');
+      if (!btn) return;
+      const card = btn.closest('[data-mlist-link-item]');
+      if (card) card.remove();
+    });
+
+    addBtn.addEventListener('click', () => {
+      const idx = nextIdx++;
+      const html = tpl.innerHTML.replace(/__INDEX__/g, String(idx));
+      const wrap = document.createElement('div');
+      wrap.innerHTML = html.trim();
+      const card = wrap.firstElementChild;
+      list.appendChild(card);
+      const labelInp = card.querySelector('.fe-mlist-link-label');
+      if (labelInp) labelInp.focus();
+    });
   });
 </script>
 

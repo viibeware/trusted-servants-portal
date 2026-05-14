@@ -6,6 +6,121 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [1.10.1] — 2026-05-14
+
+### Changed — Announcements + Events list templates now sort by post date (newest first)
+
+Both `/announcements` and `/events` list pages used to order by `Post.created_at` (announcements) or `Post.event_starts_at` ascending (events, via the shared `filtered_events` helper). Switched both to `coalesce(published_at, created_at) desc` so the cards land newest-published first regardless of when each event runs. Back-dated posts surface in the right slot; rows with NULL `published_at` (legacy imports) still sort sensibly via creation time. The events list keeps its "upcoming only" filter (past events go to /archive); the homepage Upcoming Events block still uses `filtered_events` with chronological ordering — that helper is unchanged. The GSR Summary panel inside the announcements omni layout is a sub-render of the same `all_announcements` list, so it picks up the new sort automatically. GSR Summary subheading trimmed to "Fellowship news, in brief."
+
+### Changed — Event website URL field accepts relative paths
+
+The post-edit page's Event website URL input was `<input type="url">`, which the browser validated against the URL spec — rejecting relative paths like `/about-us`. Switched to `<input type="text" inputmode="url">` (mobile URL keyboard preserved) so admins can point at internal pages on the same domain as well as full external URLs. Placeholder + label updated to hint both shapes (`https://example.org/event or /page-slug`). No server-side / render-side changes needed: the save endpoint already only length-bounds the value, and browsers resolve relative `href`s against the current domain.
+
+### Changed — Frontend meeting detail: description column caps at 75% above 1024 px
+
+The description prose on the public meeting-detail page used to stretch the full container width on every viewport, producing uncomfortable line lengths on widescreen monitors. New `max-width: 75%` cap above 1024 px (and `max-width: 100%` at 1024 px and under, so tablets / landscape phones / split-screen still get the full width). Applied across all four detail templates (Classic, Minimal, Card Stack, Magazine) via their respective description-container classes (`.fe-meeting-detail-desc`, `.fe-meeting-min-desc`, `.fe-meeting-stack-prose`, `.fe-meeting-mag-prose`) so the column reads consistently regardless of which template is selected.
+
+### Changed — Frontend export bundle: posts excluded, verbatim coverage tightened
+
+The frontend bundle is now strictly look-and-feel (settings, navigation, layouts, fonts, icons, design tokens, pages, stories, intergroup officers, media). Three coordinated changes:
+
+- **Posts dropped from export.** The `posts` collection (every `Post` row) and the `slug_history` collection (which only carried `post` entries) no longer appear in the payload. Per-post asset scan removed. The import side keeps its backwards-compat path so old bundles that DO contain posts still restore them; new bundles produced by this function omit them. Posts are per-deployment editorial content — shipping them silently overwrote the destination's editorial state.
+- **Homepage padding bug fixed on import.** Found the cause of "frontend export keeps resetting the side padding on the homepage": the page-import path used `int(p.get("pad_x") or 16)` which silently rewrote any explicit `0` to the default (because `0 or 16 == 16` in Python). Switched every integer column on Page (`pad_x`, `pad_top`, `pad_bottom`, `section_gap`, `block_margin_y`, `max_width`, `full_padding_pct`, `bg_tile_scale`) to the existing `_opt_int` helper, which only falls back to the default when the key is missing or non-numeric. Full-bleed pages with `full_padding_pct: 0` now round-trip verbatim.
+- **Setting scope widened for module gates.** Added `posts_`, `stories_`, `blog_` to the prefix list in `_frontend_setting_keys`, capturing the 6 module-gate columns (`*_enabled` + `*_required_role`) that control whether the public Events / Announcements / Stories / Blog surfaces serve at all. They're frontend behaviour even though they don't carry a `frontend_` prefix in the schema.
+
+### Fixed — Auto-stamped Post / Story `published_at` honours the site timezone
+
+`Post.published_at` (and `Story.published_at`) is stored as a naive datetime that the form parser (`_parse_post_dt`) reads as the admin's local wall-clock time, and that the display layer renders straight through `.strftime()` — so the storage convention is "naive = site-local". But the auto-stamp paths used `datetime.utcnow()`, writing UTC into the same column. Display then rendered UTC as if it were local, producing wrong wall-clock times offset by the admin's tz from UTC (e.g. 5 PM PDT showing as 12 AM next day).
+
+New helper `app/timezone.py::now_local_naive(site)` returns the current site-local datetime with `tzinfo` stripped. Wired into:
+- `post_save` route — the draft → publish stamp + the default `published_at` for newly created posts.
+- `post_publish` route — the inline draft → publish flip from the list page.
+- `story_save` route — same pattern, fixed prophylactically so the same bug doesn't surface on stories.
+
+Form-entered values were already correct (naive site-local). Existing rows with UTC-stamped `published_at` will keep showing at the wrong time until republished — re-saving the post writes a fresh local-naive value into the column.
+
+### Fixed — Publish / Move-to-Drafts buttons on the post-edit page now save in-progress edits
+
+The `Publish` button on a draft (and the `Move to Drafts` button on a published post) used to POST to the dedicated `post_publish` / `post_unpublish` state-flip routes, which never saw the post-edit form's fields — so clicking either without first clicking `Save draft` / `Save post` threw away every edit the admin had made. Both buttons now submit the post-edit form with `action=publish` / `action=draft`. `post_save` already handled both values to flip `is_draft` AND save the form fields AND (with the recent draft → publish change) stamp `published_at = now`, so the buttons now do exactly what the labels suggest. The standalone `post_publish` route stays in place for the per-row inline `Publish` button on the list page where there's no form to save.
+
+### Changed — Drafts and pending submissions don't log URL redirects on slug changes
+
+Renaming a draft used to insert a row in `EntitySlugHistory` for every slug change, polluting the redirect table with mappings from URLs the public never saw. Captured `_was_public = (not creating) and (not is_draft) and (not is_pending_review)` before mutating the post and gated the `EntitySlugHistory` insert on it.
+
+- Editing a draft and renaming it → no redirect (URL was never public).
+- Publishing a draft (with or without a slug change during the same save) → no redirect from the old draft slug; the post starts its public life cleanly at the new URL.
+- Renaming a published post → redirect logged as before.
+- Moving a published post back to drafts → no new redirect; subsequent slug changes don't log either until the post is republished.
+
+### Added — Live title → slug sync on the post-edit page with highlight pulse
+
+Every keystroke in the **Title** field now rewrites the URL field client-side using the same `_normalize_slug` rules the server runs on save (lowercase, non-alphanumeric runs collapse to `-`, leading/trailing hyphens stripped, 200-char cap). The URL row picks up an accent-tinted background + brand-coloured border + a soft brand-coloured ring; the slug text shifts to the brand colour. Highlight fades out ~1.4 s after the last edit (animation restarts on each keystroke so it stays visible while typing).
+
+### Changed — Draft → publish transition stamps `published_at` with the current time
+
+Both publish paths (the dedicated `post_publish` route AND `post_save` when the form's `action=publish` button is clicked) now overwrite `published_at` with `datetime.utcnow()` whenever the post was actually a draft on the way in. Matches the principle that "Posted on …" should reset to "now" the first time a piece of content actually goes live, regardless of whatever date the admin had keyed into the form for back-dating earlier. No-op when the post is already published or when the save doesn't flip draft status.
+
+### Changed — Post slug auto-derives from title when the title changes
+
+`post_save` previously trusted the slug input regardless of whether the editor touched it — and the slug input is pre-populated from the database, so renaming a post left the public URL pinned to the old title. Reworked the slug-resolution branch:
+
+- **Title changed** (or creating a new post) → re-derive the slug from the new title and ignore the slug input. The existing `_unique_post_slug` sweep appends `-2` / `-3` / … on collision; flash message surfaces the suffix when it had to disambiguate ("URL auto-derived to "test-event-2" to avoid collision with another post").
+- **Title unchanged** → respect the editor's explicit slug input (existing behavior preserved). Editors can still rename the URL without touching the title.
+
+Slug-history redirect logging continues to fire on any `public_slug` change, so the previous URL keeps working via the existing 301 fallback even when the title-driven auto-derive flips the slug.
+
+### Added — Announcements & Events admin: Duplicate button surfaced
+
+The `post_duplicate` route already existed (clones a post into a fresh Draft with a `(copy)` title suffix, redirects to the Drafts tab) but the UI didn't expose it — the Drafts empty-state message even read "Duplicate an active post to start one" without offering anywhere to do so. Surfaced the action in two places:
+
+- **List page (`/tspro/announcementsevents`)** — every row gets a `Duplicate` button between `Edit` and `Publish` / `Drafts`. Hidden on pending-review submissions.
+- **Edit page (`/tspro/announcementsevents/<pid>`)** — top-action row gets a `Duplicate` button between Archive/Restore and Delete. Hidden on brand-new posts and pending-review submissions.
+
+Featured-image filename is shared on the duplicate (uploads are content-addressed, so two rows pointing at the same stored file is fine — the cleanup helper sees the reference).
+
+### Changed — Homepage Meetings + Events blocks: dropped inner `.fe-container` wrapper
+
+The `frontend/blocks/meetings.html` and `frontend/blocks/events.html` partials wrapped their content in `<div class="fe-container">`. After flipping `--fe-container-pad-desktop` to `5vw`, that token padding was being added on top of whatever the page-builder container providing the block also set — squeezing the meeting cards grid into too-narrow columns at intermediate desktop viewports and crushing the events list. Both partials now skip the `.fe-container` wrapper entirely so the surrounding page-builder container is the sole source of width + horizontal padding.
+
+- Both blocks are page-builder-only (only included from `frontend/page.html` after the 1.9.0 homepage retirement), so dropping the wrapper has no other consumers to worry about.
+- Width clamping moves to the parent container (admins set `max-width` per container as part of the page-builder); blocks render at 100 % of the surrounding container's content width.
+
+### Changed — Container padding desktop default flipped to 5vw
+
+`container_pad_desktop` shipped at `0` in 1.10.0 on the assumption that the boxed `max-width: 1160px` cap would always provide a desktop gutter — but at intermediate viewport widths (~768–1160 px) the cap doesn't engage and content runs to the viewport edge. Theme defaults flipped to `5vw` (matches mobile), so every block that wraps in `.fe-container` (meeting detail, event detail, meetings list in boxed mode, hero/CTA/inclusion blocks) now carries a visible left/right gutter at all desktop widths. Admin can still override per-deployment under Site → Design → Layout.
+
+### Added — Meetings list (Sidebar template) — location name + address in column 3 for in-person / hybrid
+
+The 3-column expanded meeting card on the Sidebar layout now renders a location pane at the top of column 3 — above the Zoom credentials, Get Directions, and Add to Calendar buttons. Bold location name + muted address lines (street, then city/state/zip) when the meeting's free-text location resolves against a saved Location row; falls back to the bare free-text string for custom locations that don't match.
+
+- Server-side resolver batches the `Location.query.all()` lookup once per page request, builds a `meeting_locations` dict keyed by meeting id, and passes it to the template — no N+1 follow-ups.
+- Online-only meetings skip the pane entirely.
+- The Directory and Week-board layouts already render location info in column 2; this change only affects the Sidebar 3-column render.
+
+### Added — Meetings list (Sidebar template) — admin-curated custom links rail
+
+A new "Sidebar custom links" fieldset under **Frontend → Templates → Meetings list** lets admins add internal or external links that render below the day filters under a divider line in the Sidebar layout's rail. Internal links get a chevron-right at the far right; external links get an external-link icon and an optional "Open in new tab" toggle.
+
+- Per row: Label, URL, Internal/External chip-style toggle, Open-in-new-tab checkbox.
+- Storage: new `SiteSetting.frontend_meetings_list_sidebar_links_json` column (TEXT, nullable, additive migration).
+- Resolver `meetings_list_sidebar_links_resolved(site)` clamps unknown link types to `internal` and drops rows missing label OR URL.
+- Public links inherit the rail's text colour at every state (no link-blue, no underline) and only the background tints on hover.
+
+### Changed — Backend meeting detail: View on Frontend button gate + placement
+
+The "View on Frontend ↗" button on `/tspro/meetings/<slug>` was gated on `frontend_enabled` (public visibility) so it disappeared whenever public access was off — even though signed-in editors can preview the page either way. Switched to the `frontend_module_enabled` gate (module on/off). Also reordered so Edit comes first and View on Frontend sits immediately to its right at the top of the action row, ahead of Archive/Restore + Delete.
+
+### Changed — Frontend meeting detail Files & Readings: drop file description text
+
+`_resources.html` no longer renders the muted `<span>` carrying `f.description` beneath each link. Each row is now just the title + the trailing `↗` arrow, applied across all four meeting templates (Classic, Magazine, Card Stack, Minimal) since they share the same partial.
+
+### Added — Settings → About: Release notes section above the Changelog
+
+A new release-notes data source ships alongside the changelog, displayed first in the About tab inside an open `<details>` (changelog moves into a closed `<details>` underneath). New file `app/templates/_release_notes.html` (HTML partial) + `RELEASE_NOTES.md` (markdown mirror) at the repo root. Friendly per-version summaries cover every version bump from 1.0 → 1.10.0 — patch versions grouped under their parent (e.g. "1.7.0 – 1.7.17") to keep the section scannable.
+
+- Both `<details>` blocks get a tinted card chrome with a custom rotating chevron caret.
+- About-pane outer `padding: 24px` removed (`padding: 0`) so the new chrome sits flush against the modal panel edges.
+
 ## [1.10.0] — 2026-05-14
 
 ### Added — Hero block buttons: icon picker + design-token colour pickers

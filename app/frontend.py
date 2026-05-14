@@ -351,6 +351,43 @@ MEETINGS_LIST_PROTIPS_DEFAULTS = {
 }
 
 
+def meetings_list_sidebar_links_resolved(site):
+    """Return the admin-curated custom links rendered in the Sidebar
+    template's day-filter rail. Each link is normalised to:
+       {label, url, link_type: "internal"|"external", open_in_new_tab}
+    Empty / missing JSON returns an empty list — the public template
+    skips the divider + section entirely when the list is empty."""
+    import json as _json
+    raw = (site.frontend_meetings_list_sidebar_links_json
+           if site and site.frontend_meetings_list_sidebar_links_json else None)
+    if not raw:
+        return []
+    try:
+        items_raw = _json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(items_raw, list):
+        return []
+    out = []
+    for raw_item in items_raw:
+        if not isinstance(raw_item, dict):
+            continue
+        label = (raw_item.get("label") or "").strip()
+        url = (raw_item.get("url") or "").strip()
+        if not (label and url):
+            continue
+        link_type = (raw_item.get("link_type") or "internal").strip().lower()
+        if link_type not in ("internal", "external"):
+            link_type = "internal"
+        out.append({
+            "label":            label[:200],
+            "url":              url[:600],
+            "link_type":        link_type,
+            "open_in_new_tab":  bool(raw_item.get("open_in_new_tab")),
+        })
+    return out
+
+
 def meetings_list_protips_resolved(site):
     """Merge the admin-saved Pro Tips JSON onto the defaults so missing
     fields always have a sensible value. Returns the canonical dict the
@@ -1437,6 +1474,26 @@ def meetings_list():
     for bucket in day_buckets:
         for item in bucket["items"]:
             item["search_blob"] = _blobs.get(item["meeting"].id, "")
+
+    # Resolve each meeting's free-text location string against the saved
+    # Location rows so the card can render a full split address (name +
+    # street + city/state/zip) in the actions column for in-person /
+    # hybrid meetings — same case-insensitive trimmed match the public
+    # meeting-detail route uses, just batched across the whole list to
+    # stay one DB round-trip. Custom locations that don't match any
+    # saved row are absent from the dict; the template falls back to
+    # the bare `m.location` string in that case.
+    from .models import Location
+    _loc_by_norm = {}
+    for _l in Location.query.all():
+        if _l.name:
+            _loc_by_norm[_l.name.strip().lower()] = _l
+    location_records = {}
+    for m in meetings:
+        if m.meeting_type in ("in_person", "hybrid") and m.location:
+            rec = _loc_by_norm.get((m.location or "").strip().lower())
+            if rec is not None:
+                location_records[m.id] = rec
     # Display order is Sun → Sat (US calendar convention) even though the
     # underlying day_of_week enum stays 0=Mon..6=Sun. The `day` field on
     # each bucket carries the canonical number so JS day filters keep
@@ -1468,6 +1525,7 @@ def meetings_list():
     list_heading = (site.frontend_meetings_list_heading if site else None) or ""
     list_subheading = (site.frontend_meetings_list_subheading if site else None) or ""
     list_protips = meetings_list_protips_resolved(site)
+    list_sidebar_links = meetings_list_sidebar_links_resolved(site)
     return render_template("frontend/meetings_list.html",
                            list_partial=tpl["partial"],
                            list_template_key=tpl["key"],
@@ -1478,8 +1536,10 @@ def meetings_list():
                            list_heading=list_heading,
                            list_subheading=list_subheading,
                            list_protips=list_protips,
+                           list_sidebar_links=list_sidebar_links,
                            all_meetings=meetings,
                            meetings_by_day=day_buckets,
+                           meeting_locations=location_records,
                            **ctx)
 
 
@@ -2190,8 +2250,32 @@ def events_list():
     if not site or not getattr(site, "posts_enabled", True):
         abort(404)
     ctx = _frontend_context(site)
-    from .blocks import filtered_events
-    all_events = filtered_events({"max_count": 500}, site=site)
+    # Direct query (not the shared `filtered_events` helper, which
+    # orders by `event_starts_at` ascending for the homepage block).
+    # The /events list sorts by post order — newest published at the
+    # top — to match the announcements list behaviour and surface
+    # recent additions first regardless of when each event runs.
+    # Past events still drop off so the public list stays "upcoming
+    # only"; /archive is the home for ended events.
+    from datetime import datetime as _dt
+    from sqlalchemy import func as _sql_func
+    _now = _dt.utcnow()
+    _rows = (Post.query
+             .filter(Post.is_event.is_(True),
+                     Post.is_archived.is_(False),
+                     Post.is_draft.is_(False),
+                     Post.is_pending_review.is_(False))
+             .order_by(_sql_func.coalesce(Post.published_at,
+                                          Post.created_at).desc())
+             .all())
+    all_events = []
+    for p in _rows:
+        ref_end = p.event_ends_at or p.event_starts_at
+        if ref_end is None or ref_end < _now:
+            continue
+        all_events.append(p)
+        if len(all_events) >= 500:
+            break
     tpl = _template_meta(EVENTS_LIST_TEMPLATES,
                          (site.frontend_events_list_template if site else None) or "cards")
     width_mode = (site.frontend_events_list_width_mode if site else None) or "boxed"
@@ -2482,12 +2566,19 @@ def announcements_list():
         abort(404)
     ctx = _frontend_context(site)
 
+    # Newest-first by post order. `display_posted` prefers the admin-
+    # set `published_at` over the auto `created_at`, so the SQL sort
+    # mirrors that priority via `coalesce` — back-dated posts surface
+    # in the right slot, and rows with NULL `published_at` (legacy
+    # imports) still sort sensibly via their creation time.
+    from sqlalchemy import func as _sql_func
     rows = (Post.query
             .filter(Post.is_announcement.is_(True),
                     Post.is_archived.is_(False),
                     Post.is_draft.is_(False),
                           Post.is_pending_review.is_(False))
-            .order_by(Post.created_at.desc())
+            .order_by(_sql_func.coalesce(Post.published_at,
+                                         Post.created_at).desc())
             .all())
 
     tpl = _template_meta(ANNOUNCEMENTS_LIST_TEMPLATES,

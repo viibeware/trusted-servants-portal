@@ -1217,7 +1217,24 @@
             </div>
           </div>
 
-          <h3 class="about-sub">Changelog</h3>
+          {# Release notes — friendly, scannable summary of every version
+             bump. Default open so the About tab leads with what's new
+             without forcing the visitor to expand a section. The
+             changelog below carries the full implementation detail
+             behind a closed <details>. #}
+          <details class="about-rel-notes" open>
+            <summary class="about-sub-summary">
+              <h3 class="about-sub">Release notes</h3>
+              <span class="muted smaller">What's new in each version, in plain English.</span>
+            </summary>
+            {% include "_release_notes.html" %}
+          </details>
+
+          <details class="about-changelog">
+            <summary class="about-sub-summary">
+              <h3 class="about-sub">Changelog</h3>
+              <span class="muted smaller">The full implementation log — every change in technical detail.</span>
+            </summary>
           <ul class="changelog">
             <li>
               <div class="u-name">1.9.1</div>
@@ -1877,6 +1894,7 @@
               </ul>
             </li>
           </ul>
+          </details>
         </div>
       </div>
     </div>

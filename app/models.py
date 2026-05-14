@@ -882,6 +882,12 @@ class SiteSetting(db.Model):
     # bg_color, items[]. NULL = use defaults from
     # `meetings_list_protips_defaults()` in app/frontend.py.
     frontend_meetings_list_protips_json = db.Column(db.Text)
+    # Admin-curated custom links rendered in the Sidebar template's
+    # day-filter rail (below the days, under a divider). JSON list of
+    # {label, url, link_type: "internal"|"external", open_in_new_tab}.
+    # NULL / empty = no extra links. Resolved by
+    # `meetings_list_sidebar_links_resolved()` in app/frontend.py.
+    frontend_meetings_list_sidebar_links_json = db.Column(db.Text)
     frontend_event_template = db.Column(db.String(64), nullable=False, default="classic")
     # Per-template appearance overrides. JSON dict keyed by content type +
     # template key, e.g. {"meeting": {"card_stack": {"bg": "#fff", ...}}}.

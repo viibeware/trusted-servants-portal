@@ -159,11 +159,12 @@ THEME_DEFAULTS = {
 
         "section_gap":        "lg",
         "container_max_px":   1160,
-        # Horizontal padding applied inside `.fe-container`. Desktop
-        # defaults to 0 (the max-width cap + auto margins already gutter
-        # content on wide screens); mobile defaults to 5vw so content
-        # doesn't crash into the screen edges on phones.
-        "container_pad_desktop": "0",
+        # Horizontal padding applied inside `.fe-container`. Defaults
+        # to 5vw on both viewports so content always carries a visible
+        # gutter — important on intermediate widths (~768–1160 px) where
+        # the boxed max-width cap doesn't yet engage and content would
+        # otherwise reach the viewport edge.
+        "container_pad_desktop": "5vw",
         "container_pad_mobile":  "5vw",
         "card_radius":        "lg",
         "card_shadow":        "md",
@@ -252,7 +253,7 @@ THEME_DEFAULTS = {
 
         "section_gap":        "lg",
         "container_max_px":   1200,
-        "container_pad_desktop": "0",
+        "container_pad_desktop": "5vw",
         "container_pad_mobile":  "5vw",
         "card_radius":        "md",
         "card_shadow":        "sm",
@@ -347,8 +348,8 @@ DESIGN_FIELDS = [
      "group": "Layout", "label": "Container max width (px)"},
     {"key": "container_pad_desktop", "kind": "text", "max_len": 16,
      "group": "Layout", "label": "Container padding — desktop",
-     "placeholder": "0",
-     "help": "Horizontal padding inside the container at desktop widths. Any CSS length: 0, 24px, 2rem, 5vw, 5%."},
+     "placeholder": "5vw",
+     "help": "Horizontal padding inside the container at desktop widths. Default 5vw keeps a visible gutter at intermediate widths where the boxed max-width cap doesn't yet engage. Any CSS length: 0, 24px, 2rem, 5vw, 5%."},
     {"key": "container_pad_mobile",  "kind": "text", "max_len": 16,
      "group": "Layout", "label": "Container padding — mobile",
      "placeholder": "5vw",

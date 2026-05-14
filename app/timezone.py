@@ -50,3 +50,15 @@ def now_in(site):
 def now_in_name(name):
     """Aware ``datetime`` in the named tz. Used by the Settings preview."""
     return datetime.now(tz=_zone(name or "UTC"))
+
+
+def now_local_naive(site):
+    """Return the current site-local datetime as a *naive* value
+    (tzinfo stripped). Use this when stamping a model column whose
+    storage convention is "naive datetimes are site-local" — e.g.
+    ``Post.published_at``, which is also parsed naive from the
+    HTML5 ``datetime-local`` form input the admin types into. Storing
+    ``datetime.utcnow()`` instead would render at the wrong wall-
+    clock time site-wide because the display layer treats the stored
+    value as already-local."""
+    return datetime.now(tz=site_timezone(site)).replace(tzinfo=None)

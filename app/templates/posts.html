@@ -174,6 +174,13 @@
         <td class="posts-td-actions">
           <div class="row-actions">
             <a class="btn btn-sm" href="{{ url_for('main.post_edit', pid=p.id) }}">Edit</a>
+            {# Duplicate clones the post into a Draft (title gets a
+               "(copy)" suffix) and lands the admin on the drafts tab.
+               Hidden on pending-review rows since those follow the
+               Approve / Reject flow instead. #}
+            {% if not p.is_pending_review %}
+            <button type="submit" form="single-duplicate-{{ p.id }}-form" class="btn btn-sm" title="Duplicate as a new draft">Duplicate</button>
+            {% endif %}
             {% if p.is_draft %}
             <button type="submit" form="single-publish-{{ p.id }}-form" class="btn btn-sm btn-primary" title="Publish this draft">Publish</button>
             {% elif not p.is_archived %}
@@ -237,6 +244,11 @@
 <form id="single-delete-{{ p.id }}-form" method="post" action="{{ url_for('main.post_delete', pid=p.id) }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 </form>
+{% if not p.is_pending_review %}
+<form id="single-duplicate-{{ p.id }}-form" method="post" action="{{ url_for('main.post_duplicate', pid=p.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endif %}
 {% endfor %}
 
 {% else %}

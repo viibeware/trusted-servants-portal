@@ -14,9 +14,13 @@
 {% set _show_summary = _es.show_summary if _es.show_summary is defined else true %}
 {% set _show_location = _es.show_location if _es.show_location is defined else true %}
 
+{# Inner `.fe-container` wrapper intentionally dropped — same reason
+   as the meetings block: this is page-builder-only and the parent
+   container already controls width + gutter, so picking up the
+   site-wide `.fe-container` padding token was double-padding and
+   squeezing the events list. #}
 <section class="fe-section fe-events fe-events-anim-{{ _anim }}" id="events"
          style="--fe-events-stagger: {{ _stagger }}ms;">
-  <div class="fe-container">
     <div class="fe-section-head">
       <h2>{{ _heading }}</h2>
       {% if _intro %}<p>{{ _intro }}</p>{% endif %}
@@ -84,5 +88,4 @@
       <a class="fe-btn fe-btn-ghost" href="{{ url_for('frontend.events_list') }}">See all events</a>
     </div>
     {% endif %}
-  </div>
 </section>

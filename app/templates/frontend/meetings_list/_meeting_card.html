@@ -105,8 +105,30 @@
     {% endif %}
   </div>
 
-  {# Column 3 — Zoom credentials + actions + permalink #}
+  {# Column 3 — Location (in-person / hybrid) + Zoom credentials + actions + permalink #}
   <div class="fe-mlist-card-col fe-mlist-card-col-actions">
+    {# Location pane sits above the zoom credentials so the visitor
+       sees the where-to-go info first on in-person / hybrid meetings.
+       When the meeting's free-text location matches a saved Location
+       row (resolved server-side into `meeting_locations`), render the
+       canonical name + split address (street / city/state/zip) on
+       separate lines. Custom locations that don't match any saved row
+       fall back to the bare free-text string. Online-only meetings
+       skip the pane entirely. #}
+    {% set _loc_rec = (meeting_locations.get(m.id) if meeting_locations is defined else none) %}
+    {% if _has_loc %}
+    <div class="fe-mlist-card-loc">
+      {% if _loc_rec %}
+      <span class="fe-mlist-card-loc-name">{{ _loc_rec.name }}</span>
+      {% for line in _loc_rec.address_lines() %}
+      <span class="fe-mlist-card-loc-line muted small">{{ line }}</span>
+      {% endfor %}
+      {% else %}
+      <span class="fe-mlist-card-loc-name">{{ m.location }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
+
     {% if _has_zoom and (m.zoom_meeting_id or m.zoom_passcode) %}
     <dl class="fe-mlist-card-zoom-creds">
       {% if m.zoom_meeting_id %}

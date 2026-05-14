@@ -4078,13 +4078,70 @@ form.hide-zoom .zoom-only, form.hide-zoom .zoom-only-field { display: none; }
 .viibeware-credit img { height: 28px; }
 .viibeware-name { font-weight: 700; letter-spacing: .08em; font-size: .95rem; }
 .viibeware-credit:hover { opacity: .85; }
-.about-pane { padding: 24px; width: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+.about-pane { padding: 0; width: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
 .about-head { display: flex; flex-direction: column; gap: 2px; }
 .about-sub { font-size: 1rem; font-weight: 700; margin: 4px 0 0; }
-.changelog { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 14px; }
-.changelog > li { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--panel-2); }
-.changelog ul { margin: 6px 0 0; padding-left: 18px; color: var(--text); font-size: .95rem; }
-.changelog ul li { margin: 2px 0; }
+/* Release notes + changelog each live in their own <details> block so
+   the About tab leads with the friendly summary (open by default) and
+   keeps the dense implementation log behind a closed toggle. The
+   summary row hosts the existing `.about-sub` heading + a small muted
+   subtitle; a custom caret rotates when the section is open. */
+.about-rel-notes,
+.about-changelog {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-2);
+  padding: 4px 16px;
+}
+.about-rel-notes[open],
+.about-changelog[open] {
+  padding-bottom: 16px;
+}
+.about-sub-summary {
+  list-style: none; cursor: pointer;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 12px 0;
+  position: relative; padding-right: 28px;
+  user-select: none;
+}
+.about-sub-summary::-webkit-details-marker { display: none; }
+.about-sub-summary::after {
+  content: ""; position: absolute; right: 6px; top: 50%;
+  width: 8px; height: 8px;
+  border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+  transform: translateY(-75%) rotate(45deg);
+  transition: transform 180ms ease;
+}
+.about-rel-notes[open] > .about-sub-summary::after,
+.about-changelog[open] > .about-sub-summary::after {
+  transform: translateY(-25%) rotate(-135deg);
+}
+.about-sub-summary > .about-sub { margin: 0; }
+.about-sub-summary:hover > .about-sub { color: var(--brand, var(--text)); }
+.about-sub-summary:focus-visible {
+  outline: 2px solid var(--brand, currentColor); outline-offset: 4px;
+  border-radius: 6px;
+}
+
+.changelog,
+.release-notes {
+  list-style: none; padding: 0; margin: 8px 0 0;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.changelog > li,
+.release-notes > li {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 14px; background: var(--panel);
+}
+.changelog ul,
+.release-notes ul {
+  margin: 6px 0 0; padding-left: 18px; color: var(--text); font-size: .95rem;
+}
+.changelog ul li,
+.release-notes ul li { margin: 2px 0; }
+.release-notes > li > p {
+  margin: 6px 0 0; color: var(--text); font-size: .95rem; line-height: 1.5;
+}
 
 .about-tagline { font-size: .875rem; color: var(--muted); margin-top: 8px; max-width: 32ch; line-height: 1.45; }
 .about-built-by { margin-top: 10px; font-size: .8125rem; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
@@ -4369,6 +4426,20 @@ body.embed .card:last-child { margin-bottom: 0; padding-bottom: 2rem; border-bot
   border: none; outline: none; background: transparent;
   padding: 6px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.875rem; color: var(--text);
+  transition: background-color 200ms ease, color 200ms ease;
+}
+/* Live-sync highlight — added by JS when the slug field is rewritten
+   from the title field, removed ~1.4 s later. The transition above
+   means the colour fades in/out smoothly. The accent-tinted wash on
+   the parent row is the most visible cue at a glance; the input
+   itself only lifts to a slightly warmer text colour. */
+.slug-input-row:has(> .slug-input-field--synced) {
+  border-color: var(--brand, currentColor);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand, currentColor) 22%, transparent);
+  background: color-mix(in srgb, var(--brand, currentColor) 8%, var(--panel));
+}
+.slug-input-field--synced {
+  color: var(--brand, var(--text));
 }
 
 /* URL change history timeline shown under the slug input on the
@@ -8475,6 +8546,100 @@ html[data-theme="dark"] #page-hero-edit-modal .hero-unified-actions {
   .fe-protips-item-icon { grid-area: icon; }
   .fe-protips-item-fields { grid-area: fields; }
   .fe-protips-item-remove { grid-area: remove; justify-self: end; }
+}
+
+/* ── Sidebar custom-links editor (Sidebar template only) ─────────── */
+.fe-mlist-links-fieldset {
+  border: 1px solid var(--border);
+  padding: 12px 14px; border-radius: 10px;
+  background: var(--panel);
+}
+.fe-mlist-links-fieldset legend { font-weight: 600; padding: 0 6px; }
+.fe-mlist-links-editor {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.fe-mlist-links-list {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.fe-mlist-link-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 12px;
+  padding: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  align-items: start;
+}
+.fe-mlist-link-fields {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0;
+}
+.fe-mlist-link-label,
+.fe-mlist-link-url {
+  padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 6px;
+  font: inherit;
+  background: var(--panel);
+  color: var(--text);
+}
+.fe-mlist-link-label { font-weight: 500; }
+.fe-mlist-link-url { font-size: 0.92rem; }
+/* Type radio + new-tab checkbox sit on one row. The radios use
+   chip-style buttons so the icon (chevron / external) reads as part
+   of the label. Native radio bullet hidden; the chip border conveys
+   selection state. */
+.fe-mlist-link-options {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 12px;
+}
+.fe-mlist-link-type {
+  display: inline-flex; gap: 4px;
+  padding: 3px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.fe-mlist-link-type-opt {
+  position: relative;
+  display: inline-flex; align-items: center;
+}
+.fe-mlist-link-type-opt input[type="radio"] {
+  position: absolute; opacity: 0; pointer-events: none;
+}
+.fe-mlist-link-type-opt > span {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 6px;
+  font-size: 0.86rem; font-weight: 500; color: var(--muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.fe-mlist-link-type-opt > span .icon {
+  width: 14px; height: 14px;
+}
+.fe-mlist-link-type-opt:hover > span { color: var(--text); }
+.fe-mlist-link-type-opt input[type="radio"]:checked + span {
+  background: var(--brand-soft, color-mix(in srgb, var(--brand, #6366f1) 14%, transparent));
+  color: var(--text);
+}
+.fe-mlist-link-newtab {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.88rem; color: var(--text); cursor: pointer;
+}
+.fe-mlist-link-remove {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid transparent;
+  border-radius: 6px; color: var(--muted);
+  cursor: pointer;
+}
+.fe-mlist-link-remove:hover {
+  background: rgba(220, 38, 38, 0.08); color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.24);
+}
+.fe-mlist-link-remove .icon { width: 16px; height: 16px; }
+@media (max-width: 600px) {
+  .fe-mlist-link-card {
+    grid-template-columns: 1fr;
+  }
+  .fe-mlist-link-remove { justify-self: end; }
 }
 
 /* ===== Forms admin index (/tspro/frontend/forms) =====

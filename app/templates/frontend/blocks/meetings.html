@@ -18,9 +18,14 @@
 {% endfor %}
 {% set _has_any = _state.has_any %}
 
+{# Inner `.fe-container` wrapper intentionally dropped — this block
+   is page-builder-only (homepage Page + per-page Meetings blocks),
+   and the page-builder container that wraps it already controls
+   width + horizontal padding. Picking up `.fe-container`'s 5vw
+   token padding on top of the parent container's gutter was
+   crushing the cards grid into too-narrow columns. #}
 <section class="fe-section fe-meetings fe-meetings-anim-{{ _anim }}" id="meetings"
          style="--fe-meetings-stagger: {{ _stagger }}ms;">
-  <div class="fe-container">
     <div class="fe-section-head">
       <h2>{{ _heading }}</h2>
       {% if _intro %}<p>{{ _intro }}</p>{% endif %}
@@ -93,6 +98,4 @@
         <a class="fe-btn fe-btn-ghost" href="{{ url_for('frontend.meetings_list') }}">See all meetings</a>
       </div>
     {% endif %}
-
-  </div>
 </section>

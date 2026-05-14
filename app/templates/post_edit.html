@@ -34,20 +34,37 @@
     <button type="submit" form="post-edit-form" name="action" value="draft" class="btn">Save as draft</button>
     <button type="submit" form="post-edit-form" name="action" value="publish" class="btn btn-primary">Publish post</button>
   {% elif _p and _p.is_draft %}
+    {# Both buttons submit the post-edit form so any in-progress edits
+       persist alongside the state flip. The dedicated `post_publish`
+       route still exists for the per-row Publish button on the list
+       page (no form to save there), but here the form-submit path
+       routes through `post_save` which handles `action=publish` to
+       both flip is_draft AND stamp `published_at = now`. #}
     <button type="submit" form="post-edit-form" name="action" value="draft" class="btn">Save draft</button>
-    <form method="post" action="{{ url_for('main.post_publish', pid=_p.id) }}" style="display:inline">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn btn-primary" title="Publish this draft">Publish</button>
-    </form>
+    <button type="submit" form="post-edit-form" name="action" value="publish" class="btn btn-primary"
+            title="Save these changes and publish the draft">Publish</button>
   {% else %}
     <button type="submit" form="post-edit-form" class="btn btn-primary">Save post</button>
+    {# Move-to-Drafts also routes through the form so the admin's
+       in-progress edits aren't lost on the way back to drafts. The
+       confirm() prompt prevents accidental "save and unpublish" — the
+       button is only meant for intentional state changes. #}
     {% if _p %}
-    <form method="post" action="{{ url_for('main.post_unpublish', pid=_p.id) }}" style="display:inline"
-          onsubmit="return confirm('Move this published post back to drafts? It will disappear from the public site until republished.');">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn" title="Move to Drafts">Move to Drafts</button>
-    </form>
+    <button type="submit" form="post-edit-form" name="action" value="draft" class="btn"
+            title="Save and move to Drafts"
+            onclick="return confirm('Move this published post back to drafts? It will disappear from the public site until republished.');">Move to Drafts</button>
     {% endif %}
+  {% endif %}
+  {# Duplicate the current post into a fresh Draft so the admin can
+     spin up next month's announcement / event using last month's
+     fields as the seed. Hidden on pending-review submissions (those
+     follow the Approve / Reject flow) and on brand-new posts that
+     haven't been saved yet. #}
+  {% if _p and not _p.is_pending_review %}
+  <form method="post" action="{{ url_for('main.post_duplicate', pid=_p.id) }}" style="display:inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn" title="Duplicate as a new draft">Duplicate</button>
+  </form>
   {% endif %}
   {% if _p %}
   <form method="post" action="{{ url_for('main.post_delete', pid=_p.id) }}" style="display:inline"
@@ -256,10 +273,15 @@
       <span class="muted smaller">A link the public site renders with your chosen label.</span>
     </div>
     <div class="form-row">
-      <label>URL
-        <input type="url" name="website_url" maxlength="500"
+      <label>URL <span class="muted small">(absolute or relative)</span>
+        {# `type="text"` + `inputmode="url"` instead of `type="url"`
+           so the browser doesn't reject relative paths like
+           `/about-us` (which the public renderer resolves against
+           the app's own domain). The mobile URL keyboard still
+           comes up via `inputmode="url"`. #}
+        <input type="text" inputmode="url" name="website_url" maxlength="500"
                value="{{ (_p.website_url if _p else '') or '' }}"
-               placeholder="https://example.org/event">
+               placeholder="https://example.org/event or /page-slug">
       </label>
       <label>Link label <span class="muted small">(what visitors see on the button)</span>
         <input type="text" name="website_label" maxlength="120"
@@ -292,4 +314,46 @@
   </section>
 
 </form>
+
+{# Live title → slug sync. Mirrors `_normalize_slug` in app/routes.py:
+   lowercase, non-alphanumeric runs collapse to a single `-`, leading
+   and trailing hyphens stripped, capped at 200 chars. Fires on every
+   `input` event from the title field, briefly highlights the slug
+   field so the editor sees the URL changing alongside the title.
+   Matches the server-side "title changed → re-derive slug" rule on
+   save, so the client preview never disagrees with what the server
+   will persist. #}
+<script>
+(function () {
+  const form = document.getElementById('post-edit-form');
+  if (!form) return;
+  const titleInput = form.querySelector('input[name="title"]');
+  const slugInput = form.querySelector('input[name="slug"]');
+  if (!titleInput || !slugInput) return;
+  function slugify(v) {
+    return String(v || '').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 200);
+  }
+  let highlightTimer = null;
+  titleInput.addEventListener('input', () => {
+    const next = slugify(titleInput.value);
+    if (slugInput.value === next) return;
+    slugInput.value = next;
+    // Reset + re-add the highlight class so consecutive keystrokes
+    // keep the animation visible instead of completing once on the
+    // first character. The forced reflow committing the class removal
+    // before re-adding is the cheapest cross-browser way to restart
+    // the CSS animation.
+    slugInput.classList.remove('slug-input-field--synced');
+    void slugInput.offsetWidth;
+    slugInput.classList.add('slug-input-field--synced');
+    if (highlightTimer) clearTimeout(highlightTimer);
+    highlightTimer = setTimeout(() => {
+      slugInput.classList.remove('slug-input-field--synced');
+    }, 1400);
+  });
+})();
+</script>
 {% endblock %}

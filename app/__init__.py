@@ -1105,6 +1105,7 @@ def _migrate_sqlite(app):
                          ("frontend_meetings_list_heading", "VARCHAR(200)"),
                          ("frontend_meetings_list_subheading", "VARCHAR(500)"),
                          ("frontend_meetings_list_protips_json", "TEXT"),
+                         ("frontend_meetings_list_sidebar_links_json", "TEXT"),
                          ("frontend_events_list_template", "VARCHAR(64) NOT NULL DEFAULT 'cards'"),
                          ("frontend_events_list_width_mode", "VARCHAR(16) NOT NULL DEFAULT 'boxed'"),
                          ("frontend_events_list_max_width", "INTEGER NOT NULL DEFAULT 1160"),

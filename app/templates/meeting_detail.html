@@ -4,12 +4,19 @@
   {% if meeting.archived_at %}<span class="chip chip-archived">Archived</span>{% endif %}
 {% endblock %}
 {% block top_actions %}
-  {% if site and site.frontend_enabled %}
+  {% if current_user.can_edit() %}
+  <button type="button" class="btn" data-open-modal="meeting-edit-modal">Edit</button>
+  {% endif %}
+  {# View on Frontend lives next to Edit so admins can jump straight to
+     the public meeting-detail page in a new tab. Gated on
+     `frontend_module_enabled` (the module-on switch) — public
+     visibility (`frontend_enabled`) being off doesn't matter because
+     signed-in editors / admins can preview the page either way. #}
+  {% if site and site.frontend_module_enabled %}
   <a class="btn" href="{{ url_for('frontend.meeting_detail', slug=meeting.public_slug) }}"
      target="_blank" rel="noopener">View on Frontend ↗</a>
   {% endif %}
   {% if current_user.can_edit() %}
-  <button type="button" class="btn" data-open-modal="meeting-edit-modal">Edit</button>
   {% if current_user.is_admin() %}
     {% if meeting.archived_at %}
     <form method="post" action="{{ url_for('main.meeting_unarchive', slug=meeting.public_slug) }}" style="display:inline">

@@ -2322,7 +2322,12 @@ def _frontend_setting_keys():
     from .models import SiteSetting
     prefixes = ("frontend_", "footer_", "utility_bar_",
                 "header_alert_", "hero_", "mega_",
-                "submission_form_", "contact_form_")
+                "submission_form_", "contact_form_",
+                # Module-gate flags + per-role visibility controls for
+                # the public Events / Announcements / Stories / Blog
+                # surfaces. Frontend behaviour columns even though they
+                # don't carry a `frontend_` prefix in the schema.
+                "posts_", "stories_", "blog_")
     return tuple(sorted(
         c.name for c in SiteSetting.__table__.columns
         if any(c.name.startswith(p) for p in prefixes)
@@ -2385,17 +2390,17 @@ def _frontend_export_payload():
         id, so they ship together to keep the references intact.
       * **stories** — recovery stories on /stories, with author byline,
         sobriety / story dates, body, summary, featured image.
-      * **posts** — admin-authored events + announcements on /events
-        and /announcements (drafts and pending submissions skipped —
-        the holding tank stays empty on the destination so admins
-        don't inherit the source's pending review queue).
-      * **slug_history** — append-only log of slug renames (currently
-        ``post`` entity_type) so the redirect path on the source survives
-        the import.
       * **media_items** — catalog of every uploaded file referenced from
         frontend content. The import side re-creates the rows so the
         backfill scan doesn't have to re-derive sha256 / size for each
         file from scratch.
+
+    Posts (announcements + events) are intentionally **excluded** —
+    they're per-deployment editorial content, not look-and-feel.
+    Slug-history is also excluded since the only entity type it carries
+    here was ``post``. Old bundles that contained posts still import
+    them via the existing import path; new bundles produced by this
+    function omit them.
       * **assets** — union of every stored filename referenced by any of
         the above. The export route writes one file per name into the
         bundle's ``assets/`` folder.
@@ -2413,8 +2418,8 @@ def _frontend_export_payload():
     a non-asset string can't try to ship a phantom file.
     """
     from .models import (SiteSetting, CustomLayout, CustomFont, CustomIcon,
-                         FrontendHeroButton, MediaItem, Page, Story, Post,
-                         IntergroupOfficer, EntitySlugHistory)
+                         FrontendHeroButton, MediaItem, Page, Story,
+                         IntergroupOfficer)
     s = _get_site_setting()
     setting_keys = _frontend_setting_keys()
     asset_keys = _frontend_asset_keys()
@@ -2581,52 +2586,14 @@ def _frontend_export_payload():
             "is_archived": bool(st.is_archived),
         })
 
-    # ---- posts (events + announcements) -----------------------------
-    # Pending-review submissions are deliberately dropped — the holding
-    # tank is per-deployment workflow state, not content. Drafts and
-    # archives DO ship since admins cloning a frontend often want the
-    # full editorial state.
-    posts = []
-    for po in Post.query.filter(
-            Post.is_pending_review.is_(False)).order_by(Post.id).all():
-        posts.append({
-            "id": po.id, "slug": po.slug, "title": po.title,
-            "summary": po.summary, "body": po.body,
-            "featured_image_filename": po.featured_image_filename,
-            "is_announcement": bool(po.is_announcement),
-            "is_event": bool(po.is_event),
-            "event_starts_at": po.event_starts_at.isoformat() if po.event_starts_at else None,
-            "event_ends_at": po.event_ends_at.isoformat() if po.event_ends_at else None,
-            "is_online": bool(po.is_online),
-            "location_name": po.location_name,
-            "location_address": po.location_address,
-            "google_maps_url": po.google_maps_url,
-            "website_url": po.website_url,
-            "website_label": po.website_label,
-            "zoom_meeting_id": po.zoom_meeting_id,
-            "zoom_passcode": po.zoom_passcode,
-            "zoom_url": po.zoom_url,
-            "contact_name": po.contact_name,
-            "contact_phone": po.contact_phone,
-            "contact_email": po.contact_email,
-            "is_draft": bool(po.is_draft),
-            "is_archived": bool(po.is_archived),
-        })
-
-    # ---- slug_history ------------------------------------------------
-    # Append-only log of slug renames driving 301 redirects on the
-    # public site. Only entity types whose rows we ship are included
-    # (currently 'post'); meeting slug history stays out of the
-    # frontend bundle since meetings live in the broader content scope
-    # the bundle deliberately avoids.
-    slug_history = [
-        {"entity_type": h.entity_type, "entity_id": h.entity_id,
-         "old_slug": h.old_slug, "new_slug": h.new_slug,
-         "changed_at": h.changed_at.isoformat() if h.changed_at else None}
-        for h in EntitySlugHistory.query
-        .filter(EntitySlugHistory.entity_type.in_(("post",)))
-        .order_by(EntitySlugHistory.id).all()
-    ]
+    # ---- posts + slug_history intentionally OMITTED -------------------
+    # Posts (announcements + events) are per-deployment editorial
+    # content, not "frontend look-and-feel" — shipping them in this
+    # bundle would silently overwrite the destination's editorial state
+    # on import. Slug-history (driving 301 redirects) only carried
+    # `post` entity types, so it goes too. The import side keeps its
+    # backwards-compat path so old bundles that DO contain posts still
+    # restore them; this export just stops producing them.
 
     # ---- asset collection --------------------------------------------
     # Layer 1: explicit filename columns.
@@ -2680,11 +2647,9 @@ def _frontend_export_payload():
             asset_refs.add(st["featured_image_filename"])
         asset_refs |= _collect_asset_refs(st.get("body"))
         asset_refs |= _collect_asset_refs(st.get("summary"))
-    for po in posts:
-        if po.get("featured_image_filename"):
-            asset_refs.add(po["featured_image_filename"])
-        asset_refs |= _collect_asset_refs(po.get("body"))
-        asset_refs |= _collect_asset_refs(po.get("summary"))
+    # Posts are excluded from this bundle (see the notes above) so no
+    # per-post asset scan runs here. Story / page / settings / nav /
+    # custom-layouts scans below remain.
 
     # Cross-check matched filenames against the MediaItem catalog (for
     # the regex-discovered ones — explicit columns and table-stored
@@ -2731,8 +2696,6 @@ def _frontend_export_payload():
         "pages": pages,
         "intergroup_officers": intergroup_officers,
         "stories": stories,
-        "posts": posts,
-        "slug_history": slug_history,
         "media_items": media_items,
         "assets": sorted(final_assets),
     }
@@ -3399,9 +3362,14 @@ def data_frontend_import():
                 slug = (p.get("slug") or "").strip()
                 if not slug:
                     continue
-                # Spacing fields: if the bundle predates them (v3), fall
-                # back to the Page model's defaults so legacy bundles
-                # still produce sensibly-spaced pages.
+                # `_opt_int` preserves explicit 0 values (the bare
+                # `int(p.get(key) or default)` pattern silently rewrote
+                # 0 → default because `0 or default` is `default` —
+                # which broke full-bleed pages that explicitly set
+                # `full_padding_pct: 0`, `pad_x: 0`, etc.). Falls back
+                # to the Page model's default only when the key is
+                # missing (v3 bundle) or non-numeric. Used for every
+                # int column on Page so the round-trip is verbatim.
                 def _opt_int(key, default):
                     v = p.get(key)
                     if v is None:
@@ -3420,15 +3388,15 @@ def data_frontend_import():
                     layout_key=(p.get("layout_key") or "custom")[:64],
                     bg_image_filename=p.get("bg_image_filename"),
                     bg_mode=(p.get("bg_mode") or "cover")[:16],
-                    bg_tile_scale=int(p.get("bg_tile_scale") or 100),
+                    bg_tile_scale=_opt_int("bg_tile_scale", 100),
                     bg_color=p.get("bg_color"),
                     bg_color_dark=p.get("bg_color_dark"),
                     bg_color_dark_mode=(p.get("bg_color_dark_mode") or "same")[:16],
                     bg_dynamic_key=(p.get("bg_dynamic_key") or None),
                     bg_dynbg_config_json=p.get("bg_dynbg_config_json"),
                     width_mode=(p.get("width_mode") or "boxed")[:16],
-                    max_width=int(p.get("max_width") or 1160),
-                    full_padding_pct=int(p.get("full_padding_pct") or 4),
+                    max_width=_opt_int("max_width", 1160),
+                    full_padding_pct=_opt_int("full_padding_pct", 4),
                     heading_color=p.get("heading_color"),
                     heading_align=(p.get("heading_align") or "auto")[:16],
                     heading_font=p.get("heading_font"),
@@ -5203,7 +5171,8 @@ def frontend_templates():
                            BLOG_LIST_TEMPLATES, BLOG_POST_TEMPLATES,
                            LITERATURE_LIBRARY_TEMPLATES, SITE_INDEX_TEMPLATES,
                            FELLOWSHIPS_LIST_TEMPLATES,
-                           template_settings, meetings_list_protips_resolved)
+                           template_settings, meetings_list_protips_resolved,
+                           meetings_list_sidebar_links_resolved)
     from .fonts import all_fonts
     s = _get_site_setting()
     meeting_key = (s.frontend_meeting_template if s else None) or "classic"
@@ -5234,6 +5203,7 @@ def frontend_templates():
                            meetings_list_templates=_by_name(MEETINGS_LIST_TEMPLATES),
                            meetings_list_active_key=meetings_list_key,
                            meetings_list_protips=meetings_list_protips_resolved(s),
+                           meetings_list_sidebar_links=meetings_list_sidebar_links_resolved(s),
                            events_list_templates=_by_name(EVENTS_LIST_TEMPLATES),
                            events_list_active_key=events_list_key,
                            announcements_list_templates=_by_name(ANNOUNCEMENTS_LIST_TEMPLATES),
@@ -5756,6 +5726,33 @@ def frontend_meetings_list_template_save():
     if request.form.getlist("protip_item_present"):
         pt_cfg["items"] = pt_items
     s.frontend_meetings_list_protips_json = _json_pt.dumps(pt_cfg)
+
+    # Sidebar custom-links editor — same form-array pattern as protips,
+    # keyed off `sidebar_link_present` so admin row order = render
+    # order. Empty rows (missing label OR url) are silently dropped;
+    # an entirely empty submission saves an empty list so the section
+    # auto-hides via the `if list_sidebar_links` gate in the partial.
+    sidebar_links = []
+    for raw_idx in request.form.getlist("sidebar_link_present"):
+        try:
+            i = int(raw_idx)
+        except (TypeError, ValueError):
+            continue
+        label = (request.form.get(f"sidebar_link_{i}_label") or "").strip()
+        url = (request.form.get(f"sidebar_link_{i}_url") or "").strip()
+        if not (label and url):
+            continue
+        link_type = (request.form.get(f"sidebar_link_{i}_type") or "internal").strip().lower()
+        if link_type not in ("internal", "external"):
+            link_type = "internal"
+        sidebar_links.append({
+            "label":           label[:200],
+            "url":             url[:600],
+            "link_type":       link_type,
+            "open_in_new_tab": request.form.get(f"sidebar_link_{i}_new_tab") == "1",
+        })
+    s.frontend_meetings_list_sidebar_links_json = _json_pt.dumps(sidebar_links)
+
     if "frontend_meetings_list_bg_dynamic_key" in request.form:
         from . import dynbg as _dynbg
         s.frontend_meetings_list_bg_dynamic_key = _dynbg.normalize(
@@ -10316,9 +10313,17 @@ def post_save():
         post = Post(created_by=getattr(current_user, "id", None))
         creating = True
 
-    # Capture the previous public slug before mutating title/slug — same
-    # rationale as in _apply_meeting_form.
+    # Capture the previous public slug + title + public-status before
+    # mutating any of them. The previous slug is needed to log a
+    # redirect when it changes; the previous title gates whether we
+    # re-derive the slug from scratch on this save (see comment
+    # below); the previous public status gates whether we log a
+    # redirect at all — drafts and pending submissions never had a
+    # publicly-known URL, so renaming their slug shouldn't pollute the
+    # `EntitySlugHistory` table.
     _prev_public_slug = post.public_slug if not creating else None
+    _prev_title = post.title if not creating else None
+    _was_public = (not creating) and (not post.is_draft) and (not post.is_pending_review)
 
     title = (request.form.get("title") or "").strip()[:255]
     if not title:
@@ -10332,21 +10337,36 @@ def post_save():
     if current_user.is_authenticated and current_user.can_edit_frontend():
         explicit_slug = _normalize_slug(request.form.get("slug"))
 
-    # Resolve a unique public slug. The base is the explicit slug when
-    # the editor provided one, else the title-derived default. The
-    # uniqueness sweep appends -2/-3/... until no other post shares it.
-    # When the explicit value was blank AND the title-derived slug is
-    # already unique, leave Post.slug NULL so future title edits keep
-    # the URL in sync. Otherwise persist the resolved slug explicitly.
+    # Slug resolution. Two modes:
+    #   1. Title CHANGED on this save (or creating a new post) — re-
+    #      derive the slug from the new title and ignore whatever the
+    #      slug input carried (the input is pre-populated from the
+    #      database, so without this branch the stale slug would win
+    #      and the public URL would never track the new title). The
+    #      uniqueness sweep appends -2/-3/… on collision.
+    #   2. Title UNCHANGED — respect the editor's explicit slug input
+    #      so they can rename the URL without touching the title. When
+    #      the input is blank, fall back to the title-derived slug.
     title_slug = _normalize_slug(post.title)
-    base = explicit_slug or title_slug
-    unique = _unique_post_slug(base, exclude_id=post.id if not creating else None)
-    if explicit_slug:
-        post.slug = unique
-        if explicit_slug != unique:
-            flash(f"URL already taken — saved as “{unique}”.", "info")
-    else:
+    title_changed = creating or (_prev_title != title)
+    if title_changed:
+        unique = _unique_post_slug(title_slug,
+                                   exclude_id=post.id if not creating else None)
         post.slug = None if unique == title_slug else unique
+        # Surface the suffix when the auto-derive had to disambiguate
+        # so the editor isn't surprised the public URL gained a `-2`.
+        if unique and unique != title_slug:
+            flash(f"URL auto-derived to “{unique}” to avoid collision with another post.", "info")
+    else:
+        base = explicit_slug or title_slug
+        unique = _unique_post_slug(base,
+                                   exclude_id=post.id if not creating else None)
+        if explicit_slug:
+            post.slug = unique
+            if explicit_slug != unique:
+                flash(f"URL already taken — saved as “{unique}”.", "info")
+        else:
+            post.slug = None if unique == title_slug else unique
     post.summary = (request.form.get("summary") or "").strip() or None
     post.body = (request.form.get("body") or "").strip() or None
 
@@ -10396,6 +10416,7 @@ def post_save():
     # admin's intent. Values: "draft" (force is_draft=True), "publish"
     # (force is_draft=False), or absent (preserve current state for
     # edits; default to active for new posts).
+    _was_draft = (not creating) and post.is_draft
     action = (request.form.get("action") or "").strip()
     if action == "draft":
         post.is_draft = True
@@ -10404,17 +10425,39 @@ def post_save():
     elif creating:
         post.is_draft = False  # default: new posts are active
 
+    # Draft → publish transition stamps `published_at` with the current
+    # site-local datetime (naive — matches how form-entered values are
+    # parsed by `_parse_post_dt` and how the display layer reads the
+    # column), overriding whatever the admin had keyed into the form.
+    # Matches the dedicated `post_publish` route's behaviour so the
+    # "Published on …" line resets to "now" whether the admin clicked
+    # the inline Publish button or the form's Publish submit. Stays
+    # no-op when the post was already published or when the admin
+    # saved without flipping draft status.
+    from .timezone import now_local_naive as _now_local
+    _site = _get_site_setting()
+    if _was_draft and action == "publish":
+        post.published_at = _now_local(_site)
+
     # Default published_at on first save when the admin didn't set
     # one — keeps every row sortable by posted date without forcing
-    # the form to require it.
+    # the form to require it. Uses the same site-local-naive
+    # convention so the auto-stamped value displays at the right
+    # wall-clock time without a tz conversion at the display layer.
     if creating and post.published_at is None:
-        post.published_at = datetime.utcnow()
+        post.published_at = _now_local(_site)
 
     if creating:
         db.session.add(post)
     else:
-        # Log a redirect row whenever the public slug changed.
-        if _prev_public_slug and _prev_public_slug != post.public_slug:
+        # Log a redirect row whenever the public slug changed AND the
+        # post was already publicly addressable on the way in. Drafts
+        # and pending-review submissions have no public URL, so slug
+        # edits inside those states don't need a redirect entry — the
+        # admin can rename freely without polluting EntitySlugHistory.
+        if (_was_public
+                and _prev_public_slug
+                and _prev_public_slug != post.public_slug):
             _record_slug_change("post", post.id, _prev_public_slug, post.public_slug)
     db.session.commit()
     from . import activity
@@ -10453,9 +10496,17 @@ def post_approve_pending(pid):
 @bp.route("/announcementsevents/<int:pid>/publish", methods=["POST"])
 @login_required
 def post_publish(pid):
-    """Transition a draft to active. No-op if already published."""
+    """Transition a draft to active. Stamps `published_at` with the
+    current UTC datetime whenever the post was actually a draft on the
+    way in — that's when "Published on …" should reset to "now",
+    regardless of whatever date the admin had keyed into the form for
+    back-dating. No-op (no timestamp bump) if the post was already
+    published."""
     _require_posts_enabled()
     post = db.session.get(Post, pid) or abort(404)
+    if post.is_draft:
+        from .timezone import now_local_naive as _now_local
+        post.published_at = _now_local(_get_site_setting())
     post.is_draft = False
     db.session.commit()
     flash("Published", "success")
@@ -10808,7 +10859,11 @@ def story_save():
         story.is_draft = False
 
     if creating and story.published_at is None:
-        story.published_at = datetime.utcnow()
+        # Site-local naive — same convention as Post.published_at and
+        # the form's `_parse_post_dt`, so the auto-stamp shows at the
+        # right wall-clock time without a tz conversion at display.
+        from .timezone import now_local_naive as _now_local
+        story.published_at = _now_local(_get_site_setting())
 
     if creating:
         db.session.add(story)

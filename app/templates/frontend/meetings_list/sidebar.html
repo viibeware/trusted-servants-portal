@@ -62,6 +62,29 @@
             </li>
             {% endfor %}
           </ul>
+          {# Admin-curated custom links rail. Sits below the day pills
+             under a divider line. Each link picks one of two trailing
+             icons via `link_type`: "internal" → chevron-right (looks
+             like a route into the site), "external" → external-link
+             icon (paired with target=_blank when open_in_new_tab is
+             on). The whole block is hidden when no links are saved. #}
+          {% if list_sidebar_links %}
+          <ul class="fe-mlist-link-list" aria-label="More links">
+            {% for ln in list_sidebar_links %}
+            <li>
+              <a class="fe-mlist-rail-link fe-mlist-rail-link--{{ ln.link_type }}"
+                 href="{{ ln.url }}"
+                 {% if ln.open_in_new_tab %}target="_blank" rel="noopener"{% endif %}>
+                <span class="fe-mlist-rail-link-label">{{ ln.label }}</span>
+                <span class="fe-mlist-rail-link-icon" aria-hidden="true">
+                  {% if ln.link_type == 'external' %}{{ icon('external-link') }}
+                  {% else %}{{ icon('chevron-right') }}{% endif %}
+                </span>
+              </a>
+            </li>
+            {% endfor %}
+          </ul>
+          {% endif %}
         </div>
       </aside>
 

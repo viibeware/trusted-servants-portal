@@ -3113,6 +3113,30 @@ html[data-theme="dark"] .fe-event-date-year { color: #94a3b8; }
   margin-bottom: 32px;
 }
 .fe-meeting-detail-desc p { margin: 0 0 16px; }
+
+/* Description text on the meeting-detail page caps at three-quarters
+   of the container width on wide desktop viewports so the prose
+   reads as a column rather than stretching the full page width
+   (uncomfortable line length at typical desktop sizes). Below
+   1024 px (tablet and smaller — including landscape phones /
+   split-screen), the cap drops so the text uses the full available
+   width. Applied across all four meeting-detail templates (Classic,
+   Minimal, Card Stack, Magazine) so the layout reads consistently
+   regardless of which template the admin selected. */
+.fe-meeting-detail-desc,
+.fe-meeting-min-desc,
+.fe-meeting-stack-prose,
+.fe-meeting-mag-prose {
+  max-width: 75%;
+}
+@media (max-width: 1024px) {
+  .fe-meeting-detail-desc,
+  .fe-meeting-min-desc,
+  .fe-meeting-stack-prose,
+  .fe-meeting-mag-prose {
+    max-width: 100%;
+  }
+}
 .fe-meeting-detail-grid {
   display: grid; gap: 20px;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -3649,13 +3673,17 @@ html[data-theme="dark"] .fe-testimonial cite { color: #94a3b8; }
    handles any left/right gutter. */
 .fe-faq--bare .fe-faq-list { max-width: none; margin-left: 0; margin-right: 0; }
 .fe-faq--bare .fe-section-head { margin-left: 0; margin-right: 0; max-width: none; }
-/* Mobile floor — when the parent container has no horizontal padding
-   (common on full-bleed page-builder layouts), the bare FAQ would
-   otherwise sit flush against the viewport. Apply the site-wide
-   mobile container token (Site → Design → Layout → Container padding —
-   mobile, default 5vw) so the accordion always has a phone-friendly
-   gutter. Doesn't affect any parent background — only the FAQ's own
-   inner content is inset. */
+/* Self-padding floor — when the parent container has no horizontal
+   padding (common on full-bleed page-builder layouts), the bare FAQ
+   would otherwise sit flush against the viewport. Apply the site-wide
+   container padding tokens (Site → Design → Layout) at every width so
+   the accordion always has a visible gutter, separate from whatever
+   the parent container provides. Doesn't affect any parent background
+   — only the FAQ's own inner content is inset. */
+.fe-faq--bare {
+  padding-left: var(--fe-container-pad-desktop, 5vw);
+  padding-right: var(--fe-container-pad-desktop, 5vw);
+}
 @media (max-width: 768px) {
   .fe-faq--bare {
     padding-left: var(--fe-container-pad-mobile, 5vw);
@@ -5405,6 +5433,56 @@ body.fe-frontend-force-dark .fe-mlist-search-kbd {
 .fe-mlist-day-pill.is-active .fe-mlist-day-count {
   background: color-mix(in srgb, var(--fe-accent, #3b82f6) 28%, transparent);
 }
+
+/* Admin-curated rail links — sit BELOW the day-pill list under a
+   divider line. Each row is a flush left → right layout with the
+   trailing icon (chevron-right for internal, external-link for
+   external) sitting against the right edge. Same hover language as
+   the day pills so the rail reads as one coherent column. */
+.fe-mlist-link-list {
+  list-style: none; margin: 14px 0 0; padding: 12px 0 0;
+  border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+}
+.fe-mlist-link-list > li + li { margin-top: 4px; }
+/* Selectors prefixed with `.fe-page` / `.frontend-body` so the rest
+   AND hover rules win over the global `.fe-page a` + `.fe-page a:hover`
+   block (specificity 0,2,1) — without the prefix our rules are 0,2,0
+   and lose, so the link picks up the body link colour at rest and a
+   colour-shift + underline on hover. */
+.fe-page .fe-mlist-rail-link,
+.frontend-body .fe-mlist-rail-link {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 9px 12px;
+  border: 1px solid transparent; border-radius: 10px;
+  color: inherit; text-decoration: none;
+  font-size: 0.92rem; font-weight: 500;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.fe-page .fe-mlist-rail-link:hover,
+.fe-page .fe-mlist-rail-link:focus,
+.fe-page .fe-mlist-rail-link:focus-visible,
+.frontend-body .fe-mlist-rail-link:hover,
+.frontend-body .fe-mlist-rail-link:focus,
+.frontend-body .fe-mlist-rail-link:focus-visible {
+  background: color-mix(in srgb, var(--fe-accent, #3b82f6) 7%, transparent);
+  color: inherit;
+  text-decoration: none;
+}
+.fe-mlist-rail-link-label {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fe-mlist-rail-link-icon {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: color-mix(in srgb, currentColor 55%, transparent);
+  transition: color 120ms ease;
+}
+.fe-mlist-rail-link-icon .icon { width: 16px; height: 16px; }
+.fe-mlist-rail-link:hover .fe-mlist-rail-link-icon {
+  color: inherit;
+}
+
 .fe-mlist-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
@@ -5570,6 +5648,23 @@ body.fe-frontend-force-dark .fe-mlist-search-kbd {
      instead of stopping at the actions content height. */
   align-self: stretch;
 }
+/* Location pane at the top of the actions column (in-person + hybrid).
+   Plain text stack — no icon — so the name + address read as
+   straightforward where-to-go info. */
+.fe-mlist-card-loc {
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 0;
+  min-width: 0;
+}
+.fe-mlist-card-loc-name {
+  font-weight: 600; font-size: 0.95rem; color: inherit;
+  word-wrap: break-word;
+}
+.fe-mlist-card-loc-line {
+  font-size: 0.85rem;
+  color: color-mix(in srgb, currentColor 65%, transparent);
+}
+
 .fe-mlist-card-zoom-creds {
   margin: 0;
   display: flex; flex-direction: column; gap: 8px;
