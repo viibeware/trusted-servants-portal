@@ -210,6 +210,19 @@ def record_visit():
     try:
         if getattr(current_user, "is_authenticated", False):
             return
+        # Respect the frontend gate. When the public site is disabled
+        # (`frontend_module_enabled` off, or `frontend_enabled` off for
+        # everyone but admin/editor previews), the route handlers
+        # redirect every request to /tspro/auth/login. But this hook
+        # runs as a blueprint `before_request`, which fires BEFORE the
+        # route handler — so without this check we'd record one
+        # VisitorEvent per scanner/crawler hit even though the visitor
+        # never actually saw a page. Mirrors the precondition in
+        # `app/frontend.py::_frontend_gate`.
+        from .models import SiteSetting
+        site = SiteSetting.query.first()
+        if not site or not site.frontend_module_enabled or not site.frontend_enabled:
+            return
         path = request.path or "/"
         ua = request.headers.get("User-Agent") or ""
         if _should_skip(path, request.method, ua):

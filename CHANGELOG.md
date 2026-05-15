@@ -6,6 +6,16 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [1.10.4] — 2026-05-15
+
+### Fixed — Visitor recorder now respects the frontend gate (no more phantom traffic when the public site is disabled)
+
+`_record_visitor_event` in `app/frontend.py` is mounted as a `before_request` on the `frontend` blueprint. Flask runs blueprint `before_request` hooks BEFORE the route handler itself runs — which means a request to `/`, `/meetings`, `/events`, etc. would write a `VisitorEvent` row *before* the route's `_frontend_gate(site)` call had a chance to return a 302 to login. With `frontend_enabled` off, scanner / crawler hits at common frontend paths were getting redirected to login as designed but still appearing in the dashboard's Visitor Metrics widget as "real" page views. The recorder already filtered authenticated users (admin/editor previews) and obvious bot UAs, but anything with a plausible browser UA that didn't match the `_BOT_TOKENS` list slipped through.
+
+`visitor_metrics.record_visit()` now reads the `SiteSetting` row up front and short-circuits when `frontend_module_enabled` is False OR `frontend_enabled` is False — same precondition the route handlers' `_frontend_gate` enforces. Verified end-to-end via a `unittest.mock.patch` against the SiteSetting query: gate-off → recorder writes zero rows; gate-on → recorder writes one row per legitimate visit. Login-page traffic was never affected (login lives on the `auth` blueprint, which the recorder hook isn't wired into).
+
+Historical rows from before this fix are left intact — there's no audit log of when `frontend_enabled` was toggled, and any retroactive scrub would have to guess at which rows were legitimate.
+
 ## [1.10.3] — 2026-05-15
 
 ### Added — Defensive 404 short-circuit for known attacker probe paths

@@ -7,7 +7,14 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 1.10.3 — 2026-05-15 (latest) — Security hardening sweep
+## 1.10.4 — 2026-05-15 (latest) — Visitor metrics: no more phantom traffic when the public site is off
+
+A small follow-up to 1.10.3. When the web frontend was disabled, the Visitor Metrics widget was still counting scanner / crawler hits to public-site URLs (`/`, `/meetings`, `/events`, etc.) — those requests get redirected to the login screen as designed, but the recorder was already writing the row before the redirect kicked in.
+
+- **The visitor recorder now respects the frontend gate.** When `Web Frontend → Enable public site` is off, page hits stop registering as visits. Login-page traffic was never affected.
+- Historical rows are left alone — going forward the counts will only include traffic that actually saw a public page.
+
+## 1.10.3 — 2026-05-15 — Security hardening sweep
 
 A defensive security pass triggered by production probe traffic for `.env` and friends. The portal was already safe (Caddy doesn't serve files from disk; `.env` isn't in the Docker image) but this release tightens a handful of best-practice gaps that a careful audit surfaced.
 
