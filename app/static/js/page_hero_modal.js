@@ -171,6 +171,7 @@
     if (_dyn('randomize_colors') === '1') _dynCfg.randomize_colors = true;
     if (_dyn('randomize_positions') === '1') _dynCfg.randomize_positions = true;
     if (_dyn('animate_off') === '1') _dynCfg.animate = false;
+    if (_dyn('pastel_light') === '1') _dynCfg.pastel_light = true;
     data.bg_dynbg_config_json = Object.keys(_dynCfg).length
       ? JSON.stringify(_dynCfg) : '';
 
@@ -345,6 +346,7 @@
           randomizeColors: !!cfg.randomize_colors,
           randomizePositions: !!cfg.randomize_positions,
           animateOff: cfg.animate === false,
+          pastelLight: !!cfg.pastel_light,
         });
       }
     }

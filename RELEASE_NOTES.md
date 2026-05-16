@@ -7,7 +7,27 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.0.2 — 2026-05-16 (latest) — Frontend admin tools: blog edit chip, auth-aware menu/footer, library item summaries
+## 2.0.3 — 2026-05-16 (latest) — Real client IPs in Watchtower, public library thumbnails
+
+Two fixes that were each producing wrong-looking results in production:
+
+### Watchtower now logs real client IPs
+
+If you've been running behind the bundled Caddy reverse proxy (the default `install.sh` setup), every IP shown in **Watchtower** — Access, Visitors, Requests, the IP-blocklist — was the Caddy container's docker-bridge address (typically `172.x.x.x`), not the real visitor's IP. The Flask app wasn't reading the `X-Forwarded-For` header Caddy was already setting.
+
+This release wires in the standard `ProxyFix` middleware so `request.remote_addr` reflects the real client across the whole app: probe-block log lines, login records, contact-form submissions, Turnstile verification, and the IP-block gate that powers the blocklist.
+
+> **One cleanup step:** any rows you previously added to the **Watchtower → IP blocklist** that captured docker-bridge addresses (e.g. `172.17.0.1`) won't match real client traffic anymore. Open the blocklist panel and clear those out.
+
+If you run the app *without* a reverse proxy in front (bound directly to a public interface), set `TSP_TRUSTED_PROXIES=0` in your `.env` to keep the app from trusting forwarded-IP headers that nothing legitimate is setting.
+
+### Library item thumbnails now load for the public
+
+Library item thumbnails on the public **Literature Library** page (and any homepage / page block that surfaces a library item) were silently 404'ing to anonymous visitors — the route was login-gated. Logged-in admins saw the thumbnails fine; the public saw broken images.
+
+Thumbnails now render publicly whenever the parent library and the item are both flagged as public-visible (the same gate the Literature Library page itself already uses). Private libraries and admin-hidden items continue to 404 to anonymous traffic.
+
+## 2.0.2 — 2026-05-16 — Frontend admin tools: blog edit chip, auth-aware menu/footer, library item summaries
 
 A round of frontend polish focused on giving signed-in admins fast tools on the public site, and making library authoring more flexible.
 

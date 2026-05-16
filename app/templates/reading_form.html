@@ -17,9 +17,12 @@
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="muted small">Library: {{ library.name }}</div>
   <label>Title<input name="title" required value="{{ reading.title if reading else '' }}"></label>
-  <label>Summary <span class="muted small">(optional)</span>
-    <textarea name="summary" rows="3" maxlength="500"
-              placeholder="Short blurb shown next to the title in lists and previews.">{{ reading.summary if reading and reading.summary else '' }}</textarea></label>
+  <label>Summary <span class="muted small">(optional · up to 500 characters)</span>
+    <textarea name="summary" rows="3" maxlength="500" data-summary-input
+              placeholder="Short blurb shown next to the title in lists and previews.">{{ reading.summary if reading and reading.summary else '' }}</textarea>
+    <div class="summary-counter" data-summary-counter>
+      <span data-summary-count>500</span>/500 remaining
+    </div></label>
 
   <div class="content-mode-toggle content-mode-seg-wrap" data-content-mode-toggle>
     <input type="hidden" name="content_mode" value="{{ _default_mode }}" data-content-mode-input>

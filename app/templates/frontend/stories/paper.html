@@ -5,7 +5,7 @@
    backdrop. Serif title, byline italicised, drop-cap on the opening
    paragraph, and small wavy rule between the body and the author's
    note. Featured image rendered as a tipped-in plate above the title. #}
-<section class="fe-story-paper{% if tpl_dynbg_key or tpl_dynbg_overlay %} fe-dynbg-host{% endif %}" style="{{ tpl_style }}{% if tpl_dynbg_config %}; {% set _resolved = dynbg_resolve_colors(tpl_dynbg_config) %}{% for _c in _resolved %}--fe-dynbg-c{{ loop.index }}: {{ _c }};{% endfor %} {{ dynbg_resolve_positions(tpl_dynbg_config, tpl_dynbg_key) }}{% endif %}">
+<section class="fe-story-paper{% if tpl_dynbg_key or tpl_dynbg_overlay %} fe-dynbg-host{% endif %}" style="{{ tpl_style }}{% if tpl_dynbg_config %}; {{ dynbg_colors_css(dynbg_resolve_colors(tpl_dynbg_config), tpl_dynbg_config) }} {{ dynbg_resolve_positions(tpl_dynbg_config, tpl_dynbg_key) }}{% endif %}">
   {% if tpl_dynbg_key or tpl_dynbg_overlay %}{% with dynbg_key=tpl_dynbg_key, dynbg_config=tpl_dynbg_config %}{% include "frontend/_dynbg_apply.html" %}{% endwith %}{% endif %}
   <div class="fe-story-paper-bg" aria-hidden="true"></div>
   <article class="fe-story-paper-sheet">

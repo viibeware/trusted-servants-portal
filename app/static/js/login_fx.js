@@ -36,19 +36,41 @@
     return '#' + f(0) + f(8) + f(4);
   }
 
-  // Default sinewave shape constants — preserved as the canonical look
-  // when no `wave` opts are passed. `wave.f1Mul` / `f2Mul` scale the two
-  // sine frequencies (in units of "cycles across W"); `amp1` / `amp2`
-  // are the vertical bend amplitudes; `phase` shifts the second sine.
-  const SINEWAVE_DEFAULT = { f1Mul: 1.0, f2Mul: 2.3, amp1: 0.18, amp2: 0.09, phase: 1.2 };
+  // Default sinewave shape constants — preserved as the canonical
+  // look when no `wave` opts are passed. The base canvas overlays
+  // three sinewaves across the x-axis plus a slow y-modulated
+  // component, so the gradient bends organically instead of reading
+  // as a repeating sine pattern.
+  //   • `f1Mul` / `f2Mul` / `f3Mul` — sine frequencies across W
+  //   • `amp1` / `amp2` / `amp3`    — per-component vertical amplitudes
+  //   • `phase`  / `phase3`         — phase offsets (radians)
+  //   • `yMod`                      — secondary y-axis frequency that
+  //                                   shifts each band as it scans down
+  //   • `yAmp`                      — magnitude of the y-axis modulation
+  // Stored waves missing the newer keys fall through to these defaults
+  // so old data keeps rendering. `amp3` / `yAmp` default to ≠0 so the
+  // canonical look is the new richer shape going forward.
+  const SINEWAVE_DEFAULT = {
+    f1Mul: 1.0, f2Mul: 2.3, f3Mul: 0.6,
+    amp1: 0.16, amp2: 0.09, amp3: 0.07,
+    phase: 1.2, phase3: 2.4,
+    yMod: 1.7, yAmp: 0.04,
+  };
 
   function randomWaveParams(){
     return {
-      f1Mul: rand(0.4, 2.2),
-      f2Mul: rand(1.4, 4.0),
-      amp1:  rand(0.06, 0.30),
-      amp2:  rand(0.02, 0.16),
-      phase: rand(0, Math.PI * 2),
+      // Wider frequency band per component so randomised waves don't
+      // all share the same "two-bump" shape.
+      f1Mul: rand(0.3, 2.6),
+      f2Mul: rand(1.0, 4.5),
+      f3Mul: rand(0.2, 3.2),
+      amp1:  rand(0.05, 0.32),
+      amp2:  rand(0.02, 0.18),
+      amp3:  rand(0.02, 0.14),
+      phase:  rand(0, Math.PI * 2),
+      phase3: rand(0, Math.PI * 2),
+      yMod:  rand(0.4, 3.5),
+      yAmp:  rand(0.01, 0.08),
     };
   }
 
@@ -67,10 +89,22 @@
     const d = img.data;
     const f1 = 2 * Math.PI / W * wave.f1Mul;
     const f2 = 2 * Math.PI / W * wave.f2Mul;
-    const amp1 = wave.amp1, amp2 = wave.amp2, phase = wave.phase;
+    const f3 = 2 * Math.PI / W * wave.f3Mul;
+    const fy = 2 * Math.PI / H * wave.yMod;
+    const amp1 = wave.amp1, amp2 = wave.amp2, amp3 = wave.amp3;
+    const phase = wave.phase, phase3 = wave.phase3;
+    const yAmp = wave.yAmp;
     for (let y = 0; y < H; y++){
+      // Slow y-axis component — shifts the whole band as it scans
+      // down so each row's wave centre is offset slightly from the
+      // row above. Breaks the strict left-right symmetry of a pure
+      // x-only sum.
+      const yShift = Math.sin(y * fy) * yAmp;
       for (let x = 0; x < W; x++){
-        const ph = Math.sin(x * f1) * amp1 + Math.sin(x * f2 + phase) * amp2;
+        const ph = Math.sin(x * f1) * amp1
+                 + Math.sin(x * f2 + phase) * amp2
+                 + Math.sin(x * f3 + phase3 + y * fy * 0.5) * amp3
+                 + yShift;
         let t = y / (H - 1) + ph;
         if (t < 0) t = 0; else if (t > 1) t = 1;
         const p = t * (n - 1);

@@ -12,9 +12,9 @@
    geometry, same pill colours, same search input shape. #}
 {%- set _literature_library_tpl = template_settings(site, 'literature_library', site.frontend_literature_library_template) if site else {} -%}
 {%- set _dynbg = _literature_library_tpl.get('bg_dynamic_key') or (site.frontend_literature_library_bg_dynamic_key if site else None) -%}
-{%- set _dynbg_cfg_raw = {'overlay': _literature_library_tpl.get('bg_dynbg_overlay'), 'colors': _literature_library_tpl.get('bg_dynbg_colors') or [], 'overlay_scope': _literature_library_tpl.get('bg_dynbg_overlay_scope'), 'overlay_size': _literature_library_tpl.get('bg_dynbg_overlay_size'), 'overlay_intensity': _literature_library_tpl.get('bg_dynbg_overlay_intensity'), 'randomize_colors': _literature_library_tpl.get('bg_dynbg_randomize_colors'), 'randomize_positions': _literature_library_tpl.get('bg_dynbg_randomize_positions'), 'animate': _literature_library_tpl.get('bg_dynbg_animate', True)} if _literature_library_tpl.get('bg_dynamic_key') or _literature_library_tpl.get('bg_dynbg_overlay') else (site.frontend_literature_library_bg_dynbg_config_json if site else None) -%}
+{%- set _dynbg_cfg_raw = {'overlay': _literature_library_tpl.get('bg_dynbg_overlay'), 'colors': _literature_library_tpl.get('bg_dynbg_colors') or [], 'overlay_scope': _literature_library_tpl.get('bg_dynbg_overlay_scope'), 'overlay_size': _literature_library_tpl.get('bg_dynbg_overlay_size'), 'overlay_intensity': _literature_library_tpl.get('bg_dynbg_overlay_intensity'), 'randomize_colors': _literature_library_tpl.get('bg_dynbg_randomize_colors'), 'randomize_positions': _literature_library_tpl.get('bg_dynbg_randomize_positions'), 'animate': _literature_library_tpl.get('bg_dynbg_animate', True), 'pastel_light': _literature_library_tpl.get('bg_dynbg_pastel_light', False)} if _literature_library_tpl.get('bg_dynamic_key') or _literature_library_tpl.get('bg_dynbg_overlay') else (site.frontend_literature_library_bg_dynbg_config_json if site else None) -%}
 {%- set _dynbg_cfg = dynbg_decode(_dynbg_cfg_raw) -%}
-{%- set _dynbg_color_vars = dynbg_colors_css(dynbg_resolve_colors(_dynbg_cfg)) -%}
+{%- set _dynbg_color_vars = dynbg_colors_css(dynbg_resolve_colors(_dynbg_cfg), _dynbg_cfg) -%}
 {%- set _dynbg_active = _dynbg or _dynbg_cfg.overlay -%}
 <section class="fe-section fe-mlist fe-mlist-sidebar fe-events fe-archive fe-library fe-mlist--w-{{ list_width_mode }}{% if _dynbg_active %} fe-dynbg-host{% endif %}" id="library"
          {% if _dynbg_active and _dynbg_color_vars %}style="{{ _dynbg_color_vars }}"{% endif %}>
@@ -99,11 +99,31 @@
                 {%- set _href = '' -%}
                 {%- set _ext_target = '' -%}
               {%- endif -%}
-              <li class="fe-library-item"
+              {# When the item resolves to an external URL (no
+                 in-house file takes precedence), stamp a small
+                 external-link glyph in the top-right corner so
+                 visitors can spot at a glance which cards leave
+                 the site. The `--external` modifier on the <li>
+                 turns the card into a positioning context for the
+                 absolutely-placed marker. #}
+              {%- set _is_external_card = _has_url and not _has_file -%}
+              <li class="fe-library-item{% if _is_external_card %} fe-library-item--external{% endif %}"
                   data-library-search="{{ search_blobs.get(it.id, '') }}"
                   data-library-id="{{ bucket.id }}">
+                {% if _is_external_card %}
+                  <span class="fe-library-item-ext-marker"
+                        aria-hidden="true"
+                        title="Opens an external site in a new tab">{{ icon('external-link') }}</span>
+                {% endif %}
                 {% if it.thumbnail_filename %}
-                  <span class="fe-library-thumb">
+                  {# Thumbnail wrapper is its own lightbox scope so
+                     clicking it opens the image viewer instead of
+                     navigating with the card's stretched-link
+                     overlay. `position: relative; z-index: 2` (in
+                     CSS) lifts the thumbnail above the overlay so
+                     the lightbox click handler wins. #}
+                  <span class="fe-library-thumb fe-library-thumb--lightbox"
+                        data-lightbox-scope>
                     <img src="{{ url_for('main.reading_thumbnail', rid=it.id) }}" alt="" loading="lazy">
                   </span>
                 {% else %}
@@ -112,7 +132,15 @@
                 <div class="fe-library-item-body">
                   <h3 class="fe-library-item-title">
                     {% if _href %}
-                      <a href="{{ _href }}" {% if _ext_target %}target="{{ _ext_target }}" rel="noopener"{% endif %}>{{ it.title }}</a>
+                      {# The card-link's ::after pseudo-element stretches
+                         across the whole `<li>` (which is set
+                         `position: relative` in CSS) so a click
+                         anywhere on the card navigates to the same
+                         destination. The thumbnail and the
+                         top-right external-link marker each sit
+                         above this overlay via their own z-index so
+                         they keep their distinct affordances. #}
+                      <a class="fe-library-item-link" href="{{ _href }}" {% if _ext_target %}target="{{ _ext_target }}" rel="noopener"{% endif %}>{{ it.title }}</a>
                     {% else %}
                       {{ it.title }}
                     {% endif %}
@@ -123,6 +151,9 @@
                     <div class="fe-library-item-sub muted small trunc">{{ it.url }}</div>
                   {% elif _has_body %}
                     <div class="fe-library-item-sub muted small">Text document · {{ it.body|length }} chars</div>
+                  {% endif %}
+                  {% if it.summary %}
+                    <p class="fe-library-item-summary">{{ it.summary }}</p>
                   {% endif %}
                   {% if it.categories %}
                     <div class="fe-library-item-cats">
@@ -287,4 +318,10 @@
   });
 })();
 </script>
+
+{# Lightbox plumbing — auto-discovers every <img> inside any
+   `data-lightbox-scope` ancestor on the page (each card's
+   `.fe-library-thumb--lightbox` wrapper opts in). Wires the
+   click → open-modal handler and arrow-key / prev-next nav. #}
+{% include "frontend/_lightbox.html" %}
 {% endblock %}

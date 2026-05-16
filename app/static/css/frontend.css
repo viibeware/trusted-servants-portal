@@ -1480,6 +1480,20 @@ html[data-theme="dark"] body[data-fe-theme="recovery-blue"] .fe-btn-ghost:hover 
    sinewave SVG. Mirrors `.fe-hero-bg-sinewave` so the footer reuses
    the hero's effect. */
 .fe-footer-bg-sinewave { background: linear-gradient(180deg, #16c2ba 0%, #5a1ce5 100%); }
+/* Mobile (≤ 720 px): the painter sets `background-size: 100% 100%`
+   inline (a stretch-fill that distorts the canvas-rendered sinewave
+   into a thin horizontal smear on narrow viewports). Override to
+   `cover` so the image keeps its aspect ratio and crops symmetrically
+   instead of stretching. `!important` is required to beat the inline
+   declaration; scope to the footer's sinewave class so the override
+   doesn't leak into other sinewave consumers (hero, login screen). */
+@media (max-width: 720px) {
+  .fe-footer-bg-sinewave {
+    background-size: cover !important;
+    background-position: center center !important;
+    background-repeat: no-repeat !important;
+  }
+}
 /* Footer inner content sits above the optional bg layers. */
 .fe-footer-inner {
   display: block;
@@ -1540,9 +1554,12 @@ html[data-theme="dark"] body[data-fe-theme="recovery-blue"] .fe-btn-ghost:hover 
   transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 .fe-footer-block-powered-by a:hover {
-  color: var(--fe-color-link-hover, var(--fe-color-link, var(--fe-color-brand, var(--fe-accent))));
+  /* Text stays at the inherited rest colour (footer chrome paints
+     it white). Only the surface tint deepens; border stays the same
+     `currentColor` it was at rest. Matches the no-text-shift hover
+     pattern used by the `.fe-footer-admin-login` /
+     `.fe-footer-location-directions` pills. */
   background: color-mix(in srgb, currentColor 18%, transparent);
-  border-color: currentColor;
 }
 
 .fe-footer-secondary-nav {
@@ -1778,7 +1795,12 @@ html[data-theme="dark"] body[data-fe-theme="recovery-blue"] .fe-btn-ghost:hover 
 .fe-footer-admin-login:focus-visible {
   background: color-mix(in srgb, var(--fe-accent, var(--fe-ink)) 28%, transparent);
   border-color: color-mix(in srgb, var(--fe-accent, var(--fe-ink)) 70%, transparent);
-  color: var(--fe-color-link-hover, var(--fe-color-link, var(--fe-color-brand, var(--fe-accent))));
+  /* Text stays at the inherited rest colour on hover — only the
+     surface + border shift. Footer chrome typically paints text
+     white; preserving `color: inherit` keeps it white. The
+     `--logout` modifier further down sets its own text colour
+     (black on yellow) and isn't affected by this rule. */
+  color: inherit;
   text-decoration: none;
 }
 /* Dark / force-dark — surface darkens to a deeper navy (#0a0f24-ish)
@@ -6432,7 +6454,13 @@ body.fe-frontend-force-dark .fe-events-archive-back a {
 .fe-library-item {
   /* Primary card tokens — same recipe as the meetings / events /
      announcements / fellowships cards. Hover wired via the shared
-     primary aggregator below. */
+     primary aggregator below. `position: relative` makes the card a
+     positioning context for the `.fe-library-item-link::after`
+     overlay below (stretched-link pattern) so a click anywhere on
+     the card navigates to the title's target — except the
+     thumbnail + external-marker, which sit above the overlay via
+     their own z-index. */
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 14px;
@@ -6443,6 +6471,54 @@ body.fe-frontend-force-dark .fe-events-archive-back a {
   border-radius: 16px;
 }
 .fe-library-item[hidden] { display: none; }
+/* Stretched-link overlay — the title's anchor extends its hit
+   area to the entire card. The pseudo-element does the heavy
+   lifting so the visible title text stays inline and the
+   surrounding body / categories chips render normally. */
+.fe-library-item-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: 1;
+}
+/* Thumbnail wrapper marked as a lightbox scope. Sits above the
+   stretched-link overlay so clicking it opens the image viewer
+   (handled by `_lightbox.html`) instead of navigating with the
+   title link. `cursor: zoom-in` telegraphs the affordance. */
+.fe-library-thumb--lightbox {
+  position: relative;
+  z-index: 2;
+  cursor: zoom-in;
+}
+.fe-library-thumb--lightbox img { cursor: inherit; }
+/* External-link cards: the `--external` modifier turns the card
+   into a positioning context for the corner marker below. Right
+   padding bumps so the marker doesn't overlap the body content. */
+.fe-library-item--external { position: relative; padding-right: 38px; }
+.fe-library-item-ext-marker {
+  position: absolute;
+  top: 10px; right: 12px;
+  z-index: 2;  /* above the stretched-link overlay so the icon paints on top */
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  color: var(--fe-color-muted, #64748b);
+  /* `pointer-events: none` so the marker doesn't intercept the
+     card's hover/click — the stretched-link overlay still
+     captures the click and navigates to the URL. */
+  pointer-events: none;
+  opacity: 0.85;
+  transition: opacity 140ms ease, color 140ms ease;
+}
+.fe-library-item-ext-marker svg { width: 16px; height: 16px; }
+.fe-library-item--external:hover .fe-library-item-ext-marker {
+  opacity: 1;
+  color: var(--fe-color-link, var(--fe-accent));
+}
+[data-theme="dark"] .fe-library-item-ext-marker { color: #94a3b8; }
+[data-theme="dark"] .fe-library-item--external:hover .fe-library-item-ext-marker {
+  color: var(--fe-dm-text-strong, #e2e8f0);
+}
 .fe-library-thumb {
   flex: 0 0 auto;
   width: 56px;
@@ -6476,6 +6552,19 @@ body.fe-frontend-force-dark .fe-events-archive-back a {
 }
 .fe-library-item-title a:hover { color: var(--fe-color-link, var(--fe-accent)); text-decoration: underline; }
 .fe-library-item-sub { margin: 2px 0 0; }
+/* Optional summary line under the filename / URL — admin-set short
+   blurb, plain text, allowed to wrap to multiple lines (no
+   truncation) since the textarea-shaped input invites paragraph-
+   style copy. Inherits the card's text color rather than the muted
+   token so the summary stands a little above the filename in
+   visual weight. */
+.fe-library-item-summary {
+  margin: 6px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: inherit;
+}
 .fe-library-item-sub.trunc {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
 }
@@ -10906,4 +10995,33 @@ body.fe-footer-force-dark .fe-footer-admin-login--logout:focus-visible {
      flex-wrap allowed, this keeps the pair visually paired even
      after a wrap. */
   margin-left: auto;
+}
+
+/* ── Dynbg pastel-in-light-mode swap ──────────────────────────────
+   When the admin enables "Use pastels in light mode only" in the
+   dynbg-picker modal, the renderer stamps companion
+   `--fe-dynbg-cN-light` custom properties next to the canonical
+   `--fe-dynbg-cN` ones. Outside dark mode (no `data-theme="dark"`
+   attribute on <html>) we re-bind the canonical vars to the
+   pastel values so every consumer (blob fills, gradient stops,
+   band strokes, spotlight colours) picks up the soft palette
+   automatically — no per-preset CSS to update. Dark mode keeps
+   the full-saturation originals so the surface still reads with
+   depth on a dark page. */
+/* `!important` is required because the canonical `--fe-dynbg-cN` is
+   set INLINE on the same element (`style="--fe-dynbg-c1: #vivid;
+   --fe-dynbg-c1-light: #pastel"`), and inline custom-property
+   declarations otherwise outrank any selector-driven rule for the
+   same property. The swap only fires when the visitor is in light
+   mode AND the element carries a `-light` companion, so it's a
+   narrow rebind — won't leak into dark mode or onto any element
+   that didn't opt in by carrying the companion var. */
+html:not([data-theme="dark"]) [style*="--fe-dynbg-c1-light"] {
+  --fe-dynbg-c1: var(--fe-dynbg-c1-light) !important;
+}
+html:not([data-theme="dark"]) [style*="--fe-dynbg-c2-light"] {
+  --fe-dynbg-c2: var(--fe-dynbg-c2-light) !important;
+}
+html:not([data-theme="dark"]) [style*="--fe-dynbg-c3-light"] {
+  --fe-dynbg-c3: var(--fe-dynbg-c3-light) !important;
 }

@@ -937,6 +937,7 @@
       const currentRandomizeColors    = opts.randomizeColors ? '1' : '';
       const currentRandomizePositions = opts.randomizePositions ? '1' : '';
       const currentAnimateOff         = opts.animateOff ? '1' : '';
+      const currentPastelLight        = opts.pastelLight ? '1' : '';
       const onChange = opts.onChange || (() => {});
 
       const id = 'be-dynbg-trigger-' + (++_dynbgTriggerSeq);
@@ -956,6 +957,7 @@
       const randomizeColorsInput    = el('input', { type: 'hidden', id: id + '-randomize-colors',    value: currentRandomizeColors });
       const randomizePositionsInput = el('input', { type: 'hidden', id: id + '-randomize-positions', value: currentRandomizePositions });
       const animateOffInput         = el('input', { type: 'hidden', id: id + '-animate-off',        value: currentAnimateOff });
+      const pastelLightInput        = el('input', { type: 'hidden', id: id + '-pastel-light',       value: currentPastelLight });
 
       // Resolve the catalog row matching the current key by reading
       // the global modal's grid — that's the same source of truth as
@@ -1040,6 +1042,7 @@
         'data-dynbg-trigger-randomize-colors-input':      '#' + id + '-randomize-colors',
         'data-dynbg-trigger-randomize-positions-input':   '#' + id + '-randomize-positions',
         'data-dynbg-trigger-animate-off-input':           '#' + id + '-animate-off',
+        'data-dynbg-trigger-pastel-light-input':          '#' + id + '-pastel-light',
         'data-dynbg-current': currentKey,
         'data-dynbg-overlay': currentOverlay,
         'data-dynbg-c1': currentColors[0],
@@ -1051,6 +1054,7 @@
         'data-dynbg-randomize-colors': currentRandomizeColors,
         'data-dynbg-randomize-positions': currentRandomizePositions,
         'data-dynbg-animate-off': currentAnimateOff,
+        'data-dynbg-pastel-light': currentPastelLight,
       }, [thumbEl, textEl, caret]);
 
       // The global modal handler dispatches `change` events on every
@@ -1074,6 +1078,7 @@
           const rc  = randomizeColorsInput.value === '1';
           const rp  = randomizePositionsInput.value === '1';
           const ao  = animateOffInput.value === '1';
+          const pl  = pastelLightInput.value === '1';
           btn.setAttribute('data-dynbg-current', k);
           btn.setAttribute('data-dynbg-overlay', ov);
           btn.setAttribute('data-dynbg-c1', cs[0]);
@@ -1085,6 +1090,7 @@
           btn.setAttribute('data-dynbg-randomize-colors',    rc ? '1' : '');
           btn.setAttribute('data-dynbg-randomize-positions', rp ? '1' : '');
           btn.setAttribute('data-dynbg-animate-off',         ao ? '1' : '');
+          btn.setAttribute('data-dynbg-pastel-light',        pl ? '1' : '');
           const newEntry = entryFor(k);
           renderThumb(thumbEl, newEntry);
           nameEl.textContent = newEntry ? newEntry.name : 'Choose…';
@@ -1099,13 +1105,14 @@
             randomizeColors: rc,
             randomizePositions: rp,
             animateOff: ao,
+            pastelLight: pl,
           });
         });
       }
       const allInputs = [baseInput, overlayInput, c1Input, c2Input, c3Input,
                          scopeInput, sizeInput, intensityInput,
                          randomizeColorsInput, randomizePositionsInput,
-                         animateOffInput];
+                         animateOffInput, pastelLightInput];
       allInputs.forEach(inp => inp.addEventListener('change', notifyConsolidated));
       allInputs.forEach(i => wrap.appendChild(i));
       wrap.appendChild(btn);
@@ -4748,8 +4755,12 @@
           // Default is animated, so an empty/missing field means
           // "use the preset's keyframe animation".
           animateOff: d.bg_dynbg_animate === false,
+          // Opt-in: when on, the saved palette pastelises only in
+          // light mode. Dark mode keeps full-saturation values.
+          pastelLight: !!d.bg_dynbg_pastel_light,
           onChange: ({key, overlay, colors, scope, noiseSize, noiseIntensity,
-                       randomizeColors, randomizePositions, animateOff}) => {
+                       randomizeColors, randomizePositions, animateOff,
+                       pastelLight}) => {
             // Round-trip every dimension into the block data so the
             // serialised blocks_json carries the consolidated state.
             // Empty fields are stored as falsy values rather than
@@ -4768,6 +4779,13 @@
               d.bg_dynbg_animate = false;
             } else {
               delete d.bg_dynbg_animate;
+            }
+            // pastel_light is opt-IN — only persist `true` so the
+            // common (off) case stays absent from blocks_json.
+            if (pastelLight) {
+              d.bg_dynbg_pastel_light = true;
+            } else {
+              delete d.bg_dynbg_pastel_light;
             }
             // Keep the legacy single flag in sync — true when either
             // dimension is on — so old renderers that still read it

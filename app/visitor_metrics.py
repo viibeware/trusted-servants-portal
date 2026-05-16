@@ -116,13 +116,10 @@ def _parse_ua(ua):
 
 
 def _client_ip():
-    """Return the visitor's IP, honoring `X-Forwarded-For` when behind a
-    proxy. The hash function uses this; we never persist the raw value."""
-    xff = request.headers.get("X-Forwarded-For", "")
-    if xff:
-        # X-Forwarded-For may be a comma-separated list. The original
-        # client is the first hop.
-        return xff.split(",", 1)[0].strip()
+    """Return the visitor's IP. ProxyFix in create_app() already rewrites
+    request.remote_addr from X-Forwarded-For when configured trusted hops
+    match, so we read it directly. The hash function uses this; we never
+    persist the raw value."""
     return request.remote_addr or ""
 
 

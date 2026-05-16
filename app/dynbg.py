@@ -289,7 +289,7 @@ def normalize_float(value, lo, hi, default=None):
 def encode_config(overlay_key=None, colors=None, scope=None,
                   noise_size=None, noise_intensity=None,
                   randomize_colors=False, randomize_positions=False,
-                  animate=True, randomize=None):
+                  animate=True, randomize=None, pastel_light=False):
     """Return a JSON-serialisable dict shape for a surface's dynbg
     config column. Drops empty / default fields so a fresh install
     stores ``{}`` rather than a fat default record.
@@ -321,6 +321,11 @@ def encode_config(overlay_key=None, colors=None, scope=None,
         cleaned["randomize_colors"] = True
     if randomize_positions:
         cleaned["randomize_positions"] = True
+    # Opt-in: only persist when the admin explicitly turns on the
+    # "pastels in light mode only" toggle so a fresh install with no
+    # `pastel_light` key behaves exactly as before.
+    if pastel_light:
+        cleaned["pastel_light"] = True
     # Opt-OUT semantics: only persist when the admin explicitly
     # disables animation. Animated presets default to running their
     # keyframe animations, so a fresh install with no `animate` key
@@ -353,6 +358,7 @@ def decode_config(raw):
         "randomize_positions": False,
         "randomize": False,
         "animate": True,
+        "pastel_light": False,
         "colors": [],
     }
     if not raw:
@@ -382,21 +388,96 @@ def decode_config(raw):
         "randomize_positions": rp,
         "randomize": rc or rp,  # legacy alias — true when either is on
         "animate": animate,
+        "pastel_light": bool(data.get("pastel_light")),
         "colors": [c for c in normalize_colors(data.get("colors") or []) if c],
     }
 
 
-def colors_to_css_vars(colors):
+_PASTEL_HEX_RE = __import__("re").compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+
+
+def pastelize(hex_str):
+    """Return a pastel-soft variant of an arbitrary hex colour.
+
+    Converts to HLS, preserves hue, drops saturation into the 0.35–
+    0.5 band, and lifts lightness into 0.80–0.88. The result reads
+    as the same colour family but several stops gentler — soft
+    blues, blushes, mints — suitable for a light-mode dynbg surface
+    where a fully-saturated brand colour would feel heavy.
+
+    Returns ``None`` on invalid input so callers can short-circuit
+    without crashing the render. Output is `#rrggbb` (no alpha)
+    because the inline CSS-vars are blended downstream.
+    """
+    import colorsys
+    if not isinstance(hex_str, str) or not _PASTEL_HEX_RE.match(hex_str):
+        return None
+    h = hex_str.lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    if len(h) == 8:
+        h = h[:6]
+    try:
+        r = int(h[0:2], 16) / 255.0
+        g = int(h[2:4], 16) / 255.0
+        b = int(h[4:6], 16) / 255.0
+    except ValueError:
+        return None
+    hue, light, sat = colorsys.rgb_to_hls(r, g, b)
+    # Pale-pastel band — clip saturation hard so even very vivid
+    # source colours arrive on the surface as soft tints, and push
+    # lightness into the 0.88–0.94 range (cream / blush territory)
+    # so the result reads as a faint wash rather than a saturated
+    # block. Pull the source lightness in toward the upper band so
+    # already-dark inputs don't stall in the muddy middle.
+    new_s = min(sat, 0.339)
+    new_l = max(0.69, min(0.75, light * 0.24 + 0.53))
+    nr, ng, nb = colorsys.hls_to_rgb(hue, new_l, new_s)
+    return "#{:02x}{:02x}{:02x}".format(int(nr * 255), int(ng * 255), int(nb * 255))
+
+
+def colors_to_css_vars(colors, cfg=None):
     """Stamp up to three custom colours as ``--fe-dynbg-cN`` CSS
     custom properties for inline ``style`` use. Returns a string like
     ``--fe-dynbg-c1: #abc; --fe-dynbg-c2: #def;`` (no trailing
     semicolon trick — caller concatenates as needed) or empty string
     when the palette is empty.
+
+    When ``cfg`` (the decoded dynbg config dict) is passed AND
+    ``cfg.pastel_light`` is True, emits a companion
+    ``--fe-dynbg-cN-light`` for each colour carrying the pastelised
+    variant. A CSS rule under ``html:not([data-theme="dark"])`` swaps
+    `--fe-dynbg-cN` to the light variant at render time, so the
+    same palette pastelises only when the visitor is in light mode.
+
+    Special case for ``pastel_light=True`` with no admin-picked
+    colours: each preset's CSS falls through to its own
+    brand-derived fallback when ``--fe-dynbg-cN`` isn't set, and
+    those hardcoded fallbacks ignore the pastel flag entirely. To
+    keep "Use pastels in light mode" meaningful without forcing
+    the admin to also pick colours, stamp three hardcoded pale
+    defaults onto ``--fe-dynbg-cN-light`` so the light-mode swap
+    still has something to swap to. Dark mode is unaffected — the
+    canonical `--fe-dynbg-cN` is never set, so the preset's brand
+    fallback continues to drive the dark surface.
     """
     parts = []
-    for i, c in enumerate(colors or [], start=1):
-        if c:
-            parts.append(f"--fe-dynbg-c{i}: {c};")
+    pastel_light = bool(cfg and cfg.get("pastel_light"))
+    cleaned = [c for c in (colors or []) if c]
+    for i, c in enumerate(cleaned, start=1):
+        parts.append(f"--fe-dynbg-c{i}: {c};")
+        if pastel_light:
+            p = pastelize(c)
+            if p:
+                parts.append(f"--fe-dynbg-c{i}-light: {p};")
+    if pastel_light and not cleaned:
+        # Hardcoded neutral pastels — soft cool / warm / mint
+        # tints that read as a calm palette in light mode without
+        # locking the surface to any particular brand colour. The
+        # admin's own colour picks (if they're added later) take
+        # precedence via the loop above.
+        for i, default_pastel in enumerate(("#ecf0f6", "#f4ecef", "#eef4ee"), start=1):
+            parts.append(f"--fe-dynbg-c{i}-light: {default_pastel};")
     return " ".join(parts)
 
 

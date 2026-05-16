@@ -264,6 +264,30 @@
     });
   });
 
+  // Live character counter for summary textareas on library-item
+  // forms. Counts down from the textarea's `maxlength` (500) so the
+  // operator sees how many characters they have left to spend. The
+  // `is-empty` class flips on when 0 remain so the counter reads in
+  // red — matches the `maxlength` cap the browser enforces. Works
+  // for any textarea carrying `[data-summary-input]` paired with a
+  // sibling `[data-summary-counter]` wrapper (and a nested
+  // `[data-summary-count]` for the live number).
+  document.querySelectorAll("[data-summary-input]").forEach(input => {
+    const label = input.closest("label");
+    if (!label) return;
+    const counter = label.querySelector("[data-summary-counter]");
+    const count = counter && counter.querySelector("[data-summary-count]");
+    if (!counter || !count) return;
+    const max = parseInt(input.getAttribute("maxlength") || "500", 10);
+    function update() {
+      const remaining = Math.max(0, max - input.value.length);
+      count.textContent = remaining;
+      counter.classList.toggle("is-empty", remaining <= 0);
+    }
+    input.addEventListener("input", update);
+    update();
+  });
+
   // Content-mode segmented control for library-item forms. Three
   // exclusive modes: upload | paste | link. Each mode-button maps to
   // one `[data-content-panel=...]` block in the form — only the
@@ -4123,6 +4147,17 @@
     const el = $('#dynbg-picker-modal-animate-off');
     return el && el.checked ? '1' : '';
   }
+  // Pastels-in-light-mode toggle. When on, the saved palette is
+  // pastelised by the server for light-mode renders only. Dark mode
+  // keeps the full-saturation values.
+  function setPastelLight (on) {
+    const el = $('#dynbg-picker-modal-pastel-light');
+    if (el) el.checked = !!on;
+  }
+  function getPastelLight () {
+    const el = $('#dynbg-picker-modal-pastel-light');
+    return el && el.checked ? '1' : '';
+  }
 
   // ── Overlay grid ───────────────────────────────────────────────
   function setSelectedOverlay (key) {
@@ -4257,6 +4292,7 @@
     const randomColors    = payload.randomizeColors ? '1' : '';
     const randomPositions = payload.randomizePositions ? '1' : '';
     const animateOff      = payload.animateOff ? '1' : '';
+    const pastelLight     = payload.pastelLight ? '1' : '';
     const inputBy = (camel) => {
       const sel = trigger.dataset[camel];
       return sel ? document.querySelector(sel) : null;
@@ -4272,6 +4308,7 @@
     const randomColorsIn = inputBy('dynbgTriggerRandomizeColorsInput');
     const randomPosIn    = inputBy('dynbgTriggerRandomizePositionsInput');
     const animateOffIn   = inputBy('dynbgTriggerAnimateOffInput');
+    const pastelLightIn  = inputBy('dynbgTriggerPastelLightInput');
     if (baseInput)      baseInput.value      = key;
     if (overlayInput)   overlayInput.value   = overlay;
     if (c1Input)        c1Input.value        = colors[0] || '';
@@ -4283,6 +4320,7 @@
     if (randomColorsIn) randomColorsIn.value = randomColors;
     if (randomPosIn)    randomPosIn.value    = randomPositions;
     if (animateOffIn)   animateOffIn.value   = animateOff;
+    if (pastelLightIn)  pastelLightIn.value  = pastelLight;
     trigger.dataset.dynbgCurrent = key;
     trigger.dataset.dynbgOverlay = overlay;
     trigger.dataset.dynbgC1 = colors[0] || '';
@@ -4294,6 +4332,7 @@
     trigger.dataset.dynbgRandomizeColors = randomColors;
     trigger.dataset.dynbgRandomizePositions = randomPositions;
     trigger.dataset.dynbgAnimateOff = animateOff;
+    trigger.dataset.dynbgPastelLight = pastelLight;
     const entry = entryByKey(key);
     const nameEl = trigger.querySelector('[data-dynbg-trigger-name]');
     const statusEl = trigger.querySelector('[data-dynbg-trigger-status]');
@@ -4322,6 +4361,7 @@
       }
       if (randomPositions) extras.push('random positions');
       if (animateOff) extras.push('static');
+      if (pastelLight) extras.push('pastel in light mode');
       if (extras.length) bits.push('· ' + extras.join(', '));
       statusEl.textContent = bits.join(' ');
     }
@@ -4335,7 +4375,7 @@
     // we touched so listeners pick up the consolidated change.
     [baseInput, overlayInput, c1Input, c2Input, c3Input,
      scopeInput, sizeInput, intensityIn,
-     randomColorsIn, randomPosIn, animateOffIn].forEach(el => {
+     randomColorsIn, randomPosIn, animateOffIn, pastelLightIn].forEach(el => {
       if (el) el.dispatchEvent(new Event('change', { bubbles: true }));
     });
   }
@@ -4370,6 +4410,7 @@
         randomizeColors: !!getRandomizeColors(),
         randomizePositions: !!getRandomizePositions(),
         animateOff: !!getAnimateOff(),
+        pastelLight: !!getPastelLight(),
       });
       closeSelf();
     });
@@ -4378,6 +4419,7 @@
         key: '', overlay: '', colors: ['', '', ''],
         scope: '', noiseSize: '', noiseIntensity: '',
         randomizeColors: false, randomizePositions: false,
+        pastelLight: false,
         animateOff: false,
       });
       closeSelf();
@@ -4455,6 +4497,7 @@
     setRandomizeColors(trigger.dataset.dynbgRandomizeColors === '1');
     setRandomizePositions(trigger.dataset.dynbgRandomizePositions === '1');
     setAnimateOff(trigger.dataset.dynbgAnimateOff === '1');
+    setPastelLight(trigger.dataset.dynbgPastelLight === '1');
     setActiveTab('background');
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');

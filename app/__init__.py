@@ -8,6 +8,7 @@ from markupsafe import Markup
 from flask import Flask, request, redirect
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFProtect
+from werkzeug.middleware.proxy_fix import ProxyFix
 from .models import db, User, MediaItem, MeetingFile, LibraryItem, UrlRedirect
 
 login_manager = LoginManager()
@@ -18,6 +19,26 @@ csrf = CSRFProtect()
 
 def create_app():
     app = Flask(__name__, instance_relative_config=False)
+
+    # Production deploys (install.sh) front the app with Caddy → gunicorn,
+    # so request.remote_addr is the Caddy container's IP unless we honor
+    # X-Forwarded-For. Without this, Watchtower's IP block gate, probe
+    # logger, login log, and activity log all record the docker bridge IP
+    # (172.x.x.x) instead of the real client. ProxyFix is the standard
+    # Flask remedy. Hop count is configurable via TSP_TRUSTED_PROXIES so
+    # direct-bind deploys can disable it (set to 0) to avoid trusting
+    # spoofable headers when no proxy sits in front.
+    try:
+        _proxy_hops = int(os.environ.get("TSP_TRUSTED_PROXIES", "1"))
+    except ValueError:
+        _proxy_hops = 1
+    if _proxy_hops > 0:
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            x_for=_proxy_hops,
+            x_proto=_proxy_hops,
+            x_host=_proxy_hops,
+        )
 
     data_dir = os.path.abspath(os.environ.get("TSP_DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "data")))
     upload_dir = os.path.abspath(os.environ.get("TSP_UPLOAD_DIR", os.path.join(data_dir, "uploads")))

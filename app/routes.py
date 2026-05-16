@@ -99,6 +99,11 @@ def _dynbg_config_from_form(form, config_field):
         # encode_config drops the field entirely when animate=True so
         # the JSON stays minimal for the common case.
         animate=False if form.get(f"{config_field}__animate_off") == "1" else True,
+        # Pastels-in-light-mode opt-in: when checked, the saved
+        # palette pastelises only in light mode (dark mode keeps the
+        # full-saturation values). encode_config drops the field
+        # entirely when False so the JSON stays minimal.
+        pastel_light=form.get(f"{config_field}__pastel_light") == "1",
         # Legacy single-flag input still accepted on the off-chance an
         # older form posts it — encode_config maps it to both new flags.
         randomize=form.get(f"{config_field}__randomize") == "1" or None,
@@ -5612,6 +5617,7 @@ def frontend_template_settings_save(kind, key):
         randomize_colors=request.form.get("bg_dynbg_config_json__randomize_colors") == "1",
         randomize_positions=request.form.get("bg_dynbg_config_json__randomize_positions") == "1",
         animate=False if request.form.get("bg_dynbg_config_json__animate_off") == "1" else True,
+        pastel_light=request.form.get("bg_dynbg_config_json__pastel_light") == "1",
     )
     if dynbg_cfg.get("overlay"):
         leaf["bg_dynbg_overlay"] = dynbg_cfg["overlay"]
@@ -5629,6 +5635,8 @@ def frontend_template_settings_save(kind, key):
         leaf["bg_dynbg_randomize_positions"] = True
     if dynbg_cfg.get("animate") is False:
         leaf["bg_dynbg_animate"] = False
+    if dynbg_cfg.get("pastel_light"):
+        leaf["bg_dynbg_pastel_light"] = True
     # Classic blog detail toggles for the right-side rail. Stored
      # only as explicit `False` so the JSON stays lean — missing keys
      # mean "show the widget" (the default). When the user unchecks
@@ -8948,11 +8956,18 @@ def markdown_preview():
 
 
 @bp.route("/readings/<int:rid>/thumbnail")
-@login_required
 def reading_thumbnail(rid):
     r = db.session.get(LibraryItem, rid) or abort(404)
     if not r.thumbnail_filename:
         abort(404)
+    # Public visitors get the thumbnail only when the library + item are
+    # both flagged public — matches the gate used by the Literature
+    # Library page (frontend.literature_library) and public page blocks
+    # that reference these thumbs. Authenticated portal users see every
+    # thumb regardless of visibility.
+    if not current_user.is_authenticated:
+        if not (r.public_visible and r.library and r.library.public_visible):
+            abort(404)
     return send_from_directory(current_app.config["UPLOAD_FOLDER"], r.thumbnail_filename)
 
 

@@ -604,7 +604,7 @@
 {%- endif -%}
 {%- set _pp_cfg = dynbg_decode(page.bg_dynbg_config_json) -%}
 {%- set _pp_dynbg_active = page.bg_dynamic_key or _pp_cfg.overlay -%}
-{%- set _pp_color_vars = dynbg_colors_css(dynbg_resolve_colors(_pp_cfg)) -%}
+{%- set _pp_color_vars = dynbg_colors_css(dynbg_resolve_colors(_pp_cfg), _pp_cfg) -%}
 {%- set _pp_pos_vars = dynbg_resolve_positions(_pp_cfg, page.bg_dynamic_key) -%}
 {%- set _pp_dynbg_inline = (_pp_color_vars ~ " " ~ _pp_pos_vars) | trim -%}
 <article class="fe-section fe-pp fe-pp-w-{{ _width_mode }}{% if page.bg_image_filename %} fe-pp-has-bg fe-pp-bg-{{ page.bg_mode }}{% endif %}{% if _pp_dynbg_active %} fe-dynbg-host{% endif %} fe-pp-halign-{{ _heading_align }}"

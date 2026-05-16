@@ -6,7 +6,53 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.0.3] — 2026-05-16
+
+### Fixed — Watchtower logged docker-bridge IPs instead of real client IPs
+
+Production deploys (install.sh) front gunicorn with Caddy, which sets `X-Forwarded-For`, but the Flask app wasn't wrapped in `ProxyFix` — so `request.remote_addr` returned the Caddy container's bridge address (typically `172.x.x.x`) on every request. Every downstream consumer (`__init__._ip_block_gate`, `__init__._block_known_probes`, `activity._client_ip`, `auth.login` ip captures, `frontend` turnstile + contact form ip captures) inherited the wrong value, so Watchtower's Access / Visitors / Requests panels and the IP-blocklist all keyed off the proxy IP. `create_app` now wraps `app.wsgi_app` in `werkzeug.middleware.proxy_fix.ProxyFix` with `x_for=x_proto=x_host` set from a new `TSP_TRUSTED_PROXIES` env var (default 1 hop, matching the Caddy → gunicorn topology; set to 0 to disable for direct-bind deploys that don't want to trust spoofable forwarding headers). `visitor_metrics._client_ip` lost its hand-rolled XFF parser since `request.remote_addr` is now correct everywhere. Operator note: any pre-existing `IPBlock` rows that captured docker-bridge addresses are now dead — they no longer match real client traffic and should be cleared from the Watchtower IP-block panel.
+
+### Fixed — Library item thumbnails 404'd for logged-out visitors
+
+`reading_thumbnail` (`/readings/<rid>/thumbnail`) carried a blanket `@login_required` decorator, so the public Literature Library page (`frontend/literature_library.html`) and any page-block referencing a library item thumbnail (`_blocks.html`) rendered broken images to anonymous visitors. The route now serves the file when the user is authenticated **or** when both `LibraryItem.public_visible` and the parent `Library.public_visible` are True — matching the visibility gate the Literature Library page itself already enforces. Private libraries and admin-hidden items continue to 404 to anonymous traffic.
+
 ## [2.0.2] — 2026-05-16
+
+### Added — Dynbg "Use pastels in light mode only" toggle
+
+A new boolean field `pastel_light` joins the dynbg config dict (encoded/decoded by `dynbg.encode_config` / `dynbg.decode_config`, persisted into the existing `bg_dynbg_config_json` column with opt-in semantics — only `True` survives the encode so the column stays minimal). The dynbg-picker modal's Colours panel grew a new checkbox **Use pastels in light mode only**; the trigger button partial (`_dynbg_picker.html`) carries the hidden input + `data-dynbg-pastel-light` / `-input` attrs so the modal's get/set/open/save/clear flows all round-trip the value. The per-template Customize panel's pseudo-cfg (`frontend_templates.html`) and every per-page picker include the new field. The page-hero modal's client-side JSON builder, the block-editor's `dynbgTrigger` helper, and the page hero's trigger-populate path were all updated to thread `pastelLight` through.
+
+New `pastelize(hex)` helper in `dynbg.py` produces a soft variant via HLS — preserves hue, caps saturation, and lifts lightness into a tunable band. `colors_to_css_vars(colors, cfg)` now emits a companion `--fe-dynbg-cN-light` for every colour when `cfg.pastel_light` is True. Special case: when `pastel_light` is on but the admin hasn't picked custom colours, three hardcoded pale tints (cool / warm / mint) are emitted as the light-mode fallback so the surface still softens instead of falling through to the preset's vivid brand-derived defaults. Three CSS rules under `html:not([data-theme="dark"]) [style*="--fe-dynbg-cN-light"]` re-bind `--fe-dynbg-cN` to the companion in light mode — `!important` is required because the canonical `--fe-dynbg-cN` is set inline on the same element and inline custom-property declarations otherwise outrank stylesheet rules.
+
+15 frontend detail / list templates (meetings, events, stories, blog detail + list, archive, fellowships, literature library, printlist, announcements, site index variants) were converted from a hand-rolled inline `{% for _c in _resolved %}--fe-dynbg-cN: …{% endfor %}` loop to the canonical `dynbg_colors_css(dynbg_resolve_colors(cfg), cfg)` helper call so they emit the pastel companion vars uniformly with the list-page templates already using the helper. 9 list-template runtime cfg dicts (`meetings_list`, `events_list`, `blog_list`, `fellowships_list`, `archive`, `literature_library`, `printlist`, `stories_list`, `announcements_list`) gained a `'pastel_light': X.get('bg_dynbg_pastel_light', False)` entry. The template-level pastel band currently sits at saturation cap 0.339 and lightness 0.69–0.75 — produces confident dusty tints (cornflower, blush, sage, terracotta, ochre) rather than near-white washes.
+
+### Added — Library item summary field + Add modal redesign + lightbox + external-link marker
+
+A new optional plain-text `summary` column on `LibraryItem` (Text, additive migration) shown as a 3-row textarea in both the Add and Edit modals plus the standalone `reading_form.html`. The label notes the 500-character cap and a live `<N>/500 remaining` counter beneath the textarea ticks down on input — counter goes red + bold when remaining hits 0. Counter is wired generically: any textarea with `[data-summary-input]` paired with a sibling `[data-summary-counter]` (containing `[data-summary-count]`) gets the live readout.
+
+The Add modal swaps the old two-mode Upload / Paste toggle for a three-way segmented control (`.content-mode-seg`) — **Upload file / file browser**, **Paste / type content**, **External link** — with each option owning exactly one content slot. Switching modes hides the others (`hidden` attribute + `disabled` inputs so the browser doesn't submit them); saving in a given mode clears the slots it doesn't use. The modal trigger button, header, and submit button all rename from *Add File* / *Upload* to **Add Item** / **Add item**. The Edit modal got the same treatment — header renamed to **Edit Item**, default mode derived from existing data (file → upload, body → paste, url → link, empty → upload). Updated `_apply_reading_form` enforces single-channel content per item; empty/legacy submissions still fall back to the old permissive shape so historical posts keep working.
+
+Frontend library list (`templates/frontend/literature_library.html`) now renders the summary directly under the filename / external link URL via a new `.fe-library-item-summary` paragraph (0.875rem, `white-space: pre-wrap` so multi-line summaries preserve line breaks). External-link cards (no in-house file takes precedence) carry a small `external-link` Lucide icon in the top-right corner via a new `.fe-library-item--external` modifier — visually telegraphs the click leaves the site. The entire card became clickable via a stretched-link `::after` overlay on the title anchor; the thumbnail wrapper lifts above the overlay (`z-index: 2`) and opts into the existing `frontend/_lightbox.html` partial via `data-lightbox-scope` so clicking the thumbnail opens the image viewer instead of navigating with the title link.
+
+### Changed — `_apply_reading_form` enforces single-channel content per item
+
+The library-item save handler in `routes.py` was reworked so each mode owns exactly one content slot — `upload` clears body + url, `paste` clears file + url, `link` clears file + body. Empty/legacy submissions without a `content_mode` flag still fall back to the old permissive shape so historical posts keep working. New items can never accidentally carry both a file and a URL the way some legacy rows could.
+
+### Changed — Sinewave background reads more organic
+
+`renderSineGradient` in `login_fx.js` gained a third sine component (`f3Mul` / `amp3` / `phase3`) plus a slow y-axis modulation (`yMod` / `yAmp`) that shifts each scan-line slightly from the one above. Pure left-right symmetry breaks; the bands bend more like a real fluid surface. `randomWaveParams()` widened the per-component range and adds the new keys so randomised waves get noticeably varied shapes between renders. Existing stored waves missing the new keys fall through to the new defaults — same generator, richer canonical look. Applies anywhere the sinewave style is used (page hero, footer background).
+
+### Changed — Footer chip hover keeps inherited text colour
+
+`.fe-footer-location-directions:hover`, `.fe-footer-admin-login:hover`, and `.fe-footer-block-powered-by a:hover` now use `color: inherit` instead of swapping to the brand link colour — only the surface tint deepens on hover, text stays white (or whatever the footer chrome's resting text colour is). The `--logout` modifier (yellow background, black text) sets its own colour further down and is unaffected.
+
+### Changed — Meeting card title weight on the homepage
+
+`.fe-meeting-card-link` (the `<a>` inside the `<h3>` for each meeting tile in the homepage Meetings block) now explicitly sets `font-weight: 600`. Previously the weight was inherited from the wrapping `<h3>` (typically 700) which read heavier than other card titles on the same page.
+
+### Fixed — `<fieldset class="fieldset" hidden>` was still rendering
+
+The base `.fieldset` rule in `app.css` set `display: flex; flex-direction: column; …`, which beat the user-agent stylesheet's `[hidden] { display: none }` and kept hidden fieldsets visible. Added `.fieldset[hidden] { display: none; }` so any panel toggled via the `hidden` attribute (library content-mode picker, future toggled fieldsets) actually disappears.
 
 ### Added — Mobile-specific mega-menu animation + fade controls
 
@@ -30,14 +76,6 @@ Both megamenu renderers (`frontend/megamenus/classic.html` + `frontend/megamenus
 
 `auth.logout` now reads `?next=` from the query string and redirects there when the value is path-only (`/...`) and not protocol-relative (`//...`). Invalid or missing `next` falls back to the historical `auth.login` redirect, so admin-side logout links keep their old behaviour. All three frontend logout links (mega-menu classic + recovery-blue, footer block) now pass `next=url_for('frontend.index')` so signing out from a public page returns the visitor to the homepage instead of the admin sign-in screen. The path validation closes any open-redirect smuggle — `?next=//evil.example.com/x` falls through to the login screen.
 
-### Added — Library item summary field + redesigned Add modal
-
-`LibraryItem` gained an optional plain-text `summary` (Text column, additive `_migrate_sqlite` entry) — a short blurb that sits alongside the title in lists and link previews, independent of the long-form `body` (paste-mode content). The Add modal in `library_detail.html` got a substantial UX rework: the old two-mode Upload-vs-Paste toggle is replaced by a three-way segmented control (`.content-mode-seg`) with **Upload file / file browser**, **Paste / type content**, and **External link** options. Each option owns exactly one content field — switching modes hides the others (`[data-content-panel]` matching the active mode is shown, the rest are `hidden`-attribute hidden + their inputs `disabled` so the browser doesn't submit them). The "Add File" button + modal header + "Upload" submit label all renamed to **Add Item** / **Add item** for clarity. A textarea-shaped Summary field sits above the mode picker. The Edit modal got the same treatment — header renamed to "Edit Item", default mode resolved from existing data (file → upload, body → paste, url → link, empty → upload), and the same segmented control + per-mode panels + summary. The standalone `reading_form.html` (used outside the library detail page) was rebuilt with the same 3-mode shape so the two flows don't drift. New CSS recipe `.content-mode-seg` paints a pill-track segmented control with brand-tinted active pill, light + dark variants.
-
-### Changed — `_apply_reading_form` enforces single-channel content per item
-
-The save handler in `routes.py` was reworked so each mode owns exactly one content slot — `upload` clears body + url, `paste` clears file + url, `link` clears file + body. Empty/legacy submissions without a `content_mode` flag still fall back to the old permissive shape so historical form posts keep working. New items can never accidentally carry both a file and a URL the way some legacy rows could.
-
 ### Changed — Mega-menu button-styled kinds (admin_login, kind=button) honour the per-link size slider
 
 `.fe-megamenu-classic-block-btn` and `.fe-megamenu-block-btn` now compute `font-size: calc(0.875rem * var(--fe-mm-link-scale, 1))` (or `0.9375rem` for the recovery-blue variant). Previously the size slider in the admin editor only affected `link`-kind anchors; button-styled kinds ignored it entirely. The default scale of 1 keeps existing button rendering byte-identical when the admin hasn't toggled the override.
@@ -49,14 +87,6 @@ The save handler in `routes.py` was reworked so each mode owns exactly one conte
 ### Changed — Sidebar admin section keeps Contact Form alongside Watchtower
 
 `_ADMIN_CATALOG` in `sidebar.py` lost the legacy `access_requests`, `user_log`, and `delete_log` rows when Watchtower absorbed them in 2.0.0; this release also drops their visibility checks from `_is_visible` since the catalog entries no longer exist. (Their POST action endpoints had already moved under `/watchtower/...` namespaced endpoints.)
-
-### Fixed — `<fieldset class="fieldset" hidden>` was still rendering
-
-The base `.fieldset` rule in `app.css` set `display: flex; flex-direction: column; …`, which beat the user-agent stylesheet's `[hidden] { display: none }` and kept hidden fieldsets visible. Added `.fieldset[hidden] { display: none; }` so any panel toggled via the `hidden` attribute (library content-mode picker, future toggled fieldsets) actually disappears.
-
-### Fixed — Meeting card titles on the homepage now read at weight 600
-
-Added `font-weight: 600` to all five `.fe-meeting-card-link` selector variants (base + `.fe-page` / `.frontend-body` prefixes for the page-builder cascade). Previously the title weight was inherited from the wrapping `<h3>` (typically 700) which read heavier than other card titles on the same page.
 
 ## [2.0.1] — 2026-05-16
 

@@ -11631,6 +11631,26 @@ body.pbe-is-palette-dragging .pbe-section-canvas {
 .btn-ghost:hover { background: rgba(148,163,184,0.10); color: var(--text, #0f172a); }
 [data-theme="dark"] .btn-ghost:hover { background: rgba(255,255,255,0.06); color: #f1f5f9; }
 
+/* ── Library item summary character counter ──────────────────────
+   Shown under the summary textarea. Counts down from 500 (the
+   textarea's maxlength) to 0. The JS in app.js flips the `is-empty`
+   class on when remaining hits 0 — counter reads in red so the
+   admin notices they've maxed the limit. Tabular-nums keeps the
+   number from jiggling as it ticks. */
+.summary-counter {
+  margin: 4px 0 0;
+  font-size: 0.8125rem;
+  color: var(--muted, #64748b);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.summary-counter.is-empty {
+  color: #dc2626;
+  font-weight: 600;
+}
+[data-theme="dark"] .summary-counter { color: #94a3b8; }
+[data-theme="dark"] .summary-counter.is-empty { color: #f87171; }
+
 /* ── Library add/edit modal: content-mode segmented control ──────
    Three-way picker (upload / paste / link) that lives at the top of
    the library-item form. Each button toggles its sibling

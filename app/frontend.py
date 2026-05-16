@@ -860,6 +860,7 @@ def template_settings(site, kind, key):
               "bg_dynbg_overlay_scope", "bg_dynbg_overlay_size",
               "bg_dynbg_overlay_intensity", "bg_dynbg_randomize_colors",
               "bg_dynbg_randomize_positions", "bg_dynbg_animate",
+              "bg_dynbg_pastel_light",
               # Classic blog detail rail toggles — present only when
               # explicitly disabled, so a missing key means "show".
               "show_related_widget", "show_categories_widget"):
@@ -1282,6 +1283,8 @@ def meeting_detail(slug):
         "randomize_colors": _tpl_settings.get("bg_dynbg_randomize_colors", False),
         "randomize_positions": _tpl_settings.get("bg_dynbg_randomize_positions", False),
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
+
+        "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
     }
     # Resolve the meeting's free-text location to a saved Location row
     # so the public templates can render the full split address (name /
@@ -2271,6 +2274,8 @@ def fellowships_list():
         "randomize_colors": _tpl_settings.get("bg_dynbg_randomize_colors", False),
         "randomize_positions": _tpl_settings.get("bg_dynbg_randomize_positions", False),
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
+
+        "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
     }
 
     width_mode = (site.frontend_fellowships_list_width_mode if site else None) or "boxed"
@@ -2627,6 +2632,8 @@ def archive_detail(slug):
         "randomize_colors": _tpl_settings.get("bg_dynbg_randomize_colors", False),
         "randomize_positions": _tpl_settings.get("bg_dynbg_randomize_positions", False),
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
+
+        "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
     }
     og = _page_og(site, title=post.title,
                   description=post.summary or post.body,
@@ -2828,6 +2835,8 @@ def story_detail(slug):
         "animate": (_tpl_settings.get("bg_dynbg_animate", True)
                     if _story_cfg["animate"] is True
                     else _story_cfg["animate"]),
+
+        "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
     }
     og = _page_og(site, title=story.title,
                   description=story.summary or story.body,
@@ -2987,6 +2996,8 @@ def blog_post_detail(slug):
         "randomize_colors": _tpl_settings.get("bg_dynbg_randomize_colors", False),
         "randomize_positions": _tpl_settings.get("bg_dynbg_randomize_positions", False),
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
+
+        "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
     }
 
     # Up to four related posts: prefer ones sharing a category, then
@@ -3169,6 +3180,8 @@ def event_detail(slug):
         "randomize_colors": _tpl_settings.get("bg_dynbg_randomize_colors", False),
         "randomize_positions": _tpl_settings.get("bg_dynbg_randomize_positions", False),
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
+
+        "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
     }
     og = _page_og(site, title=ev.title,
                   description=ev.summary or ev.body,
@@ -3277,6 +3290,8 @@ def announcement_detail(slug):
         "randomize_colors": _tpl_settings.get("bg_dynbg_randomize_colors", False),
         "randomize_positions": _tpl_settings.get("bg_dynbg_randomize_positions", False),
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
+
+        "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
     }
     # Pass the post in as `event` so the existing event-detail templates
     # (which all reference `event.*`) render unchanged.
@@ -3529,6 +3544,8 @@ def site_index():
         "randomize_colors": _tpl_settings.get("bg_dynbg_randomize_colors", False),
         "randomize_positions": _tpl_settings.get("bg_dynbg_randomize_positions", False),
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
+
+        "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
     }
     sort_mode = (site.frontend_site_index_sort_mode or "grouped") if site else "grouped"
     heading = (site.frontend_site_index_heading if site else None) or "Site index"
