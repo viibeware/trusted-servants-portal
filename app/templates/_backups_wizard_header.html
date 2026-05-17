@@ -1,0 +1,35 @@
+{# Shared stepper for the backup-setup wizard. Caller sets `active` to
+   one of 1..5 and (optionally) sets `done` to the highest completed step.
+   When `embed` is truthy the back-link is replaced with a "Cancel" button
+   that postMessages the parent window to close the modal. #}
+<div class="wp-wizard-header">
+  <div class="wp-actionbar">
+    {% if embed %}
+    <button type="button" class="btn" data-backup-close>Cancel</button>
+    {% else %}
+    <a class="btn" href="{{ url_for('main.backups_list') }}">← Back to Backups</a>
+    {% endif %}
+  </div>
+  <div class="wp-wizard-stepper">
+    <ol>
+      {% set _labels = ['Destination', 'Connect', 'Schedule', 'Encryption', 'Review'] %}
+      {% for i in range(1, 6) %}
+        {% set state = 'is-active' if active == i else ('is-done' if (done or 0) >= i else '') %}
+        <li class="{{ state }}">
+          <span class="wp-step-num">{% if (done or 0) >= i and active != i %}✓{% else %}{{ i }}{% endif %}</span>
+          <span class="wp-step-label">{{ _labels[i-1] }}</span>
+        </li>
+      {% endfor %}
+    </ol>
+  </div>
+</div>
+{% if embed %}
+<script>
+  document.querySelectorAll('[data-backup-close]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      try { window.parent.postMessage({ type: 'backups-modal-close' }, window.location.origin); }
+      catch (e) { /* no-op */ }
+    });
+  });
+</script>
+{% endif %}

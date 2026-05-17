@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ t.name }} — history{% endblock %}
+{% block heading %}{{ t.name }} — run history{% endblock %}
+{% block heading_help %}The last 200 runs of this backup target.{% endblock %}
+{% block content %}
+<div class="backups-wrap">
+<div class="backups-toolbar">
+  <a class="btn" href="{{ url_for('main.backups_list', embed=1 if embed else None) }}">← Back to Backups</a>
+  <a class="btn" href="{{ url_for('main.backups_restore', target_id=t.id, embed=1 if embed else None) }}">{{ icon('download') }} Restore from this target</a>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>{{ icon('clock') }} Runs</h2></div>
+  {% if not runs %}
+  <p class="muted">No runs yet — the target hasn't fired. Use "Run now" on the Backups list to trigger one.</p>
+  {% else %}
+  <ul class="backup-run-list">
+    {% for r in runs %}
+    <li class="backup-run-row">
+      <span class="backup-status-pill backup-status-{{ r.status }}">{{ r.status }}</span>
+      <span class="backup-run-when muted smaller">
+        {{ r.started_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC
+        {% if r.finished_at %}
+          · {{ ((r.finished_at - r.started_at).total_seconds()) | round(1) }}s
+        {% endif %}
+      </span>
+      <span class="muted smaller">{{ r.triggered_by }}</span>
+      {% if r.archive_name %}<code class="smaller">{{ r.archive_name }}</code>{% endif %}
+      {% if r.bytes_uploaded %}<span class="muted smaller">{{ (r.bytes_uploaded / 1024) | round(0) | int }} KB</span>{% endif %}
+      {% if r.error_message %}<div class="backup-target-error small">{{ r.error_message }}</div>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+</div>
+{% endblock %}

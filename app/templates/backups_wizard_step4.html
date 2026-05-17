@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Encryption · Trusted Servants Pro{% endblock %}
+{% block heading %}{{ t.name }} — Encryption{% endblock %}
+{% block heading_help %}Optionally encrypt every archive with a passphrase before sending it to the remote, so even a leaked Dropbox token or compromised FTP host can't open your data.{% endblock %}
+{% block content %}
+{% with active=4, done=3 %}{% include "_backups_wizard_header.html" %}{% endwith %}
+
+<form class="form" method="post" action="{{ url_for('main.backups_wizard_step4_post', target_id=t.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+
+  <section class="card backup-step-card">
+    <div class="card-head"><h2>{{ icon('lock') }} Encryption at rest</h2></div>
+
+    <label class="check">
+      <input type="checkbox" name="encrypt_archive" value="1" data-encrypt-toggle {% if t.encrypt_archive %}checked{% endif %}>
+      <span>
+        <strong>Encrypt every archive before upload</strong>
+        <span class="muted small">Uses your passphrase + PBKDF2 + Fernet. Files on the remote are <code>.zip.enc</code>; only your passphrase can decrypt them.</span>
+      </span>
+    </label>
+
+    <div class="backup-encrypt-fields" data-encrypt-fields {% if not t.encrypt_archive %}hidden{% endif %}>
+      <div class="form-row">
+        <label>Passphrase
+          <input type="password" name="passphrase" autocomplete="new-password" minlength="8" placeholder="(at least 8 characters)">
+        </label>
+        <label>Confirm
+          <input type="password" name="passphrase_confirm" autocomplete="new-password" minlength="8">
+        </label>
+      </div>
+      <p class="warning small">
+        {{ icon('alert-triangle') }} <strong>This passphrase can't be recovered.</strong>
+        If you lose it, the encrypted archives are unrecoverable too. Save it
+        in your password manager <em>before</em> you finish the wizard.
+      </p>
+      <label class="check">
+        <input type="checkbox" name="ack_saved" value="1">
+        I've stored the passphrase somewhere I can find it again.
+      </label>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">{{ icon('arrow-right') }} Continue to review</button>
+    </div>
+  </section>
+</form>
+
+<script>
+(function() {
+  const t = document.querySelector('[data-encrypt-toggle]');
+  const fields = document.querySelector('[data-encrypt-fields]');
+  if (!t || !fields) return;
+  t.addEventListener('change', () => { fields.hidden = !t.checked; });
+})();
+</script>
+{% endblock %}

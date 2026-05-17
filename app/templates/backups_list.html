@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Off-site Backups · Trusted Servants Pro{% endblock %}
+{% block heading %}Off-site Backups{% endblock %}
+{% block heading_help %}Push full backups of this app (database + uploads + Fernet key) to a remote destination on a schedule you control. Each target runs independently so you can mirror to more than one place.{% endblock %}
+{% block content %}
+<div class="backups-wrap">
+  <div class="backups-toolbar">
+    {% if embed %}
+    <button type="button" class="btn" data-backup-close>← Back to Settings</button>
+    {% else %}
+    <a class="btn" href="{{ url_for('main.index', settings='data') }}">← Back to Settings</a>
+    {% endif %}
+    <button type="button" class="btn btn-primary" data-backup-add-target>
+      {{ icon('plus') }} Add backup target
+    </button>
+  </div>
+
+  {% if not targets %}
+  <section class="card backup-empty">
+    <div class="card-head"><h2>{{ icon('cloud-upload') }} No backup targets yet</h2></div>
+    <p class="muted">
+      Set up your first off-site backup destination. Daily SQLite snapshots
+      already run locally, but those live on the same disk as the app —
+      a real disaster needs an off-machine copy.
+    </p>
+    <p class="muted small">
+      Supported: <b>FTP/FTPS</b>, <b>SFTP</b>, <b>Dropbox</b>. The setup
+      wizard walks you through credentials, schedule, and (optional)
+      passphrase-based archive encryption.
+    </p>
+    <div class="form-actions">
+      <button type="button" class="btn btn-primary" data-backup-add-target>
+        {{ icon('arrow-right') }} Start setup wizard
+      </button>
+    </div>
+  </section>
+  {% else %}
+  <section class="card backups-table-card">
+    <div class="card-head"><h2>{{ icon('cloud-upload') }} Configured targets</h2></div>
+    <ul class="backup-target-list">
+      {% for t in targets %}
+      <li class="backup-target-row">
+        <div class="backup-target-meta">
+          <div class="backup-target-name">
+            <span class="backup-status-pill backup-status-{{ t.last_status or 'never_run' }}">
+              {% if t.last_status == 'ok' %}OK
+              {% elif t.last_status == 'failed' %}Failed
+              {% elif t.last_status == 'running' %}Running…
+              {% else %}Never run{% endif %}
+            </span>
+            <strong>{{ t.name }}</strong>
+            <span class="muted smaller">· {{ t.kind|upper }}</span>
+            {% if not t.enabled %}<span class="muted smaller">· paused</span>{% endif %}
+            {% if t.encrypt_archive %}<span class="muted smaller">· {{ icon('lock') }} encrypted</span>{% endif %}
+          </div>
+          <div class="backup-target-sub muted smaller">
+            {% if t.kind == 'dropbox' %}Dropbox app folder{% else %}{{ t.host or 'no host' }}{% if t.port %}:{{ t.port }}{% endif %}{% endif %}
+            · path <code>{{ t.remote_path or '/' }}</code>
+            · schedule <code>{{ t.schedule_cron }}</code>
+            · keep last {{ t.retain_count }}
+          </div>
+          <div class="backup-target-sub muted smaller">
+            {% if t.last_run_at %}Last run {{ t.last_run_at.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}Never run{% endif %}
+            {% if t.next_run_at and t.enabled %}· next {{ t.next_run_at.strftime('%Y-%m-%d %H:%M') }} UTC{% endif %}
+          </div>
+          {% if t.last_status == 'failed' and t.last_error %}
+          <div class="backup-target-error small">{{ icon('alert-triangle') }} {{ t.last_error }}</div>
+          {% endif %}
+        </div>
+        <div class="backup-target-actions">
+          <form method="post" action="{{ url_for('main.backups_run_now', target_id=t.id) }}" style="display:inline" data-backup-runnow-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+            <button type="submit" class="btn btn-sm" title="Run a backup right now">{{ icon('refresh-cw') }} Run now</button>
+          </form>
+          <a class="btn btn-sm" href="{{ url_for('main.backups_runs', target_id=t.id, embed=1 if embed else None) }}" title="See run history">{{ icon('list') }} History</a>
+          <a class="btn btn-sm" href="{{ url_for('main.backups_restore', target_id=t.id, embed=1 if embed else None) }}" title="Restore from this target">{{ icon('download') }} Restore</a>
+          <form method="post" action="{{ url_for('main.backups_toggle', target_id=t.id) }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+            <button type="submit" class="btn btn-sm">{{ 'Pause' if t.enabled else 'Enable' }}</button>
+          </form>
+          <form method="post" action="{{ url_for('main.backups_delete', target_id=t.id) }}" style="display:inline"
+                onsubmit="return confirm('Remove this backup target? Existing remote files are left alone.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+            <button type="submit" class="btn btn-sm btn-danger">{{ icon('trash') }} Remove</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  {% if recent_runs %}
+  <section class="card backups-recent-card">
+    <div class="card-head"><h2>{{ icon('clock') }} Recent activity</h2></div>
+    <ul class="backup-run-list">
+      {% for r in recent_runs %}
+      <li class="backup-run-row">
+        <span class="backup-status-pill backup-status-{{ r.status }}">{{ r.status }}</span>
+        <span class="backup-run-when muted smaller">{{ r.started_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+        <span class="backup-run-target">{{ r.target.name if r.target else '(deleted)' }}</span>
+        <span class="muted smaller">{{ r.triggered_by }}</span>
+        {% if r.archive_name %}<code class="smaller">{{ r.archive_name }}</code>{% endif %}
+        {% if r.bytes_uploaded %}<span class="muted smaller">{{ (r.bytes_uploaded / 1024) | round(0) | int }} KB</span>{% endif %}
+        {% if r.error_message %}<span class="backup-target-error smaller">{{ r.error_message }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+  {% endif %}
+</div>
+
+{# Backup-in-progress overlay — appears when any [data-backup-runnow-form]
+   submits (synchronous server-side run can take 30s–several minutes for
+   large uploads). Lives in the embedded list so it stays inside the
+   iframe; a copy lives in the wizard's done page for first-run-now. #}
+<div class="backup-busy" data-backup-busy hidden>
+  <div class="backup-busy-card">
+    <div class="backup-busy-spinner" aria-hidden="true"></div>
+    <div class="backup-busy-text">
+      <strong>Backing up…</strong>
+      <span class="muted small">Snapshotting the database, packaging uploads, and pushing to the remote. Don't close this window.</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const busy = document.querySelector('[data-backup-busy]');
+  function show() { if (busy) busy.hidden = false; }
+
+  document.querySelectorAll('[data-backup-runnow-form]').forEach(f => {
+    f.addEventListener('submit', show);
+  });
+
+  // "Add backup target" — open the wizard modal. Inside an iframe we
+  // postMessage the parent so the wizard renders alongside the backups
+  // modal (settings stays open under both).
+  document.querySelectorAll('[data-backup-add-target]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (window.parent !== window) {
+        try { window.parent.postMessage({ type: 'backups-open-wizard' }, window.location.origin); }
+        catch (e) { /* fallthrough */ }
+      } else {
+        const m = document.getElementById('backup-wizard-modal');
+        if (m && window.openModal) window.openModal('backup-wizard-modal');
+        else if (m) m.classList.add('open');
+      }
+    });
+  });
+
+  // "Back to Settings" inside the embedded list — close the backups modal.
+  document.querySelectorAll('[data-backup-close]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      try { window.parent.postMessage({ type: 'backups-admin-close' }, window.location.origin); }
+      catch (e) { /* fallthrough */ }
+    });
+  });
+})();
+</script>
+{% endblock %}

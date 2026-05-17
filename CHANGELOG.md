@@ -6,6 +6,52 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-05-17
+
+### Added — Automated off-site backups (FTP / FTPS / SFTP / Dropbox)
+
+Two new tables — `BackupTarget` (per-destination config) and `BackupRun` (per-attempt history) — back a complete off-site backup subsystem. The archive payload reuses the existing `tsp-export-<stamp>.zip` builder (DB via `VACUUM INTO` + `uploads/` + `zoom.key` + `manifest.json`), now extracted from `routes.data_export` into a shared `app.backup.build_export_archive(app)` so the manual export route and the scheduled runs produce byte-identical archives. Three backends sit behind a uniform `open/put/list/delete/fetch/close` surface in `app/backup_backends.py`: `FTPBackend` (stdlib `ftplib`, FTPS by default with a plain-FTP opt-out), `SFTPBackend` (`paramiko`, password and/or private-key auth, supports Ed25519/ECDSA/RSA/DSA key formats), and `DropboxBackend` (Dropbox SDK with chunked-upload session for >150 MB archives). All credentials are Fernet-encrypted via the existing `app/crypto.py` helpers; every delete/list path refuses non-export filenames so a misconfigured `remote_path` cannot sweep unrelated files.
+
+`app/backup_scheduler.py` adds a single daemon thread started from `create_app()`. The thread is gated by a non-blocking `flock` on `<DATA_DIR>/.backup-scheduler.lock` so only one of the two gunicorn workers drives the loop; the loser sleeps harmlessly. `croniter` parses `BackupTarget.schedule_cron` and `compute_next_run()` writes the next firing into `BackupTarget.next_run_at` after every run. `run_target(app, target_id)` is synchronous and used by both the scheduler and the "Run now" route — it builds the archive, optionally encrypts it (PBKDF2-HMAC-SHA256 → Fernet over a passphrase, with a 21-byte `TSPB`-tagged header so the format is self-identifying), uploads, prunes remote retention only after a successful put so a botched upload cannot remove the prior good copy, writes the `BackupRun` row, updates the target's `last_status` mirror, and emails the admin via the existing SMTP path on ok→failed transitions only (no storm on consecutive failures).
+
+The Dropbox backend wraps every API call in a `_prefer_ipv4()` context manager that temporarily overrides `urllib3.util.connection.allowed_gai_family` to return `AF_INET`. Docker's default bridge network is IPv4-only; without the override, `getaddrinfo` returns AAAA records (e.g. `2620:100:601c:19::a27d:613` for `api.dropboxapi.com`) that urllib3 tries first and the kernel can't route, producing `ENETUNREACH` (errno 101). The patch is scoped to Dropbox calls so the WordPress importer or any other `requests` consumer keeps its IPv6 capability if it needs it.
+
+### Added — 5-step backup setup wizard as an iframe modal
+
+Wizard pages (`backups_wizard_step1.html` through `_step5.html` + `_done.html`) match the existing WordPress importer's `wp-wizard-stepper` chrome and embed-mode pattern. Steps: **Destination** (radio cards for FTP / SFTP / Dropbox) → **Connect** (kind-specific credentials with an AJAX "Test connection" probe that round-trips a 1-byte sentinel file) → **Schedule** (preset chips + custom cron + retention count) → **Encryption** (opt-in passphrase with a "I've saved this" acknowledgement gate) → **Review** (summary + optional run-now). New `#backup-wizard-modal` lives in `base.html` with a lazy-loaded iframe pointing at `/settings/backups/new?embed=1`; the close handler blanks the iframe `src` so reopening starts a fresh wizard. In embed mode, every step's form carries a hidden `embed=1` input, the "Cancel" / "Back" links postMessage the parent (`backups-modal-close`) to dismiss the modal, and the final step renders `backups_wizard_done.html` which auto-closes after 1.2 s on success or waits for the Done click on failure.
+
+### Added — Backups admin iframe modal (stacks above settings)
+
+New `#backups-modal` hosts `backups_list.html`, `backups_runs.html`, and `backups_restore.html` in embed mode so the user can manage targets without leaving the settings overlay. The `backups_list` / `_runs` / `_restore` routes all accept `?embed=1` and propagate it through every redirect target (`backups_delete`, `backups_restore_post`, etc.) via a new `_backup_embed_kwargs()` helper. Inside the embedded admin, "Add backup target" postMessages the parent (`backups-open-wizard`) so the wizard modal stacks on top instead of replacing the iframe. The wizard's `backups-modal-close` handler now checks whether the admin modal is open: if so it reloads just the `backups-frame` iframe; otherwise it reloads the whole page so the Data-tab chip refreshes. The `backups-frame` iframe is added to the close-time blank list alongside `wp-import-frame`, `story-edit-frame`, and `backup-wizard-frame` so reopening any of them starts a clean session.
+
+### Added — Off-site Backups dashboard widget
+
+A new admin-only widget keyed `backups` joins `DASHBOARD_WIDGET_KEYS` and the `_dashboard_order` rotation, gated by `User.dash_show_backups` (defaulting True, with a matching `_migrate_sqlite` column add). The widget renders four stat tiles — Healthy / Failing / Paused (or Never run, if nothing's paused) / Total — plus the last successful backup's timestamp + target name, the soonest next scheduled run, and the four most recent `BackupRun` rows with status pills. The Failing tile flips red whenever count > 0 and the widget's title row picks up a warn-tinted nav-badge with the same count so "needs attention" reads from the dashboard at a glance. The whole interior is a single button — clicking anywhere opens the `backups-modal`. Empty state shows a "Set up your first backup" CTA that opens the wizard modal directly. The customize modal in `index.html` gained a matching "Off-site Backups" toggle row and `dashboard_customize` saves it under the existing admin-only branch.
+
+### Added — Settings → Data tab "Off-site backups" card
+
+New `<section class="card data-card">` block between the "WordPress importer" and "Database snapshots" sections, mirroring the existing data-card chrome (brand-blue left accent + icon-led head + lead paragraph). Renders zero or more configured targets with status pills + last-run timestamp + per-row "Manage" button; a footer row carries a primary "Set up off-site backup →" (or "Add another backup" when targets already exist) that opens `#backup-wizard-modal`, plus a secondary "Manage backups" that opens `#backups-modal`. Neither button closes the parent settings modal so the user can stack admin surfaces above the Settings overlay. A new `backup_targets()` Jinja global mirrors the existing `db_snapshots()` pattern.
+
+### Added — Busy spinner while a backup runs
+
+`.backup-busy` overlay (fixed inset, CSS-only ring spinner, brief explanatory copy, blocks pointer events while shown) is mounted inside the embedded backups list and on the wizard's step 5 page. It appears when any `[data-backup-runnow-form]` submits or when the wizard's "Enable target" form posts. Synchronous server-side backup can run for seconds to minutes depending on archive size and remote speed; the overlay both reassures the user the request hasn't hung and prevents double-submit.
+
+### Changed — Inline SVG icons carry intrinsic `width`/`height` to eliminate FOUC
+
+`_SVG_ATTRS` in `app/icons.py` gained `width="24" height="24"`. Before this, an inline `<svg class="icon">` with no dimension attributes stretched to fill its parent container during the brief window before `app.css` loaded the `.icon { width: 1em; height: 1em }` rule — visible inside any iframe (most prominent: the `cloud-upload` icon in the backups list rendering at full modal width before settling to 1em). CSS specificity still wins once the stylesheet parses, so existing sizing is preserved; the attributes only matter during the FOUC window. Affects every Lucide icon site-wide.
+
+### Changed — Appearance settings tab refactored to single-column data-card stack
+
+Six sections — Theme, Sidebar Footer Logo, Login Screen, Open Graph / Link Previews, Home Screen Icon, Public Domain — are each wrapped in `<section class="card data-card">` with a `data-card-head` (Lucide icon + title) and `data-card-lead` description, matching the chrome the Data tab already used. The two-column `.appearance-grid` and `<hr class="settings-sep">` separators are gone; the cards stack vertically with each card's brand-blue left accent + shadow providing the visual separator. All form actions, file inputs, IDs, and JS hooks (theme picker, login FX preview, OG image preview, Apple-touch icon preview, login transition toggle) are preserved — behavior is unchanged. Dead CSS (`.appearance-pane`, `.appearance-theme`, `.appearance-grid` two-col rules, and their media-query overrides) was removed; a small ruleset normalizes forms inside the new data-cards to a 10 px gap so the card head + lead paragraph carry the visual spacing instead of the form's default 2 rem `gap`.
+
+### Changed — Backups modal uses 2 rem inset chrome with full-width children on desktop
+
+`.backups-wrap` now wraps all three embedded pages (list / runs / restore). In embed mode the `.embed-content` shell's default 20 px padding is zeroed (via `:has(> .backups-wrap)`) and `.backups-wrap` owns the full 2 rem padding on desktop, scaling back to 1 rem below 720 px. The previous `max-width: 960px` constraint is dropped in embed mode so target rows / activity rows fill the panel width — read directly inside the modal without an awkward narrow inset.
+
+### Fixed — Dropbox backend ENETUNREACH on Docker bridge networks
+
+Symptom: "Dropbox connect failed: HTTPSConnectionPool(host='api.dropboxapi.com', port=443): … Network is unreachable" on a Docker container with the default bridge network. Cause: `getaddrinfo` returned both A and AAAA records; urllib3's connection pool tried the AAAA address first and the kernel had no route. Fixed by scoping a `_prefer_ipv4()` context manager around every `DropboxBackend` SDK call. See the Added section above for full details on why the patch is scoped (other parts of the app that legitimately use IPv6 are untouched).
+
 ## [2.0.4] — 2026-05-17
 
 ### Fixed — Macro-rendered dashboard widgets were missing drag handles + draggable attribute

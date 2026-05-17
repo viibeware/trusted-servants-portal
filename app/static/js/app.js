@@ -231,7 +231,8 @@
     // Match by id (not by [data-src]) since the story modal repoints
     // the iframe per-trigger via data-modal-src, not via data-src.
     m.querySelectorAll("iframe").forEach(f => {
-      if (f.id === "wp-import-frame" || f.id === "story-edit-frame") {
+      if (f.id === "wp-import-frame" || f.id === "story-edit-frame"
+          || f.id === "backup-wizard-frame" || f.id === "backups-frame") {
         f.src = "about:blank";
       }
     });
@@ -1014,6 +1015,48 @@
     if (e.origin !== window.location.origin) return;
     if (!e.data || e.data.type !== "wp-import-close") return;
     const m = document.getElementById("wp-import-modal");
+    if (m && m.classList.contains("open")) closeModal(m);
+  });
+
+  // Off-site backup wizard iframe → parent: close the wizard modal.
+  // When the backups admin modal is also open, just reload its iframe
+  // so the new target appears without disturbing the settings overlay
+  // underneath. Otherwise (wizard was opened straight from the Data
+  // tab), reload the page so the Data-tab chip refreshes.
+  window.addEventListener("message", (e) => {
+    if (e.origin !== window.location.origin) return;
+    if (!e.data || e.data.type !== "backups-modal-close") return;
+    const wiz = document.getElementById("backup-wizard-modal");
+    if (wiz && wiz.classList.contains("open")) closeModal(wiz);
+    if (!e.data.reload) return;
+    const adm = document.getElementById("backups-modal");
+    if (adm && adm.classList.contains("open")) {
+      const f = document.getElementById("backups-frame");
+      if (f && f.dataset.src) {
+        f.src = "about:blank";
+        setTimeout(() => { f.src = f.dataset.src; }, 50);
+      }
+    } else {
+      setTimeout(() => { window.location.reload(); }, 50);
+    }
+  });
+
+  // Backups admin iframe → parent: open the wizard modal alongside.
+  // Lets "Add backup target" inside the admin modal stack a wizard
+  // modal on top without losing the admin context behind it.
+  window.addEventListener("message", (e) => {
+    if (e.origin !== window.location.origin) return;
+    if (!e.data || e.data.type !== "backups-open-wizard") return;
+    openModal("backup-wizard-modal");
+  });
+
+  // Backups admin iframe → parent: close the admin modal. Sent by the
+  // "← Back to Settings" button inside the embedded list so the X
+  // isn't the only escape hatch.
+  window.addEventListener("message", (e) => {
+    if (e.origin !== window.location.origin) return;
+    if (!e.data || e.data.type !== "backups-admin-close") return;
+    const m = document.getElementById("backups-modal");
     if (m && m.classList.contains("open")) closeModal(m);
   });
 

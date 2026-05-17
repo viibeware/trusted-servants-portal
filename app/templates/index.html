@@ -214,6 +214,77 @@
     {% endcall %}
   {% endif %}
 
+  {% if widget_key == 'backups' and current_user.is_admin() and current_user.dash_show_backups %}
+    {% set _has_failed = backup_summary and backup_summary.failed > 0 %}
+    {% call dash_widget(key='backups', title='Off-site Backups',
+                         badge_count=(backup_summary.failed if _has_failed else 0),
+                         badge_title='Targets currently failing') %}
+      {% if not backup_summary or backup_summary.total == 0 %}
+      <p class="muted">No off-site backups configured yet.</p>
+      <div class="dash-backups-foot">
+        <button type="button" class="btn btn-sm btn-primary" data-open-modal="backup-wizard-modal">
+          {{ icon('plus') }} Set up your first backup
+        </button>
+      </div>
+      {% else %}
+      <button type="button" class="dash-backups-card" data-open-modal="backups-modal"
+              title="Open backup manager">
+        <div class="dash-backups-stats">
+          <div class="dash-backups-stat {% if backup_summary.ok %}dash-backups-stat-accent{% endif %}">
+            <div class="dash-backups-stat-label">Healthy</div>
+            <div class="dash-backups-stat-value">{{ backup_summary.ok }}</div>
+          </div>
+          <div class="dash-backups-stat {% if _has_failed %}dash-backups-stat-bad{% endif %}">
+            <div class="dash-backups-stat-label">Failing</div>
+            <div class="dash-backups-stat-value">{{ backup_summary.failed }}</div>
+          </div>
+          <div class="dash-backups-stat">
+            <div class="dash-backups-stat-label">{% if backup_summary.paused %}Paused{% else %}Never run{% endif %}</div>
+            <div class="dash-backups-stat-value">{{ backup_summary.paused or backup_summary.never }}</div>
+          </div>
+          <div class="dash-backups-stat">
+            <div class="dash-backups-stat-label">Total</div>
+            <div class="dash-backups-stat-value">{{ backup_summary.total }}</div>
+          </div>
+        </div>
+        <div class="dash-backups-when">
+          <div class="dash-backups-when-row">
+            <span class="muted small">Last successful backup</span>
+            <strong>
+              {% if backup_summary.last_ok_at %}
+                {{ backup_summary.last_ok_at.strftime('%b %-d, %H:%M') }} UTC
+                {% if backup_summary.last_ok_target %}<span class="muted smaller">· {{ backup_summary.last_ok_target }}</span>{% endif %}
+              {% else %}<span class="muted">—</span>{% endif %}
+            </strong>
+          </div>
+          <div class="dash-backups-when-row">
+            <span class="muted small">Next scheduled run</span>
+            <strong>
+              {% if backup_summary.next_run_at %}{{ backup_summary.next_run_at.strftime('%b %-d, %H:%M') }} UTC
+              {% else %}<span class="muted">—</span>{% endif %}
+            </strong>
+          </div>
+        </div>
+        {% if backup_recent_runs %}
+        <div class="dash-backups-recent">
+          <div class="dash-backups-recent-label muted smaller">Recent activity</div>
+          <ul class="dash-backups-recent-list">
+            {% for r in backup_recent_runs %}
+            <li>
+              <span class="backup-status-pill backup-status-{{ r.status }}">{{ r.status }}</span>
+              <span class="dash-backups-recent-target">{{ r.target.name if r.target else '(deleted)' }}</span>
+              <span class="muted smaller">{{ r.started_at.strftime('%b %-d, %H:%M') }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        <div class="dash-backups-cta muted smaller">{{ icon('arrow-right') }} Open backup manager</div>
+      </button>
+      {% endif %}
+    {% endcall %}
+  {% endif %}
+
   {% if widget_key == 'deletions' and current_user.is_admin() and current_user.dash_show_deletions %}
     {% call dash_widget(key='deletions', title='Recent Deletions',
                          view_all_url=url_for('main.watchtower_deletes'),
@@ -378,6 +449,16 @@
             </div>
             <label class="mode-toggle" title="Show Visitor Metrics">
               <input type="checkbox" name="dash_show_visitor_metrics" value="1" {% if current_user.dash_show_visitor_metrics %}checked{% endif %}>
+              <span class="mode-track"><span class="mode-thumb"></span></span>
+            </label>
+          </li>
+          <li class="special-page-row">
+            <div class="special-page-info">
+              <div class="u-name">Off-site Backups</div>
+              <p class="muted small">Status of configured off-site backup targets — healthy / failing counts, last successful run, next scheduled run, and recent activity. Clicks open the backup manager.</p>
+            </div>
+            <label class="mode-toggle" title="Show Off-site Backups">
+              <input type="checkbox" name="dash_show_backups" value="1" {% if current_user.dash_show_backups %}checked{% endif %}>
               <span class="mode-track"><span class="mode-thumb"></span></span>
             </label>
           </li>

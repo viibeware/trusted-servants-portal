@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Review · Trusted Servants Pro{% endblock %}
+{% block heading %}{{ t.name }} — Review{% endblock %}
+{% block heading_help %}Final check. Optionally fire a first backup right now so you can confirm the destination really works before walking away.{% endblock %}
+{% block content %}
+{% with active=5, done=4 %}{% include "_backups_wizard_header.html" %}{% endwith %}
+
+<form class="form" method="post" action="{{ url_for('main.backups_wizard_step5_post', target_id=t.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+
+  <section class="card backup-step-card">
+    <div class="card-head"><h2>{{ icon('check-circle') }} Ready to enable</h2></div>
+
+    <dl class="backup-review-list">
+      <dt>Name</dt>           <dd>{{ t.name }}</dd>
+      <dt>Destination</dt>    <dd>{{ t.kind|upper }}{% if t.kind != 'dropbox' %} · {{ t.host }}{% if t.port %}:{{ t.port }}{% endif %}{% endif %}</dd>
+      {% if t.kind == 'ftp' %}<dt>Connection</dt><dd>{{ 'FTPS (encrypted)' if t.use_tls else 'Plain FTP — not encrypted' }}</dd>{% endif %}
+      {% if t.username %}<dt>Username</dt><dd>{{ t.username }}</dd>{% endif %}
+      <dt>Remote path</dt>    <dd><code>{{ t.remote_path or '/' }}</code></dd>
+      <dt>Schedule</dt>       <dd><code>{{ t.schedule_cron }}</code>
+        {% for key, (cron, label) in presets.items() %}{% if cron == t.schedule_cron %} ({{ label }}){% endif %}{% endfor %}
+      </dd>
+      <dt>Retention</dt>      <dd>Keep last {{ t.retain_count }} archives</dd>
+      <dt>Archive encryption</dt>
+        <dd>{% if t.encrypt_archive %}{{ icon('lock') }} On — files uploaded as <code>.zip.enc</code>{% else %}Off — files uploaded as plain <code>.zip</code>{% endif %}</dd>
+    </dl>
+
+    <label class="check">
+      <input type="checkbox" name="run_now" value="1" checked>
+      Run a first backup now to verify everything works
+    </label>
+    <p class="muted smaller">
+      The backup is taken synchronously — you'll see ok or the error message after the upload finishes.
+      Once enabled, the scheduler will keep running on the cron above.
+    </p>
+
+    <div class="form-actions">
+      <a class="btn" href="{{ url_for('main.backups_wizard', target_id=t.id, step=4, embed=1 if embed else None) }}">← Back</a>
+      <button type="submit" class="btn btn-primary" data-backup-finalize-btn>{{ icon('check') }} Enable target</button>
+    </div>
+  </section>
+</form>
+
+{# Busy overlay — shown while the synchronous first-run backup happens.
+   Only matters when "Run a first backup now" is checked, but the user
+   may have unchecked it; in that case the form submit returns quickly
+   so the overlay barely flashes. #}
+<div class="backup-busy" data-backup-busy hidden>
+  <div class="backup-busy-card">
+    <div class="backup-busy-spinner" aria-hidden="true"></div>
+    <div class="backup-busy-text">
+      <strong>Setting up and running your first backup…</strong>
+      <span class="muted small">Snapshotting the database, packaging uploads, and pushing to the remote. This can take a minute for large sites — don't close this window.</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const form = document.querySelector('form[action$="/wizard/5"]');
+  const busy = document.querySelector('[data-backup-busy]');
+  if (!form || !busy) return;
+  form.addEventListener('submit', () => { busy.hidden = false; });
+})();
+</script>
+{% endblock %}

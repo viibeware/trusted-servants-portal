@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Connect · Trusted Servants Pro{% endblock %}
+{% block heading %}{{ t.name }} — Connection{% endblock %}
+{% block heading_help %}{% if t.kind == 'dropbox' %}Authorize the app on your Dropbox account, then paste the resulting code below.{% else %}Enter the credentials for your {{ t.kind|upper }} server. Passwords are stored encrypted on disk.{% endif %}{% endblock %}
+{% block content %}
+{% with active=2, done=1 %}{% include "_backups_wizard_header.html" %}{% endwith %}
+
+<form class="form" method="post" action="{{ url_for('main.backups_wizard_step2_post', target_id=t.id) }}" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+
+  <section class="card backup-step-card">
+    <div class="card-head"><h2>{{ icon('key') }} Connection</h2></div>
+
+    <label>Target name
+      <input type="text" name="name" value="{{ t.name }}" required maxlength="128">
+    </label>
+
+    {% if t.kind in ('ftp', 'sftp') %}
+    <div class="form-row">
+      <label>Host
+        <input type="text" name="host" value="{{ t.host or '' }}" required placeholder="backup.example.com">
+      </label>
+      <label>Port
+        <input type="number" name="port" value="{{ t.port or (21 if t.kind == 'ftp' else 22) }}" min="1" max="65535">
+      </label>
+    </div>
+    <div class="form-row">
+      <label>Username
+        <input type="text" name="username" value="{{ t.username or '' }}" autocomplete="off">
+      </label>
+      <label>Password{% if t.kind == 'sftp' %} (or use a key below){% endif %}
+        <input type="password" name="password" autocomplete="new-password" placeholder="{% if t.password_enc %}(leave blank to keep current){% endif %}">
+      </label>
+    </div>
+    <label>Remote path
+      <input type="text" name="remote_path" value="{{ t.remote_path or '/' }}" placeholder="/backups/tsp">
+      <span class="muted smaller">Folder on the remote server. Created automatically if missing.</span>
+    </label>
+    {% if t.kind == 'ftp' %}
+    <label class="check">
+      <input type="checkbox" name="use_tls" value="1" {% if t.use_tls %}checked{% endif %}>
+      Use FTPS (encrypted connection). Strongly recommended — only turn this off if your server doesn't support TLS.
+    </label>
+    {% endif %}
+    {% if t.kind == 'sftp' %}
+    <details class="backup-keyblock">
+      <summary>Use a private key instead of (or in addition to) a password</summary>
+      <label>Upload private key file
+        <input type="file" name="private_key" accept=".pem,.key,text/plain">
+      </label>
+      <label>… or paste the key text here
+        <textarea name="private_key_text" rows="6" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..."></textarea>
+      </label>
+      <p class="muted smaller">
+        Accepted formats: Ed25519, ECDSA, RSA, DSA. Stored encrypted on disk.
+        {% if t.private_key_enc %}A key is already stored — leave both fields blank to keep it.{% endif %}
+      </p>
+    </details>
+    {% endif %}
+    {% else %}
+    {# Dropbox #}
+    <ol class="backup-dropbox-steps">
+      <li>
+        Visit <a href="https://www.dropbox.com/developers/apps" target="_blank" rel="noopener">Dropbox developers → My apps</a> and create a new app (Scoped access, App folder).
+      </li>
+      <li>
+        Under the new app's <b>Permissions</b> tab, enable
+        <code>files.content.write</code>, <code>files.content.read</code>,
+        <code>files.metadata.write</code>, <code>files.metadata.read</code>. Save.
+      </li>
+      <li>
+        Open the <b>Settings</b> tab and click <b>Generate access token</b>. Copy the value and paste it below.
+      </li>
+    </ol>
+    <label>Access token
+      <input type="text" name="oauth_token" autocomplete="off"
+             placeholder="{% if t.oauth_token_enc %}(leave blank to keep current){% else %}sl.B1AbCdEf...{% endif %}">
+    </label>
+    <label>Remote path
+      <input type="text" name="remote_path" value="{{ t.remote_path or '/' }}" placeholder="/">
+      <span class="muted smaller">Relative to the app folder. Use "/" to put backups directly in the app folder.</span>
+    </label>
+    {% endif %}
+
+    <div class="backup-test-row">
+      <button type="button" class="btn" data-backup-test data-target-id="{{ t.id }}">
+        {{ icon('check-circle') }} Test connection
+      </button>
+      <span class="backup-test-result muted small" data-backup-test-result></span>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">{{ icon('arrow-right') }} Continue to schedule</button>
+    </div>
+  </section>
+</form>
+
+<script>
+(function() {
+  const btn = document.querySelector('[data-backup-test]');
+  const out = document.querySelector('[data-backup-test-result]');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    out.textContent = 'Saving credentials and testing…';
+    out.className = 'backup-test-result muted small';
+    // Submit the form to save credentials first via fetch, then test.
+    const form = btn.closest('form');
+    const data = new FormData(form);
+    try {
+      const saveRes = await fetch(form.action, { method: 'POST', body: data });
+      if (!saveRes.ok) throw new Error('save failed (' + saveRes.status + ')');
+      const testRes = await fetch('{{ url_for("main.backups_test", target_id=t.id) }}', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': '{{ csrf_token() }}' },
+      });
+      const j = await testRes.json();
+      out.textContent = j.message || (j.ok ? 'ok' : 'failed');
+      out.className = 'backup-test-result small ' + (j.ok ? 'backup-test-ok' : 'backup-test-fail');
+    } catch (e) {
+      out.textContent = String(e);
+      out.className = 'backup-test-result small backup-test-fail';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

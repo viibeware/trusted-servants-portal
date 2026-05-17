@@ -7,7 +7,41 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.0.4 — 2026-05-17 (latest) — Dashboard widgets: every widget has a visible grab handle, no more awkward gaps
+## 2.1.0 — 2026-05-17 (latest) — Automated off-site backups + Appearance tab refactor
+
+Big release. Three things landed together: a complete off-site backup system, a new dashboard widget to keep an eye on it, and a visual refresh for the Appearance tab in Settings.
+
+### Automated off-site backups (FTP, SFTP, Dropbox)
+
+The daily SQLite snapshot we've always taken locally is good for accidents — accidental deletes, broken migrations — but it lives on the same disk as the app. A real disaster (drive dies, VM is wiped) takes the snapshots with it. **Off-site backups solve that.**
+
+Open **Settings → Data → Off-site backups → Set up off-site backup →** to walk through the 5-step setup wizard:
+
+1. **Destination** — pick FTP, FTPS, SFTP (SSH), or Dropbox.
+2. **Connect** — enter credentials. A "Test connection" button round-trips a tiny sentinel file so you find out the credentials work before leaving the wizard.
+3. **Schedule** — pick a preset (Daily at 03:00 UTC, Weekly Sunday, Hourly, Monthly) or write a custom cron expression. Also pick how many old archives to keep on the remote.
+4. **Encryption (optional)** — turn on archive encryption to wrap every backup in a passphrase before it's uploaded. Even if your Dropbox token leaks or your FTP host is compromised, the archives stay sealed. **There's no recovery for a lost passphrase** — the wizard makes you tick a box confirming you've saved it before proceeding.
+5. **Review** — last chance to look it over, then optionally run a first backup right now so you can confirm it works end-to-end.
+
+Each backup archive is a complete app snapshot — the SQLite database, every uploaded file, and the encryption key for stored credentials — exactly the same `.zip` the existing **Settings → Data → Export data** button produces. Restore is symmetric: download an archive from the remote, then import it via the existing **Settings → Data → Import data** flow.
+
+You can configure **multiple targets** — e.g. an FTP daily and a Dropbox weekly — and each runs independently with its own schedule, retention, and encryption setting. A built-in scheduler thread checks once a minute for due jobs, runs them, and emails admins via your configured SMTP host if a backup that was previously working starts to fail. The "Manage backups" modal shows status, run history, and a "Run now" button for any target, and the new dashboard widget surfaces health at a glance.
+
+### New "Off-site Backups" dashboard widget
+
+Admins get a new draggable widget on the main dashboard. Four stat tiles up top show Healthy / Failing / Paused / Total target counts; the Failing tile turns red whenever something's broken and a warn badge appears in the widget title. Below that: when the last successful backup ran (and which target wrote it), when the next scheduled run is due, and the four most-recent backup attempts with their pass/fail pills. The entire widget is clickable — opens the "Manage backups" modal directly. Toggle it on/off from the dashboard's **Customize** button.
+
+### Appearance tab in Settings — visual refresh
+
+The Appearance tab in Settings has been redesigned to match the card style we use in the Data tab — every section (Theme, Sidebar Footer Logo, Login Screen, Open Graph link previews, Home Screen Icon, Public Domain) is now its own card with a brand-blue accent on the left, an icon next to the title, and a clean drop shadow. The two-column layout is gone; cards stack vertically so each one has room to breathe on every screen size. Nothing changed about what the settings do, only how they're laid out.
+
+### Smaller polish
+
+- **No more cloud-icon flash** when opening the backups modal or any iframe-based settings panel — inline SVG icons now carry intrinsic dimensions, so they render at the right size from the very first frame instead of briefly stretching to fill the container.
+- **Busy spinner** while a backup is being taken — the "Run now" button on the Manage modal and the "Enable target" button at the end of the wizard now show a clear "Backing up…" overlay until the upload finishes, so you can't accidentally double-click.
+- **Modals stack instead of replace** — opening the Manage backups modal no longer closes the Settings modal underneath it; same for the wizard. You can dismiss whichever you're done with and the one below is still where you left it.
+
+## 2.0.4 — 2026-05-17 — Dashboard widgets: every widget has a visible grab handle, no more awkward gaps
 
 Two paired fixes for the admin dashboard.
 

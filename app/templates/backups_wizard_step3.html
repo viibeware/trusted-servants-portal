@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Schedule · Trusted Servants Pro{% endblock %}
+{% block heading %}{{ t.name }} — Schedule{% endblock %}
+{% block heading_help %}How often should a backup run, and how many should be kept on the remote at a time?{% endblock %}
+{% block content %}
+{% with active=3, done=2 %}{% include "_backups_wizard_header.html" %}{% endwith %}
+
+<form class="form" method="post" action="{{ url_for('main.backups_wizard_step3_post', target_id=t.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+
+  <section class="card backup-step-card">
+    <div class="card-head"><h2>{{ icon('clock') }} Schedule</h2></div>
+
+    <div class="backup-preset-grid" role="radiogroup">
+      {% for key, (cron, label) in presets.items() %}
+      <label class="backup-preset-card">
+        <input type="radio" name="schedule_preset" value="{{ key }}" {% if t.schedule_cron == cron %}checked{% endif %}>
+        <span>
+          <strong>{{ label }}</strong>
+          <span class="muted smaller"><code>{{ cron }}</code></span>
+        </span>
+      </label>
+      {% endfor %}
+      <label class="backup-preset-card backup-preset-custom">
+        <input type="radio" name="schedule_preset" value="">
+        <span>
+          <strong>Custom cron expression</strong>
+          <input type="text" name="schedule_cron" value="{{ t.schedule_cron }}" placeholder="0 3 * * *">
+          <span class="muted smaller">Standard 5-field cron in UTC (min · hr · day · mo · dow).</span>
+        </span>
+      </label>
+    </div>
+
+    <label>Retention — keep the last
+      <input type="number" name="retain_count" value="{{ t.retain_count or 14 }}" min="1" max="365" style="width:6rem">
+      archives on the remote
+    </label>
+    <p class="muted smaller">Older archives are deleted from the remote after a successful upload.</p>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">{{ icon('arrow-right') }} Continue to encryption</button>
+    </div>
+  </section>
+</form>
+{% endblock %}

@@ -3963,6 +3963,17 @@ form.hide-zoom .zoom-only, form.hide-zoom .zoom-only-field { display: none; }
    wizard pages without scrolling the wrapper. */
 #wp-import-modal .modal-panel { height: calc(100vh - 10vh); max-width: 1180px; }
 #wp-import-frame { flex: 1 1 auto; width: 100%; height: 100%; min-height: 0; border: 0; background: var(--panel); }
+
+/* Off-site backup wizard modal — mirrors the WP importer treatment so
+   the iframe has room to render the 5-step wizard without clipping. */
+#backup-wizard-modal .modal-panel { height: calc(100vh - 10vh); max-width: 1180px; }
+#backup-wizard-frame { flex: 1 1 auto; width: 100%; height: 100%; min-height: 0; border: 0; background: var(--panel); }
+
+/* Off-site backups admin modal — hosts the list / runs / restore pages
+   in embed mode so the user can manage targets without leaving the
+   settings overlay. */
+#backups-modal .modal-panel { height: calc(100vh - 10vh); max-width: 1180px; }
+#backups-frame { flex: 1 1 auto; width: 100%; height: 100%; min-height: 0; border: 0; background: var(--panel); }
 #settings-modal .settings-body { flex: 1 1 auto; height: auto; min-height: 0; }
 .user-chip-name { flex: 1; min-width: 0; }
 .icon-btn-inline { width: 40px; height: 40px; flex: 0 0 auto; font-size: 1.35rem; }
@@ -4004,9 +4015,6 @@ form.hide-zoom .zoom-only, form.hide-zoom .zoom-only-field { display: none; }
   padding: 0; gap: 0;
 }
 .settings-frame { width: 100%; height: 100%; border: 0; background: var(--panel); }
-.appearance-pane { display: flex; align-items: flex-start; justify-content: space-between;
-  padding: 24px; gap: 16px; width: 100%; font-size: 1rem; }
-.appearance-theme { flex-direction: column; align-items: stretch; gap: 12px; }
 .theme-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 .theme-swatch {
   display: flex; flex-direction: column; gap: 8px; padding: 10px;
@@ -4020,7 +4028,13 @@ form.hide-zoom .zoom-only, form.hide-zoom .zoom-only-field { display: none; }
 .sw-panel { width: 40%; }
 .sw-accent { width: 14px; align-self: center; height: 60%; margin-left: auto; margin-right: 8px; border-radius: 3px; }
 .swatch-label { font-size: 0.875rem; font-weight: 600; }
-.settings-pane[data-pane="appearance"] { flex-direction: column; padding: 0; overflow-y: auto; overflow-x: hidden; gap: 0; min-width: 0; }
+/* Appearance pane — single-column stack of .data-card sections. Matches
+   the Data pane's chrome (left-accent cards on a 20×24 padded canvas)
+   so the two settings tabs read as part of the same visual language. */
+.settings-pane[data-pane="appearance"] {
+  flex-direction: column; padding: 20px 24px; gap: 8px;
+  overflow-y: auto; overflow-x: hidden; min-width: 0;
+}
 /* Sidebar tab — flex column with comfortable padding so the form
    doesn't get stretched horizontally and the Save button sits
    naturally at the bottom-right of the form rather than full-height
@@ -4030,34 +4044,25 @@ form.hide-zoom .zoom-only, form.hide-zoom .zoom-only-field { display: none; }
   overflow-y: auto; overflow-x: hidden; gap: 16px; min-width: 0;
 }
 .settings-pane[data-pane="sidebar"] > * { max-width: 100%; min-width: 0; }
-.settings-pane[data-pane="appearance"] > * { max-width: 100%; min-width: 0; }
-.settings-pane[data-pane="appearance"] > .appearance-pane { padding: 20px 24px; }
-.settings-pane[data-pane="appearance"] .appearance-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px;
-  padding: 20px 24px 24px; align-items: start; }
-.settings-pane[data-pane="appearance"] .appearance-grid > * { min-width: 0; }
-@media (max-width: 900px) {
-  .settings-pane[data-pane="appearance"] .appearance-grid { grid-template-columns: 1fr; }
-}
-.settings-pane[data-pane="appearance"] .appearance-grid > .form { padding: 0; margin: 0; width: 100%; gap: 10px; }
-.settings-pane[data-pane="appearance"] .appearance-grid > .login-appearance-group { display: flex; flex-direction: column; gap: 20px; }
-.settings-pane[data-pane="appearance"] .appearance-grid > .login-appearance-group > .form { padding: 0; margin: 0; width: 100%; gap: 10px; }
-.settings-pane[data-pane="appearance"] .appearance-grid > .login-appearance-group > .turnstile-form { padding-top: 18px; border-top: 1px solid var(--border); }
 .turnstile-form .form-actions { justify-content: flex-start; }
 .appearance-branding-form .u-name + p { margin: 0 0 8px; }
 .appearance-branding-form label { gap: 6px; font-size: 0.875rem; }
 .appearance-branding-form label.check { flex-direction: row; align-items: center; gap: 8px;
   background: transparent; border: 0; padding: 0; font-weight: 400; }
 .appearance-branding-form label.check input { width: auto; margin: 0; }
-.appearance-branding-form .branding-save-row { margin-top: 4px; }
-.settings-pane[data-pane="appearance"] .appearance-grid .login-appearance-form { padding: 0; }
-.settings-pane[data-pane="appearance"] .appearance-grid .login-appearance-form .login-fx-controls { max-width: none; }
+/* Forms inside Appearance cards: reset the global .form's 2rem gap to a
+   compact 10px since the card head + lead paragraph already establish
+   the visual spacing, and let the form fill the card body. */
+.settings-pane[data-pane="appearance"] .data-card > .form,
+.settings-pane[data-pane="appearance"] .data-card .login-fx-controls {
+  margin: 0; padding: 0; width: 100%; gap: 10px;
+}
 .settings-pane[data-pane="appearance"] .theme-picker { grid-template-columns: repeat(6, 1fr); }
 @media (max-width: 1024px) { .settings-pane[data-pane="appearance"] .theme-picker { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 600px) { .settings-pane[data-pane="appearance"] .theme-picker { grid-template-columns: repeat(2, 1fr); } }
-.settings-pane[data-pane="appearance"] > .form { padding: 20px 24px 24px; width: 100%;
-  box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; }
-.settings-pane[data-pane="appearance"] .u-name { font-size: 1rem; line-height: 1.3; }
-.settings-pane[data-pane="appearance"] .u-name + p { margin: 2px 0 2rem; }
+/* Legacy separator — kept for other panes that still use it (Email).
+   Appearance no longer renders one; each .data-card owns its own
+   visual separation via the brand left accent + shadow. */
 .settings-sep { border: 0; border-top: 1px solid var(--border); margin: 0 24px; width: auto; }
 
 /* Daily snapshot list in Settings → Data. Each row shows the file
@@ -11754,3 +11759,414 @@ body.pbe-is-palette-dragging .pbe-section-canvas {
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
+
+/* ─── Off-site backups: list, wizard, restore ─────────────────────
+   Sized to sit inside the existing settings shell. The wizard reuses
+   .wp-wizard-stepper for the step strip (defined far above), so the
+   only new wizard-specific styles here are the kind/preset cards. */
+.backups-wrap { max-width: 960px; margin: 0 auto; }
+
+/* Inside the manage modal (embed mode), let the backups admin fill the
+   full panel width with a 2rem chrome inset on desktop. The outer
+   .embed-content's default 20px padding gets zeroed so .backups-wrap
+   owns the full padding budget — keeps children flush to a single
+   inset rectangle instead of having two stacked paddings. */
+body.embed > main.embed-content:has(> .backups-wrap),
+body.embed > main.embed-content:has(> .flashes + .backups-wrap) {
+  padding: 0;
+}
+body.embed .backups-wrap {
+  max-width: none;
+  margin: 0;
+  padding: 2rem;
+}
+@media (max-width: 720px) {
+  body.embed .backups-wrap { padding: 1rem; }
+}
+.backups-toolbar {
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.backups-toolbar .btn-primary { margin-left: auto; }
+
+.backup-empty { text-align: left; }
+.backup-empty .form-actions { margin-top: 1rem; }
+
+.backups-table-card .card-head h2,
+.backups-recent-card .card-head h2 {
+  display: flex; align-items: center; gap: .55rem;
+}
+
+.backup-target-list,
+.backup-run-list,
+.backup-remote-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .55rem;
+}
+.backup-target-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: .85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel, transparent);
+}
+.backup-target-meta { flex: 1 1 auto; min-width: 0; }
+.backup-target-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .55rem;
+  margin-bottom: .25rem;
+}
+.backup-target-sub { display: block; margin-top: .15rem; }
+.backup-target-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.backup-target-error {
+  margin-top: .4rem;
+  color: var(--danger, #b91c1c);
+  display: flex;
+  align-items: flex-start;
+  gap: .35rem;
+}
+.backup-target-error .icon { flex-shrink: 0; }
+
+.backup-run-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .55rem;
+  padding: .5rem .8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.backup-run-when { font-variant-numeric: tabular-nums; }
+
+/* Status pill — colored chip used in list + activity rows. */
+.backup-status-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: .7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  line-height: 1.4;
+  background: var(--panel-muted, #f1f5f9);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.backup-status-ok        { background: #dcfce7; color: #166534; border-color: #86efac; }
+.backup-status-failed    { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+.backup-status-running   { background: #dbeafe; color: #1e40af; border-color: #93c5fd; }
+.backup-status-never_run { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+.backup-status-encrypted { background: #ede9fe; color: #5b21b6; border-color: #c4b5fd; }
+[data-theme="dark"] .backup-status-ok        { background: #052e16; color: #bbf7d0; border-color: #166534; }
+[data-theme="dark"] .backup-status-failed    { background: #450a0a; color: #fecaca; border-color: #991b1b; }
+[data-theme="dark"] .backup-status-running   { background: #172554; color: #bfdbfe; border-color: #1e3a8a; }
+[data-theme="dark"] .backup-status-never_run { background: #1e293b; color: #94a3b8; border-color: #334155; }
+[data-theme="dark"] .backup-status-encrypted { background: #2e1065; color: #ddd6fe; border-color: #6d28d9; }
+
+/* Wizard ── kind picker (step 1) and preset chips (step 3). */
+.backup-step-card { max-width: 720px; }
+.backup-step-card label { display: block; margin-bottom: .9rem; }
+.backup-step-card .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .9rem;
+}
+@media (max-width: 640px) {
+  .backup-step-card .form-row { grid-template-columns: 1fr; }
+}
+
+.backup-kind-grid,
+.backup-preset-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: .55rem;
+  margin: .25rem 0 1rem;
+}
+@media (min-width: 720px) {
+  .backup-kind-grid { grid-template-columns: 1fr 1fr 1fr; }
+  .backup-preset-grid { grid-template-columns: 1fr 1fr; }
+}
+.backup-kind-card,
+.backup-preset-card {
+  display: flex;
+  align-items: flex-start;
+  gap: .65rem;
+  padding: .85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  margin: 0;
+  background: var(--panel, transparent);
+  transition: border-color .12s ease, background .12s ease;
+}
+.backup-kind-card:hover,
+.backup-preset-card:hover {
+  border-color: var(--brand);
+}
+.backup-kind-card input,
+.backup-preset-card input { margin-top: .25rem; }
+.backup-kind-card .backup-kind-body,
+.backup-preset-card > span {
+  display: flex; flex-direction: column; gap: .15rem;
+  flex: 1 1 auto;
+}
+.backup-preset-custom input[type="text"] {
+  margin-top: .35rem;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+.backup-test-row {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin: .5rem 0 1rem;
+  flex-wrap: wrap;
+}
+.backup-test-result { min-height: 1.25rem; }
+.backup-test-ok   { color: #166534; }
+.backup-test-fail { color: #991b1b; }
+[data-theme="dark"] .backup-test-ok   { color: #86efac; }
+[data-theme="dark"] .backup-test-fail { color: #fca5a5; }
+
+.backup-encrypt-fields {
+  padding: 1rem;
+  margin: .75rem 0 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-muted, rgba(0,0,0,.02));
+}
+.backup-encrypt-fields .form-row { margin-bottom: .75rem; }
+
+.backup-dropbox-steps {
+  padding-left: 1.25rem;
+  margin: .25rem 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .55rem;
+}
+
+.backup-keyblock {
+  margin-bottom: 1rem;
+  padding: .75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-muted, rgba(0,0,0,.02));
+}
+.backup-keyblock textarea {
+  width: 100%;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: .8rem;
+}
+
+.backup-review-list {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: .35rem .9rem;
+  margin: 0 0 1rem;
+}
+.backup-review-list dt { font-weight: 600; }
+.backup-review-list dd { margin: 0; }
+
+.backup-remote-row {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  padding: .5rem .75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.backup-remote-row:hover { border-color: var(--brand); }
+.backup-remote-name {
+  flex: 1 1 auto;
+  display: flex; align-items: center; gap: .5rem;
+  min-width: 0;
+}
+.backup-remote-name code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backup-error-card .warning { color: var(--danger, #b91c1c); }
+
+/* Dashboard "Off-site Backups" widget. Behaves like a big clickable
+   card — the whole interior is a button that opens the backups-modal,
+   so the affordance is unambiguous. Counts row + when-row + recent-runs
+   stack vertically inside the existing dash_widget chrome. */
+.dash-backups-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: .9rem;
+  padding: .25rem 0 0;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.dash-backups-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: .55rem;
+}
+@media (max-width: 480px) {
+  .dash-backups-stats { grid-template-columns: repeat(2, 1fr); }
+}
+.dash-backups-stat {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .55rem .65rem;
+  background: var(--panel-muted, rgba(0,0,0,.02));
+}
+.dash-backups-stat-label {
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--muted, #64748b);
+  margin-bottom: .15rem;
+}
+.dash-backups-stat-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.dash-backups-stat-accent .dash-backups-stat-value { color: var(--brand, #0B5CFF); }
+.dash-backups-stat-bad {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+.dash-backups-stat-bad .dash-backups-stat-label { color: #991b1b; }
+.dash-backups-stat-bad .dash-backups-stat-value { color: #991b1b; }
+[data-theme="dark"] .dash-backups-stat-bad {
+  background: #450a0a;
+  border-color: #991b1b;
+}
+[data-theme="dark"] .dash-backups-stat-bad .dash-backups-stat-label,
+[data-theme="dark"] .dash-backups-stat-bad .dash-backups-stat-value {
+  color: #fecaca;
+}
+
+.dash-backups-when {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+.dash-backups-when-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+.dash-backups-when-row strong { font-variant-numeric: tabular-nums; }
+
+.dash-backups-recent-label { margin-bottom: .35rem; }
+.dash-backups-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+.dash-backups-recent-list li {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  font-size: .85rem;
+  min-width: 0;
+}
+.dash-backups-recent-target {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-backups-cta {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  border-top: 1px solid var(--border);
+  padding-top: .65rem;
+  color: var(--brand);
+}
+.dash-backups-card:hover .dash-backups-cta { text-decoration: underline; }
+
+.dash-backups-foot {
+  margin-top: .35rem;
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* Busy-during-backup overlay. Mounted inside the embedded list and
+   the wizard's step 5 — when [hidden] is removed it covers the iframe
+   so the user can't double-submit. The spinner is a CSS-only ring. */
+.backup-busy {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+  backdrop-filter: blur(2px);
+}
+.backup-busy[hidden] { display: none; }
+.backup-busy-card {
+  background: var(--panel, #fff);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.5rem 1.75rem;
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  max-width: 480px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.25);
+}
+.backup-busy-text {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  min-width: 0;
+}
+.backup-busy-spinner {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 4px solid var(--border, #cbd5e1);
+  border-top-color: var(--brand, #0B5CFF);
+  animation: backup-busy-spin 0.85s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes backup-busy-spin {
+  to { transform: rotate(360deg); }
+}
+[data-theme="dark"] .backup-busy-card {
+  background: #0f172a;
+  border-color: #1f2937;
+}
+

@@ -83,6 +83,7 @@ class User(UserMixin, db.Model):
     dash_show_deletions = db.Column(db.Boolean, nullable=False, default=True)
     dash_show_currently_online = db.Column(db.Boolean, nullable=False, default=True)
     dash_show_visitor_metrics = db.Column(db.Boolean, nullable=False, default=True)
+    dash_show_backups = db.Column(db.Boolean, nullable=False, default=True)
     dash_order_json = db.Column(db.Text)
     last_seen_at = db.Column(db.DateTime)
     # Current navigation location for the live "who's online" widget.
@@ -2192,3 +2193,82 @@ class VisitorEvent(db.Model):
         db.Index("ix_visitor_event_day_path", "day", "path"),
         db.Index("ix_visitor_event_day_visitor", "day", "visitor_hash"),
     )
+
+
+BACKUP_KINDS = ("ftp", "sftp", "dropbox")
+BACKUP_STATUS = ("ok", "failed", "running", "never_run")
+
+
+class BackupTarget(db.Model):
+    """An off-site destination for full app backups.
+
+    The archive being uploaded is the same `tsp-export-<stamp>.zip` the
+    Data tab's manual export produces (DB + uploads/ + zoom.key). Each
+    target has its own schedule + retention; multiple targets can coexist
+    so an admin can mirror to e.g. an FTP server daily and Dropbox weekly.
+    """
+    __tablename__ = "backup_target"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128), nullable=False)
+    kind = db.Column(db.String(16), nullable=False)  # ftp | sftp | dropbox
+    enabled = db.Column(db.Boolean, nullable=False, default=False)
+
+    # Connection — FTP/SFTP use host/port/username/password_enc; SFTP can
+    # alternatively use private_key_enc; Dropbox uses oauth_token_enc.
+    host = db.Column(db.String(255))
+    port = db.Column(db.Integer)
+    username = db.Column(db.String(255))
+    password_enc = db.Column(db.LargeBinary)
+    private_key_enc = db.Column(db.LargeBinary)
+    oauth_token_enc = db.Column(db.LargeBinary)
+
+    # FTPS toggle (FTP only). When false, plain FTP — surface a warning
+    # in the wizard so the admin opts in deliberately.
+    use_tls = db.Column(db.Boolean, nullable=False, default=True)
+
+    # Remote target path. For FTP/SFTP this is a directory; for Dropbox
+    # it's an app-folder-relative path that always starts with "/".
+    remote_path = db.Column(db.String(500), default="/")
+
+    # Schedule. Stored as a 5-field cron expression so we can present
+    # presets in the wizard but accept custom values too.
+    schedule_cron = db.Column(db.String(64), nullable=False, default="0 3 * * *")
+    retain_count = db.Column(db.Integer, nullable=False, default=14)
+
+    # Optional client-side archive encryption with a passphrase. When on,
+    # we derive a Fernet key from the passphrase via PBKDF2 and wrap the
+    # zip before upload. Passphrase itself is stored Fernet-encrypted so
+    # the scheduler can use it unattended; losing the zoom.key means the
+    # remote archives are unrecoverable, which is exactly what we want.
+    encrypt_archive = db.Column(db.Boolean, nullable=False, default=False)
+    archive_passphrase_enc = db.Column(db.LargeBinary)
+
+    # Last-run status mirror for fast UI rendering without a join.
+    last_run_at = db.Column(db.DateTime)
+    last_status = db.Column(db.String(16), default="never_run")
+    last_error = db.Column(db.Text)
+    next_run_at = db.Column(db.DateTime)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    runs = db.relationship(
+        "BackupRun",
+        backref="target",
+        cascade="all, delete-orphan",
+        order_by="BackupRun.started_at.desc()",
+    )
+
+
+class BackupRun(db.Model):
+    """One execution attempt of a BackupTarget — success or failure."""
+    __tablename__ = "backup_run"
+    id = db.Column(db.Integer, primary_key=True)
+    target_id = db.Column(db.Integer, db.ForeignKey("backup_target.id", ondelete="CASCADE"), nullable=False)
+    started_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    finished_at = db.Column(db.DateTime)
+    status = db.Column(db.String(16), nullable=False, default="running")  # running|ok|failed
+    archive_name = db.Column(db.String(255))
+    bytes_uploaded = db.Column(db.BigInteger)
+    error_message = db.Column(db.Text)
+    triggered_by = db.Column(db.String(16), default="schedule")  # schedule|manual

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ t.name }} — restore{% endblock %}
+{% block heading %}{{ t.name }} — restore{% endblock %}
+{% block heading_help %}Browse the archives currently on the remote and pull one back to your computer. To apply it to this app, upload the resulting .zip via Settings → Data → Import.{% endblock %}
+{% block content %}
+<div class="backups-wrap">
+<div class="backups-toolbar">
+  <a class="btn" href="{{ url_for('main.backups_list', embed=1 if embed else None) }}">← Back to Backups</a>
+</div>
+
+{% if error %}
+<section class="card backup-error-card">
+  <div class="card-head"><h2>{{ icon('alert-triangle') }} Couldn't read remote</h2></div>
+  <p class="warning">{{ error }}</p>
+  <p class="muted small">Double-check the credentials in the wizard, then return here.</p>
+</section>
+{% else %}
+<section class="card">
+  <div class="card-head"><h2>{{ icon('download') }} Remote archives</h2></div>
+  {% if not files %}
+  <p class="muted">No archives at <code>{{ t.remote_path }}</code> yet — once the target has run successfully at least once, they'll appear here.</p>
+  {% else %}
+  <form method="post" action="{{ url_for('main.backups_restore_post', target_id=t.id) }}" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+    <ul class="backup-remote-list">
+      {% for f in files %}
+      <li>
+        <label class="backup-remote-row">
+          <input type="radio" name="archive" value="{{ f.name }}" {% if loop.first %}checked{% endif %}>
+          <span class="backup-remote-name">
+            <code>{{ f.name }}</code>
+            {% if f.name.endswith('.enc') %}<span class="backup-status-pill backup-status-encrypted">{{ icon('lock') }} encrypted</span>{% endif %}
+          </span>
+          <span class="muted smaller">{{ (f.size / 1024) | round(0) | int }} KB</span>
+        </label>
+      </li>
+      {% endfor %}
+    </ul>
+
+    {% if files | selectattr('name', 'match', '.+\\.enc$') | list %}
+    <label>Passphrase (only required if you select an encrypted archive)
+      <input type="password" name="passphrase" autocomplete="off">
+    </label>
+    {% endif %}
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">{{ icon('download') }} Download selected archive</button>
+    </div>
+    <p class="muted smaller">
+      To restore <em>into this app</em>: download the file, then on
+      <a href="{{ url_for('main.index', settings='data') }}" {% if embed %}target="_top"{% endif %}>Settings → Data</a>
+      choose "Import data" and select the downloaded .zip. The import flow
+      replaces the database, uploads/, and the Fernet key in place.
+    </p>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+</div>
+{% endblock %}

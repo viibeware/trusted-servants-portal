@@ -18,7 +18,8 @@ from .models import (db, User, Meeting, MeetingFile, MeetingSchedule, MeetingLib
                      IntergroupAccount, IntergroupOfficer, AccessRequest, ContactSubmission, PasswordResetToken,
                      FrontendNavItem, UrlRedirect, EntitySlugHistory, Page,
                      FrontendNavColumn, FrontendNavLink, FILE_CATEGORIES,
-                     DAYS_OF_WEEK, INTERGROUP_LIBRARY_NAMES)
+                     DAYS_OF_WEEK, INTERGROUP_LIBRARY_NAMES,
+                     BackupTarget, BackupRun, BACKUP_KINDS)
 
 INTERGROUP_DEFAULT_ACCOUNTS = [
     ('Chair', 'chair@dccma.com'),
@@ -277,7 +278,7 @@ def inject_globals():
             "unread_contact_count": unread_contact_count, "otp": otp}
 
 
-DASHBOARD_WIDGET_KEYS = ("server-metrics", "visitor-metrics", "currently-online", "meetings", "libraries", "files", "access-requests", "contact-form", "deletions")
+DASHBOARD_WIDGET_KEYS = ("server-metrics", "visitor-metrics", "currently-online", "backups", "meetings", "libraries", "files", "access-requests", "contact-form", "deletions")
 
 ONLINE_WINDOW = timedelta(minutes=5)
 LAST_SEEN_THROTTLE = timedelta(seconds=60)
@@ -434,6 +435,8 @@ def index():
     recent_deletions = []
     visitor_summary = None
     visitor_sparkline = []
+    backup_summary = None
+    backup_recent_runs = []
     if current_user.is_admin():
         access_requests = (AccessRequest.query
                            .filter_by(status="pending", is_archived=False)
@@ -477,6 +480,38 @@ def index():
         except Exception:  # noqa: BLE001
             visitor_summary = None
             visitor_sparkline = []
+        # Off-site backups widget — counts targets by status, the most
+        # recent successful run, and the next scheduled run so the
+        # admin sees backup health at a glance. The full management
+        # surface lives in the backups-modal on click.
+        try:
+            targets_all = BackupTarget.query.order_by(BackupTarget.created_at.desc()).all()
+            ok_count = sum(1 for t in targets_all if t.last_status == "ok")
+            failed_count = sum(1 for t in targets_all if t.last_status == "failed")
+            never_count = sum(1 for t in targets_all if (t.last_status or "never_run") == "never_run")
+            paused_count = sum(1 for t in targets_all if not t.enabled)
+            enabled_targets = [t for t in targets_all if t.enabled and t.next_run_at]
+            next_run = min((t.next_run_at for t in enabled_targets), default=None)
+            last_ok_run = (BackupRun.query
+                           .filter_by(status="ok")
+                           .order_by(BackupRun.finished_at.desc())
+                           .first())
+            backup_summary = {
+                "total": len(targets_all),
+                "ok": ok_count,
+                "failed": failed_count,
+                "never": never_count,
+                "paused": paused_count,
+                "next_run_at": next_run,
+                "last_ok_at": last_ok_run.finished_at if last_ok_run else None,
+                "last_ok_target": last_ok_run.target.name if (last_ok_run and last_ok_run.target) else None,
+            }
+            backup_recent_runs = (BackupRun.query
+                                  .order_by(BackupRun.started_at.desc())
+                                  .limit(4).all())
+        except Exception:  # noqa: BLE001
+            backup_summary = None
+            backup_recent_runs = []
     dashboard_order = _dashboard_order(current_user)
     return render_template("index.html", meetings=meetings, libraries=libraries,
                            recent_files=recent_files, access_requests=access_requests,
@@ -486,6 +521,8 @@ def index():
                            recent_deletions=recent_deletions,
                            visitor_summary=visitor_summary,
                            visitor_sparkline=visitor_sparkline,
+                           backup_summary=backup_summary,
+                           backup_recent_runs=backup_recent_runs,
                            dashboard_order=dashboard_order)
 
 
@@ -503,6 +540,7 @@ def dashboard_customize():
         current_user.dash_show_deletions = request.form.get("dash_show_deletions") == "1"
         current_user.dash_show_currently_online = request.form.get("dash_show_currently_online") == "1"
         current_user.dash_show_visitor_metrics = request.form.get("dash_show_visitor_metrics") == "1"
+        current_user.dash_show_backups = request.form.get("dash_show_backups") == "1"
     db.session.commit()
     flash("Dashboard updated", "success")
     return redirect(url_for("main.index"))
@@ -2187,52 +2225,15 @@ def _require_module_role(site_attr_role, site_attr_enabled=None):
 @bp.route("/settings/export")
 @admin_required
 def data_export():
-    import io, json, zipfile, tempfile
-    from datetime import datetime
     from flask import send_file
-    from sqlalchemy import text
+    from .backup import build_export_archive
 
-    upload_dir = current_app.config["UPLOAD_FOLDER"]
-    data_dir = os.path.dirname(upload_dir.rstrip("/"))
-    db_path = os.path.join(data_dir, "tsp.db")
-
-    tmp_db = tempfile.NamedTemporaryFile(prefix="tsp-export-", suffix=".db", delete=False)
-    tmp_db.close()
-    os.unlink(tmp_db.name)
-    with db.engine.connect() as conn:
-        conn.exec_driver_sql(f"VACUUM INTO '{tmp_db.name}'")
-
-    tmp_zip = tempfile.NamedTemporaryFile(prefix="tsp-export-", suffix=".zip", delete=False)
-    tmp_zip.close()
-    manifest = {
-        "app": "trusted-servants-pro",
-        "format_version": 1,
-        "exported_at": datetime.utcnow().isoformat() + "Z",
-        "db_filename": "tsp.db",
-        "uploads_dir": "uploads/",
-        "fernet_key_filename": "zoom.key",
-        "note": "Restore by importing through the Data tab, or extract into the target's data directory (replacing tsp.db, uploads/, and zoom.key) before first boot. zoom.key is required to decrypt Zoom credentials.",
-    }
-    zoom_key_path = os.path.join(data_dir, "zoom.key")
-    with zipfile.ZipFile(tmp_zip.name, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as z:
-        z.write(tmp_db.name, arcname="tsp.db")
-        z.writestr("manifest.json", json.dumps(manifest, indent=2))
-        if os.path.isfile(zoom_key_path):
-            z.write(zoom_key_path, arcname="zoom.key")
-        if os.path.isdir(upload_dir):
-            for root, _, files in os.walk(upload_dir):
-                for fname in files:
-                    full = os.path.join(root, fname)
-                    rel = os.path.relpath(full, upload_dir)
-                    z.write(full, arcname=os.path.join("uploads", rel))
-    os.unlink(tmp_db.name)
-
-    stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
-    response = send_file(tmp_zip.name, mimetype="application/zip",
-                         as_attachment=True, download_name=f"tsp-export-{stamp}.zip")
+    zip_path, archive_name, _size = build_export_archive(current_app._get_current_object())
+    response = send_file(zip_path, mimetype="application/zip",
+                         as_attachment=True, download_name=archive_name)
     @response.call_on_close
     def _cleanup():
-        try: os.unlink(tmp_zip.name)
+        try: os.unlink(zip_path)
         except OSError: pass
     return response
 
@@ -2779,6 +2780,418 @@ def data_snapshot_now():
     else:
         flash("Today's snapshot already exists — nothing to do.", "info")
     return redirect(_safe_referrer() or url_for("main.index"))
+
+
+# ---------------------------------------------------------------------------
+# Off-site backups — 5-step setup wizard + list / restore / history.
+# Archive payload comes from app.backup.build_export_archive (DB + uploads
+# + zoom.key). Backends in app.backup_backends. Scheduler in
+# app.backup_scheduler runs due jobs once a minute.
+# ---------------------------------------------------------------------------
+
+SCHEDULE_PRESETS = {
+    "hourly": ("0 * * * *", "Top of every hour"),
+    "daily-3am": ("0 3 * * *", "Every day at 03:00 UTC"),
+    "daily-noon": ("0 12 * * *", "Every day at 12:00 UTC"),
+    "weekly-sun": ("0 3 * * 0", "Every Sunday at 03:00 UTC"),
+    "monthly": ("0 3 1 * *", "First of the month at 03:00 UTC"),
+}
+
+
+def _backup_embed():
+    """True when the wizard request came in via the modal iframe."""
+    return (request.args.get("embed") == "1"
+            or request.form.get("embed") == "1")
+
+
+def _backup_embed_kwargs():
+    """Spread into url_for(...) inside wizard redirects so embed mode survives."""
+    return {"embed": 1} if _backup_embed() else {}
+
+
+def _validate_cron(expr):
+    """Returns None if ok, else an error string. Used at form-validate time."""
+    try:
+        from croniter import croniter
+        croniter(expr)
+        return None
+    except Exception as e:  # noqa: BLE001
+        return f"Not a valid cron expression: {e}"
+
+
+@bp.route("/settings/backups")
+@admin_required
+def backups_list():
+    targets = BackupTarget.query.order_by(BackupTarget.created_at.desc()).all()
+    recent = (BackupRun.query
+              .order_by(BackupRun.started_at.desc())
+              .limit(20).all())
+    return render_template("backups_list.html",
+                           targets=targets,
+                           recent_runs=recent,
+                           embed=_backup_embed())
+
+
+@bp.route("/settings/backups/new")
+@admin_required
+def backups_new():
+    """Step 1 — pick a backend kind. Creates a stub BackupTarget so the
+    wizard has somewhere to write each step's data; the stub is left
+    disabled until the wizard completes."""
+    return render_template("backups_wizard_step1.html",
+                           kinds=BACKUP_KINDS,
+                           embed=_backup_embed())
+
+
+@bp.route("/settings/backups/new", methods=["POST"])
+@admin_required
+def backups_new_post():
+    kind = (request.form.get("kind") or "").strip()
+    name = (request.form.get("name") or "").strip() or f"New {kind.upper()} backup"
+    if kind not in BACKUP_KINDS:
+        flash("Pick a destination type to continue.", "danger")
+        return redirect(url_for("main.backups_new", **_backup_embed_kwargs()))
+    t = BackupTarget(name=name, kind=kind, enabled=False,
+                     remote_path="/" if kind == "dropbox" else "/backups/tsp",
+                     schedule_cron="0 3 * * *",
+                     retain_count=14,
+                     use_tls=True)
+    db.session.add(t)
+    db.session.commit()
+    return redirect(url_for("main.backups_wizard", target_id=t.id, step=2,
+                            **_backup_embed_kwargs()))
+
+
+@bp.route("/settings/backups/<int:target_id>/wizard/<int:step>")
+@admin_required
+def backups_wizard(target_id, step):
+    t = db.session.get(BackupTarget, target_id) or abort(404)
+    embed = _backup_embed()
+    if step == 2:
+        return render_template("backups_wizard_step2.html", t=t, embed=embed)
+    if step == 3:
+        return render_template("backups_wizard_step3.html", t=t,
+                               presets=SCHEDULE_PRESETS, embed=embed)
+    if step == 4:
+        return render_template("backups_wizard_step4.html", t=t, embed=embed)
+    if step == 5:
+        return render_template("backups_wizard_step5.html", t=t,
+                               presets=SCHEDULE_PRESETS, embed=embed)
+    abort(404)
+
+
+@bp.route("/settings/backups/<int:target_id>/wizard/2", methods=["POST"])
+@admin_required
+def backups_wizard_step2_post(target_id):
+    """Connection details. Kind-specific fields, all credential columns
+    are Fernet-encrypted via app.crypto.encrypt before save."""
+    t = db.session.get(BackupTarget, target_id) or abort(404)
+    t.name = (request.form.get("name") or t.name).strip()
+    t.host = (request.form.get("host") or "").strip() or None
+    port_raw = (request.form.get("port") or "").strip()
+    t.port = int(port_raw) if port_raw.isdigit() else None
+    t.username = (request.form.get("username") or "").strip() or None
+    t.remote_path = (request.form.get("remote_path") or "/").strip() or "/"
+
+    if t.kind == "ftp":
+        t.use_tls = (request.form.get("use_tls") == "1")
+        password = request.form.get("password") or ""
+        if password:
+            t.password_enc = encrypt(password)
+    elif t.kind == "sftp":
+        password = request.form.get("password") or ""
+        if password:
+            t.password_enc = encrypt(password)
+        key_file = request.files.get("private_key")
+        key_text = (request.form.get("private_key_text") or "").strip()
+        if key_file and key_file.filename:
+            try:
+                key_text = key_file.read().decode("utf-8", errors="replace")
+            except Exception:
+                key_text = ""
+        if key_text:
+            t.private_key_enc = encrypt(key_text)
+    elif t.kind == "dropbox":
+        token = (request.form.get("oauth_token") or "").strip()
+        if token:
+            t.oauth_token_enc = encrypt(token)
+
+    db.session.commit()
+    return redirect(url_for("main.backups_wizard", target_id=t.id, step=3,
+                            **_backup_embed_kwargs()))
+
+
+@bp.route("/settings/backups/<int:target_id>/wizard/3", methods=["POST"])
+@admin_required
+def backups_wizard_step3_post(target_id):
+    """Schedule + retention."""
+    t = db.session.get(BackupTarget, target_id) or abort(404)
+    preset = request.form.get("schedule_preset") or ""
+    custom = (request.form.get("schedule_cron") or "").strip()
+    if preset in SCHEDULE_PRESETS:
+        t.schedule_cron = SCHEDULE_PRESETS[preset][0]
+    elif custom:
+        err = _validate_cron(custom)
+        if err:
+            flash(err, "danger")
+            return redirect(url_for("main.backups_wizard", target_id=t.id, step=3,
+                                    **_backup_embed_kwargs()))
+        t.schedule_cron = custom
+    retain_raw = (request.form.get("retain_count") or "14").strip()
+    try:
+        t.retain_count = max(1, min(365, int(retain_raw)))
+    except ValueError:
+        t.retain_count = 14
+    db.session.commit()
+    return redirect(url_for("main.backups_wizard", target_id=t.id, step=4,
+                            **_backup_embed_kwargs()))
+
+
+@bp.route("/settings/backups/<int:target_id>/wizard/4", methods=["POST"])
+@admin_required
+def backups_wizard_step4_post(target_id):
+    """Encryption-at-rest opt-in."""
+    t = db.session.get(BackupTarget, target_id) or abort(404)
+    want = (request.form.get("encrypt_archive") == "1")
+    if want:
+        passphrase = request.form.get("passphrase") or ""
+        confirm = request.form.get("passphrase_confirm") or ""
+        if not passphrase or len(passphrase) < 8:
+            flash("Passphrase must be at least 8 characters.", "danger")
+            return redirect(url_for("main.backups_wizard", target_id=t.id, step=4,
+                                    **_backup_embed_kwargs()))
+        if passphrase != confirm:
+            flash("Passphrases don't match.", "danger")
+            return redirect(url_for("main.backups_wizard", target_id=t.id, step=4,
+                                    **_backup_embed_kwargs()))
+        if not request.form.get("ack_saved"):
+            flash("Please confirm you've saved the passphrase — there's no recovery.", "danger")
+            return redirect(url_for("main.backups_wizard", target_id=t.id, step=4,
+                                    **_backup_embed_kwargs()))
+        t.encrypt_archive = True
+        t.archive_passphrase_enc = encrypt(passphrase)
+    else:
+        t.encrypt_archive = False
+        t.archive_passphrase_enc = None
+    db.session.commit()
+    return redirect(url_for("main.backups_wizard", target_id=t.id, step=5,
+                            **_backup_embed_kwargs()))
+
+
+@bp.route("/settings/backups/<int:target_id>/wizard/5", methods=["POST"])
+@admin_required
+def backups_wizard_step5_post(target_id):
+    """Finalize. Enables the target, seeds next_run_at, optionally fires
+    a first run synchronously so the admin sees ok/fail before leaving
+    the wizard.
+
+    In embed mode we render a tiny "done" template that postMessages the
+    parent to close the modal + refresh, so the user doesn't see a
+    redirect cascade inside the iframe.
+    """
+    from .backup_scheduler import compute_next_run, run_target
+    t = db.session.get(BackupTarget, target_id) or abort(404)
+    t.enabled = True
+    t.next_run_at = compute_next_run(t.schedule_cron)
+    db.session.commit()
+    success = True
+    detail = None
+    if request.form.get("run_now") == "1":
+        run = run_target(current_app._get_current_object(), t.id, triggered_by="manual")
+        if run and run.status == "ok":
+            detail = f"Backup saved to {t.name}."
+        else:
+            success = False
+            detail = (run.error_message if run else None) or "unknown error"
+    else:
+        detail = f"Backup target '{t.name}' is set up — next run {t.next_run_at:%Y-%m-%d %H:%M} UTC."
+
+    if _backup_embed():
+        return render_template("backups_wizard_done.html",
+                               t=t, success=success, detail=detail, embed=True)
+    flash(detail, "success" if success else "danger")
+    return redirect(url_for("main.backups_list"))
+
+
+@bp.route("/settings/backups/<int:target_id>/test", methods=["POST"])
+@admin_required
+def backups_test(target_id):
+    """Round-trip a 1-byte sentinel file to the backend so we surface
+    auth/path failures before the user advances the wizard."""
+    from .backup_backends import make_backend, BackendError
+    t = db.session.get(BackupTarget, target_id) or abort(404)
+    backend = None
+    try:
+        backend = make_backend(t)
+        backend.open()
+        sentinel_name = f"{__import__('app.backup', fromlist=['EXPORT_PREFIX']).EXPORT_PREFIX}probe.zip"
+        import tempfile as _tempfile
+        with _tempfile.NamedTemporaryFile(prefix="tsp-probe-", suffix=".zip", delete=False) as tmp:
+            tmp.write(b"x")
+            tmp_path = tmp.name
+        try:
+            backend.put(tmp_path, sentinel_name)
+            backend.delete(sentinel_name)
+        finally:
+            try: os.unlink(tmp_path)
+            except OSError: pass
+        return jsonify({"ok": True, "message": "Connection ok — wrote and removed a probe file."})
+    except BackendError as e:
+        return jsonify({"ok": False, "message": str(e)}), 200
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"ok": False, "message": f"{type(e).__name__}: {e}"}), 200
+    finally:
+        if backend is not None:
+            try: backend.close()
+            except Exception: pass
+
+
+@bp.route("/settings/backups/<int:target_id>/run-now", methods=["POST"])
+@admin_required
+def backups_run_now(target_id):
+    """Manual one-off run. Synchronous so the result lands in the
+    flash before the redirect — backups are small enough (~MB to low
+    hundreds of MB) that doing this inside a request is fine."""
+    from .backup_scheduler import run_target
+    t = db.session.get(BackupTarget, target_id) or abort(404)
+    run = run_target(current_app._get_current_object(), t.id, triggered_by="manual")
+    if run and run.status == "ok":
+        flash(f"Backup uploaded to {t.name} ({(run.bytes_uploaded or 0) // 1024} KB).", "success")
+    else:
+        err = (run.error_message if run else None) or "unknown error"
+        flash(f"Backup to {t.name} failed: {err}", "danger")
+    return redirect(_safe_referrer() or url_for("main.backups_list"))
+
+
+@bp.route("/settings/backups/<int:target_id>/enable", methods=["POST"])
+@admin_required
+def backups_toggle(target_id):
+    from .backup_scheduler import compute_next_run
+    t = db.session.get(BackupTarget, target_id) or abort(404)
+    t.enabled = not t.enabled
+    if t.enabled and not t.next_run_at:
+        t.next_run_at = compute_next_run(t.schedule_cron)
+    db.session.commit()
+    flash(f"'{t.name}' is now {'enabled' if t.enabled else 'paused'}.", "success")
+    return redirect(_safe_referrer() or url_for("main.backups_list"))
+
+
+@bp.route("/settings/backups/<int:target_id>/delete", methods=["POST"])
+@admin_required
+def backups_delete(target_id):
+    t = db.session.get(BackupTarget, target_id) or abort(404)
+    name = t.name
+    db.session.delete(t)
+    db.session.commit()
+    flash(f"Removed backup target '{name}'. Existing remote files were left intact.", "info")
+    return redirect(url_for("main.backups_list", **_backup_embed_kwargs()))
+
+
+@bp.route("/settings/backups/<int:target_id>/runs")
+@admin_required
+def backups_runs(target_id):
+    t = db.session.get(BackupTarget, target_id) or abort(404)
+    runs = (BackupRun.query.filter_by(target_id=t.id)
+            .order_by(BackupRun.started_at.desc())
+            .limit(200).all())
+    return render_template("backups_runs.html", t=t, runs=runs,
+                           embed=_backup_embed())
+
+
+@bp.route("/settings/backups/<int:target_id>/restore")
+@admin_required
+def backups_restore(target_id):
+    """List remote archives so the admin can pull one back and restore."""
+    from .backup_backends import make_backend, BackendError
+    t = db.session.get(BackupTarget, target_id) or abort(404)
+    files, error = [], None
+    backend = None
+    try:
+        backend = make_backend(t)
+        backend.open()
+        files = backend.list()
+    except BackendError as e:
+        error = str(e)
+    except Exception as e:  # noqa: BLE001
+        error = f"{type(e).__name__}: {e}"
+    finally:
+        if backend is not None:
+            try: backend.close()
+            except Exception: pass
+    return render_template("backups_restore.html", t=t, files=files, error=error,
+                           embed=_backup_embed())
+
+
+@bp.route("/settings/backups/<int:target_id>/restore", methods=["POST"])
+@admin_required
+def backups_restore_post(target_id):
+    """Pull a chosen remote archive, decrypt if needed, then hand the
+    resulting zip back to the existing import flow.
+
+    The existing data_import() route consumes ``request.files['archive']``
+    — rather than rebuild it here, we redirect with a flash explaining
+    that the user should upload the freshly-downloaded archive via the
+    existing 'Import data' form. That's a smaller surface than two
+    parallel import implementations.
+    """
+    from .backup_backends import make_backend, BackendError
+    from .backup import decrypt_archive_file
+    from flask import send_file
+    import tempfile as _tempfile
+
+    t = db.session.get(BackupTarget, target_id) or abort(404)
+    remote_name = (request.form.get("archive") or "").strip()
+    if not remote_name:
+        flash("Pick an archive to download.", "danger")
+        return redirect(url_for("main.backups_restore", target_id=t.id, **_backup_embed_kwargs()))
+
+    passphrase = request.form.get("passphrase") or ""
+    tmp = _tempfile.NamedTemporaryFile(prefix="tsp-restore-", suffix=".bin", delete=False)
+    tmp.close()
+    backend = None
+    try:
+        backend = make_backend(t)
+        backend.open()
+        backend.put  # noqa — sanity ref so static analysis doesn't gripe about unused
+        backend.fetch(remote_name, tmp.name)
+    except BackendError as e:
+        try: os.unlink(tmp.name)
+        except OSError: pass
+        flash(f"Could not download {remote_name}: {e}", "danger")
+        return redirect(url_for("main.backups_restore", target_id=t.id, **_backup_embed_kwargs()))
+    finally:
+        if backend is not None:
+            try: backend.close()
+            except Exception: pass
+
+    out_path = tmp.name
+    out_name = remote_name
+    if remote_name.endswith(".enc"):
+        if not passphrase:
+            try: os.unlink(tmp.name)
+            except OSError: pass
+            flash("This archive is encrypted — enter the passphrase to download it decrypted.", "danger")
+            return redirect(url_for("main.backups_restore", target_id=t.id, **_backup_embed_kwargs()))
+        try:
+            out_path = decrypt_archive_file(tmp.name, passphrase)
+            out_name = remote_name[:-4]  # drop .enc
+        except ValueError as e:
+            try: os.unlink(tmp.name)
+            except OSError: pass
+            flash(f"Decryption failed: {e}", "danger")
+            return redirect(url_for("main.backups_restore", target_id=t.id, **_backup_embed_kwargs()))
+        finally:
+            try: os.unlink(tmp.name)
+            except OSError: pass
+
+    response = send_file(out_path, mimetype="application/zip",
+                         as_attachment=True, download_name=out_name)
+
+    @response.call_on_close
+    def _cleanup():
+        try: os.unlink(out_path)
+        except OSError: pass
+    return response
 
 
 # ---------------------------------------------------------------------------

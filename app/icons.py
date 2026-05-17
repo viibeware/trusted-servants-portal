@@ -22,6 +22,12 @@ from markupsafe import Markup, escape
 _CATALOG_PATH = Path(__file__).resolve().parent / "static" / "vendor" / "lucide" / "icons.json"
 
 _SVG_ATTRS = (
+    # width/height are intrinsic fallbacks — without them, browsers
+    # stretch an `<svg>` with no dimension attributes to fill its
+    # container before the `.icon { width: 1em; height: 1em }` rule
+    # in app.css loads, producing a visible FOUC inside iframes. CSS
+    # still overrides these once the stylesheet is parsed.
+    'width="24" height="24" '
     'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
     'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"'
 )

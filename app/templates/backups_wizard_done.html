@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Backup ok' if success else 'Backup failed' }}{% endblock %}
+{% block heading %}{{ t.name }} — {% if success %}set up{% else %}saved (with errors){% endif %}{% endblock %}
+{% block heading_help %}{% if success %}The target is enabled and will run on schedule.{% else %}The target was saved but the first run failed — you can investigate from the backups list.{% endif %}{% endblock %}
+{% block content %}
+{% with active=5, done=5 %}{% include "_backups_wizard_header.html" %}{% endwith %}
+
+<section class="card backup-step-card">
+  <div class="card-head">
+    <h2>
+      {% if success %}{{ icon('check-circle') }} All set{% else %}{{ icon('alert-triangle') }} First run failed{% endif %}
+    </h2>
+  </div>
+  <p class="{% if not success %}warning{% endif %}">{{ detail }}</p>
+  <div class="form-actions">
+    <button type="button" class="btn btn-primary" data-backup-done>Done</button>
+  </div>
+</section>
+
+<script>
+  // Auto-close on success after a short pause so the user can read the
+  // confirmation. On failure, wait for the explicit Done click so the
+  // error text doesn't flash by.
+  (function () {
+    function close() {
+      try {
+        window.parent.postMessage({ type: 'backups-modal-close', reload: true },
+                                  window.location.origin);
+      } catch (e) { /* parent may be cross-origin in dev; ignore */ }
+    }
+    document.querySelectorAll('[data-backup-done]').forEach(function (btn) {
+      btn.addEventListener('click', close);
+    });
+    {% if success %}setTimeout(close, 1200);{% endif %}
+  })();
+</script>
+{% endblock %}

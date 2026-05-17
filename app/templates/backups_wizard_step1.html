@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}New backup target · Trusted Servants Pro{% endblock %}
+{% block heading %}Set up an off-site backup{% endblock %}
+{% block heading_help %}Pick where the backups should be sent. You can add more than one destination later.{% endblock %}
+{% block content %}
+{% with active=1, done=0 %}{% include "_backups_wizard_header.html" %}{% endwith %}
+
+<form class="form" method="post" action="{{ url_for('main.backups_new_post') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+
+  <section class="card backup-step-card">
+    <div class="card-head"><h2>{{ icon('cloud-upload') }} Where should backups go?</h2></div>
+
+    <label>Target name (just for you)
+      <input type="text" name="name" placeholder="e.g. Off-site FTP" required maxlength="128">
+    </label>
+
+    <div class="backup-kind-grid" role="radiogroup">
+      <label class="backup-kind-card">
+        <input type="radio" name="kind" value="ftp" required>
+        <span class="backup-kind-body">
+          <strong>FTP / FTPS</strong>
+          <span class="muted small">Almost every web host offers it. We prefer FTPS (encrypted) and warn before letting you pick plain FTP.</span>
+        </span>
+      </label>
+      <label class="backup-kind-card">
+        <input type="radio" name="kind" value="sftp">
+        <span class="backup-kind-body">
+          <strong>SFTP (SSH)</strong>
+          <span class="muted small">Best choice on any Linux server. Username + password or a private key.</span>
+        </span>
+      </label>
+      <label class="backup-kind-card">
+        <input type="radio" name="kind" value="dropbox">
+        <span class="backup-kind-body">
+          <strong>Dropbox</strong>
+          <span class="muted small">Push into an app folder in your Dropbox account. Setup involves pasting a one-time auth code.</span>
+        </span>
+      </label>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">{{ icon('arrow-right') }} Continue to connection details</button>
+    </div>
+  </section>
+</form>
+{% endblock %}

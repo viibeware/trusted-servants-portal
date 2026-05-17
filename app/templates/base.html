@@ -201,8 +201,16 @@
     </div>
     <div class="settings-body">
       <div class="settings-pane active" data-pane="appearance">
-        <div class="appearance-pane appearance-theme">
-          <div class="u-name">Theme</div>
+
+        {# ── Theme picker (visible to everyone) ──────────────────── #}
+        <section class="card data-card">
+          <div class="data-card-head">
+            {{ icon('sun') }}
+            <span>Theme</span>
+          </div>
+          <p class="muted small data-card-lead">
+            Choose how the admin portal looks for your account. The setting is per-user, not global.
+          </p>
           <div class="theme-picker" role="radiogroup" aria-label="Theme">
             {% for t in [
               ('light', 'Light', '#f6f7fb', '#ffffff', '#5b6ef4'),
@@ -221,218 +229,253 @@
             </button>
             {% endfor %}
           </div>
-        </div>
+        </section>
+
         {% if current_user.is_admin() %}
-        <hr class="settings-sep">
-        <div class="appearance-grid">
-        <form class="form appearance-branding-form" method="post" action="{{ url_for('main.site_branding_save') }}" enctype="multipart/form-data">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <div class="u-name">Sidebar Footer Logo</div>
-          <p class="muted small">Replaces the logo shown at the bottom of the sidebar and the link it opens.</p>
-          {% set _has_logo = site and site.footer_logo_filename %}
-          {% set _current_logo_src = url_for('public.site_footer_logo') if _has_logo else '' %}
-          {% set _current_width = site.footer_logo_width if (site and site.footer_logo_width) else 32 %}
-          <div class="branding-row">
-            <div class="branding-preview-wrap">
-              <div class="muted smaller">Preview</div>
-              <div class="sidebar-footer-mock">
-                <a class="sidebar-footer-img-link" tabindex="-1">
-                  <img id="branding-preview-img" src="{{ _current_logo_src }}" alt="" style="width: {{ _current_width }}px"{% if not _has_logo %} hidden{% endif %}>
-                </a>
-                <div class="branding-preview-empty muted smaller"{% if _has_logo %} hidden{% endif %}>No logo set</div>
-              </div>
-              <label class="width-slider-label">
-                <div class="width-slider-head">
-                  <span>Logo width</span>
-                  <output id="branding-width-value" for="branding-width-slider">{{ _current_width }}px</output>
+
+        {# ── Sidebar Footer Logo ─────────────────────────────────── #}
+        <section class="card data-card">
+          <div class="data-card-head">
+            {{ icon('image') }}
+            <span>Sidebar Footer Logo</span>
+          </div>
+          <p class="muted small data-card-lead">
+            Replaces the logo shown at the bottom of the sidebar and the link it opens.
+          </p>
+          <form class="form appearance-branding-form" method="post" action="{{ url_for('main.site_branding_save') }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% set _has_logo = site and site.footer_logo_filename %}
+            {% set _current_logo_src = url_for('public.site_footer_logo') if _has_logo else '' %}
+            {% set _current_width = site.footer_logo_width if (site and site.footer_logo_width) else 32 %}
+            <div class="branding-row">
+              <div class="branding-preview-wrap">
+                <div class="muted smaller">Preview</div>
+                <div class="sidebar-footer-mock">
+                  <a class="sidebar-footer-img-link" tabindex="-1">
+                    <img id="branding-preview-img" src="{{ _current_logo_src }}" alt="" style="width: {{ _current_width }}px"{% if not _has_logo %} hidden{% endif %}>
+                  </a>
+                  <div class="branding-preview-empty muted smaller"{% if _has_logo %} hidden{% endif %}>No logo set</div>
                 </div>
-                <input type="range" name="footer_logo_width" id="branding-width-slider" min="16" max="150" value="{{ _current_width }}">
-              </label>
-            </div>
-            <div class="branding-fields">
-              <label>Replace image<input type="file" name="footer_logo" accept="image/*" id="branding-file-input"></label>
-              <label>Link URL<input type="url" name="footer_logo_url" value="{{ (site.footer_logo_url if site else '') or '' }}" placeholder="https://example.com"></label>
-              <label class="check branding-clear-label"{% if not (site and site.footer_logo_filename) %} hidden{% endif %}><input type="checkbox" name="clear_logo" value="1"><span>Remove custom logo (restore default)</span></label>
-            </div>
-          </div>
-          <div class="branding-save-row">
-            <button class="btn btn-primary">Save Branding</button>
-          </div>
-        </form>
-        <div class="login-appearance-group">
-        <form class="form login-appearance-form" method="post" action="{{ url_for('main.login_appearance_save') }}">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <div class="u-name">Login Screen</div>
-          <p class="muted small">Choose the animated background effect, speed, and accent color shown on the login page.</p>
-
-          <div class="login-fx-preview-wrap">
-            <div class="login-fx-preview" id="login-fx-preview">
-              <canvas id="login-fx-preview-canvas"></canvas>
-              <div class="login-fx-preview-label">Preview</div>
-            </div>
-          </div>
-
-          <div class="login-fx-controls">
-          <div class="row">
-            <label>Particle effect
-              <select name="login_particle_effect" id="login-fx-effect">
-                {% set _eff = site.login_particle_effect or 'network' %}
-                {% for v, label in [
-                  ('off', 'Off (solid background)'),
-                  ('network', 'Network — dots & lines'),
-                  ('stars', 'Starfield — drifting stars'),
-                  ('fireflies', 'Fireflies — soft glow pulses'),
-                  ('bubbles', 'Bubbles — rising spheres'),
-                  ('snow', 'Snow — gentle fall'),
-                  ('waves', 'Waves — flowing sinusoids'),
-                  ('orbits', 'Orbits — spiraling paths'),
-                  ('rain', 'Rain — streaking drops'),
-                ] %}
-                <option value="{{ v }}" {% if _eff == v %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <label>Background
-              {% set _parsed = [] %}
-              {% if site.login_bg_colors %}
-                {% set _parsed = site.login_bg_colors|from_json %}
-              {% endif %}
-              {% set _mode = 'default' %}
-              {% if _parsed and _parsed|length >= 2 %}{% set _mode = 'gradient-' ~ (_parsed|length) %}
-              {% elif site.login_bg_color %}{% set _mode = 'solid' %}
-              {% endif %}
-              <select name="login_bg_mode" id="login-fx-bgmode">
-                {% for v, label in [('default','Default gradient'),('solid','Solid color'),('gradient-2','Gradient (2 colors)'),('gradient-3','Gradient (3 colors)'),('gradient-4','Gradient (4 colors)')] %}
-                <option value="{{ v }}" {% if _mode == v %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-            </label>
-          </div>
-
-          <div class="login-fx-colors" id="login-fx-colors">
-            {% set _defaults = ['#0a3eb5', '#1153e7', '#2e6bff', '#7bb8ff'] %}
-            {% for i in range(1, 5) %}
-              {% set _v = _parsed[i-1] if _parsed and _parsed|length >= i else (site.login_bg_color if i == 1 and site.login_bg_color else _defaults[i-1]) %}
-              <label class="login-fx-color-slot" data-slot="{{ i }}">
-                <span>Color {{ i }}</span>
-                <input type="color" name="login_bg_c{{ i }}" value="{{ _v }}">
-              </label>
-            {% endfor %}
-            <button type="button" class="btn btn-sm" id="login-fx-random">🎲 Random</button>
-          </div>
-
-          <label>Speed
-            <div class="login-fx-speed-row">
-              <input type="range" name="login_particle_speed" id="login-fx-speed"
-                     min="10" max="300" step="5" value="{{ site.login_particle_speed or 100 }}">
-              <output id="login-fx-speed-val" for="login-fx-speed">{{ site.login_particle_speed or 100 }}%</output>
-            </div>
-          </label>
-          <label>Particle size
-            <div class="login-fx-speed-row">
-              <input type="range" name="login_particle_size" id="login-fx-size"
-                     min="25" max="400" step="5" value="{{ site.login_particle_size or 100 }}">
-              <output id="login-fx-size-val" for="login-fx-size">{{ site.login_particle_size or 100 }}%</output>
-            </div>
-          </label>
-
-          <li class="special-page-row login-fx-toggle-row">
-            <div class="special-page-info">
-              <div class="u-name">Login transition</div>
-              <p class="muted small">Play a 3D door-opening animation with rainbow warp after a successful login.</p>
-            </div>
-            <label class="mode-toggle" title="Enable login transition animation">
-              <input type="checkbox" name="login_transition_enabled" value="1" {% if site.login_transition_enabled %}checked{% endif %}>
-              <span class="mode-track"><span class="mode-thumb"></span></span>
-            </label>
-          </li>
-
-          <div class="form-actions"><button class="btn btn-primary">Save Login Appearance</button></div>
-          </div>
-        </form>
-        </div>
-        </div>
-        <hr class="settings-sep">
-        {% set _og_has_image = site and site.og_image_filename %}
-        <div class="appearance-grid">
-        <form class="form appearance-og-form" method="post" action="{{ url_for('main.og_save') }}" enctype="multipart/form-data">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <div class="u-name">Open Graph / Link Previews</div>
-          <p class="muted small">Controls the title, description, and image other sites show when someone pastes a link to this portal into Slack, iMessage, Facebook, Twitter/X, or similar. Image is served publicly so crawlers can fetch it.</p>
-          <div class="special-page-row og-toggle-row">
-            <div class="special-page-info">
-              <div class="u-name">Enable link previews</div>
-              <p class="muted small">When off, no Open Graph or Twitter Card tags are emitted.</p>
-            </div>
-            <label class="mode-toggle" title="Enable Open Graph link previews">
-              <input type="checkbox" name="og_enabled" value="1" {% if site and site.og_enabled %}checked{% endif %}>
-              <span class="mode-track"><span class="mode-thumb"></span></span>
-            </label>
-          </div>
-          <label>Title
-            <input type="text" name="og_title" maxlength="200" value="{{ (site.og_title if site else '') or '' }}" placeholder="Trusted Servants Pro">
-          </label>
-          <label>Description
-            <textarea name="og_description" rows="3" placeholder="One or two sentences describing the portal.">{{ (site.og_description if site else '') or '' }}</textarea>
-          </label>
-          <div class="branding-row">
-            <div class="branding-preview-wrap">
-              <div class="muted smaller">Preview image</div>
-              <div class="og-preview-mock">
-                <img id="og-preview-img" src="{{ url_for('public.site_og_image') if _og_has_image else '' }}" alt="" style="max-width:100%; max-height:160px; border-radius:6px;"{% if not _og_has_image %} hidden{% endif %}>
-                <div class="og-preview-empty muted smaller"{% if _og_has_image %} hidden{% endif %}>No image set</div>
+                <label class="width-slider-label">
+                  <div class="width-slider-head">
+                    <span>Logo width</span>
+                    <output id="branding-width-value" for="branding-width-slider">{{ _current_width }}px</output>
+                  </div>
+                  <input type="range" name="footer_logo_width" id="branding-width-slider" min="16" max="150" value="{{ _current_width }}">
+                </label>
               </div>
-              <p class="muted smaller" style="margin-top:6px;">Recommended: 1200×630 px, JPG or PNG, under 5 MB.</p>
+              <div class="branding-fields">
+                <label>Replace image<input type="file" name="footer_logo" accept="image/*" id="branding-file-input"></label>
+                <label>Link URL<input type="url" name="footer_logo_url" value="{{ (site.footer_logo_url if site else '') or '' }}" placeholder="https://example.com"></label>
+                <label class="check branding-clear-label"{% if not (site and site.footer_logo_filename) %} hidden{% endif %}><input type="checkbox" name="clear_logo" value="1"><span>Remove custom logo (restore default)</span></label>
+              </div>
             </div>
-            <div class="branding-fields">
-              <label>Replace image<input type="file" name="og_image" accept="image/*" id="og-image-input"></label>
-              <label class="check og-clear-label"{% if not _og_has_image %} hidden{% endif %}><input type="checkbox" name="clear_og_image" value="1"><span>Remove image</span></label>
+            <div class="data-card-actions">
+              <button class="btn btn-primary">Save Branding</button>
             </div>
+          </form>
+        </section>
+
+        {# ── Login Screen ────────────────────────────────────────── #}
+        <section class="card data-card">
+          <div class="data-card-head">
+            {{ icon('sparkles') }}
+            <span>Login Screen</span>
           </div>
-          <div class="form-actions"><button class="btn btn-primary">Save Open Graph</button></div>
-        </form>
+          <p class="muted small data-card-lead">
+            Choose the animated background effect, speed, and accent color shown on the login page.
+          </p>
+          <form class="form login-appearance-form" method="post" action="{{ url_for('main.login_appearance_save') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="login-fx-preview-wrap">
+              <div class="login-fx-preview" id="login-fx-preview">
+                <canvas id="login-fx-preview-canvas"></canvas>
+                <div class="login-fx-preview-label">Preview</div>
+              </div>
+            </div>
+
+            <div class="login-fx-controls">
+            <div class="row">
+              <label>Particle effect
+                <select name="login_particle_effect" id="login-fx-effect">
+                  {% set _eff = site.login_particle_effect or 'network' %}
+                  {% for v, label in [
+                    ('off', 'Off (solid background)'),
+                    ('network', 'Network — dots & lines'),
+                    ('stars', 'Starfield — drifting stars'),
+                    ('fireflies', 'Fireflies — soft glow pulses'),
+                    ('bubbles', 'Bubbles — rising spheres'),
+                    ('snow', 'Snow — gentle fall'),
+                    ('waves', 'Waves — flowing sinusoids'),
+                    ('orbits', 'Orbits — spiraling paths'),
+                    ('rain', 'Rain — streaking drops'),
+                  ] %}
+                  <option value="{{ v }}" {% if _eff == v %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>Background
+                {% set _parsed = [] %}
+                {% if site.login_bg_colors %}
+                  {% set _parsed = site.login_bg_colors|from_json %}
+                {% endif %}
+                {% set _mode = 'default' %}
+                {% if _parsed and _parsed|length >= 2 %}{% set _mode = 'gradient-' ~ (_parsed|length) %}
+                {% elif site.login_bg_color %}{% set _mode = 'solid' %}
+                {% endif %}
+                <select name="login_bg_mode" id="login-fx-bgmode">
+                  {% for v, label in [('default','Default gradient'),('solid','Solid color'),('gradient-2','Gradient (2 colors)'),('gradient-3','Gradient (3 colors)'),('gradient-4','Gradient (4 colors)')] %}
+                  <option value="{{ v }}" {% if _mode == v %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+
+            <div class="login-fx-colors" id="login-fx-colors">
+              {% set _defaults = ['#0a3eb5', '#1153e7', '#2e6bff', '#7bb8ff'] %}
+              {% for i in range(1, 5) %}
+                {% set _v = _parsed[i-1] if _parsed and _parsed|length >= i else (site.login_bg_color if i == 1 and site.login_bg_color else _defaults[i-1]) %}
+                <label class="login-fx-color-slot" data-slot="{{ i }}">
+                  <span>Color {{ i }}</span>
+                  <input type="color" name="login_bg_c{{ i }}" value="{{ _v }}">
+                </label>
+              {% endfor %}
+              <button type="button" class="btn btn-sm" id="login-fx-random">🎲 Random</button>
+            </div>
+
+            <label>Speed
+              <div class="login-fx-speed-row">
+                <input type="range" name="login_particle_speed" id="login-fx-speed"
+                       min="10" max="300" step="5" value="{{ site.login_particle_speed or 100 }}">
+                <output id="login-fx-speed-val" for="login-fx-speed">{{ site.login_particle_speed or 100 }}%</output>
+              </div>
+            </label>
+            <label>Particle size
+              <div class="login-fx-speed-row">
+                <input type="range" name="login_particle_size" id="login-fx-size"
+                       min="25" max="400" step="5" value="{{ site.login_particle_size or 100 }}">
+                <output id="login-fx-size-val" for="login-fx-size">{{ site.login_particle_size or 100 }}%</output>
+              </div>
+            </label>
+
+            <li class="special-page-row login-fx-toggle-row">
+              <div class="special-page-info">
+                <div class="u-name">Login transition</div>
+                <p class="muted small">Play a 3D door-opening animation with rainbow warp after a successful login.</p>
+              </div>
+              <label class="mode-toggle" title="Enable login transition animation">
+                <input type="checkbox" name="login_transition_enabled" value="1" {% if site.login_transition_enabled %}checked{% endif %}>
+                <span class="mode-track"><span class="mode-thumb"></span></span>
+              </label>
+            </li>
+
+            <div class="data-card-actions"><button class="btn btn-primary">Save Login Appearance</button></div>
+            </div>
+          </form>
+        </section>
+
+        {# ── Open Graph / Link Previews ──────────────────────────── #}
+        {% set _og_has_image = site and site.og_image_filename %}
+        <section class="card data-card">
+          <div class="data-card-head">
+            {{ icon('external-link') }}
+            <span>Open Graph / Link Previews</span>
+          </div>
+          <p class="muted small data-card-lead">
+            Controls the title, description, and image other sites show when someone pastes a link to this portal into Slack, iMessage, Facebook, Twitter/X, or similar. Image is served publicly so crawlers can fetch it.
+          </p>
+          <form class="form appearance-og-form" method="post" action="{{ url_for('main.og_save') }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="special-page-row og-toggle-row">
+              <div class="special-page-info">
+                <div class="u-name">Enable link previews</div>
+                <p class="muted small">When off, no Open Graph or Twitter Card tags are emitted.</p>
+              </div>
+              <label class="mode-toggle" title="Enable Open Graph link previews">
+                <input type="checkbox" name="og_enabled" value="1" {% if site and site.og_enabled %}checked{% endif %}>
+                <span class="mode-track"><span class="mode-thumb"></span></span>
+              </label>
+            </div>
+            <label>Title
+              <input type="text" name="og_title" maxlength="200" value="{{ (site.og_title if site else '') or '' }}" placeholder="Trusted Servants Pro">
+            </label>
+            <label>Description
+              <textarea name="og_description" rows="3" placeholder="One or two sentences describing the portal.">{{ (site.og_description if site else '') or '' }}</textarea>
+            </label>
+            <div class="branding-row">
+              <div class="branding-preview-wrap">
+                <div class="muted smaller">Preview image</div>
+                <div class="og-preview-mock">
+                  <img id="og-preview-img" src="{{ url_for('public.site_og_image') if _og_has_image else '' }}" alt="" style="max-width:100%; max-height:160px; border-radius:6px;"{% if not _og_has_image %} hidden{% endif %}>
+                  <div class="og-preview-empty muted smaller"{% if _og_has_image %} hidden{% endif %}>No image set</div>
+                </div>
+                <p class="muted smaller" style="margin-top:6px;">Recommended: 1200×630 px, JPG or PNG, under 5 MB.</p>
+              </div>
+              <div class="branding-fields">
+                <label>Replace image<input type="file" name="og_image" accept="image/*" id="og-image-input"></label>
+                <label class="check og-clear-label"{% if not _og_has_image %} hidden{% endif %}><input type="checkbox" name="clear_og_image" value="1"><span>Remove image</span></label>
+              </div>
+            </div>
+            <div class="data-card-actions"><button class="btn btn-primary">Save Open Graph</button></div>
+          </form>
+        </section>
+
+        {# ── Home Screen Icon (iOS / iPadOS) ─────────────────────── #}
         {% set _ati_has_icon = site and site.apple_touch_icon_filename %}
         {% set _ati_src = (url_for('public.site_apple_touch_icon') ~ '?v=' ~ app_build_id) if _ati_has_icon else url_for('static', filename='img/apple-touch-icon_tspro.png', v=app_build_id) %}
-        <form class="form appearance-apple-touch-form" method="post" action="{{ url_for('main.apple_touch_icon_save') }}" enctype="multipart/form-data">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <div class="u-name">Home Screen Icon (iOS / iPadOS)</div>
-          <p class="muted small">Icon and label used when this admin portal (<code>/tspro</code>) is pinned to an iPhone or iPad home screen via Safari's "Add to Home Screen." Independent from the public site's home-screen icon.</p>
-          <div class="branding-row">
-            <div class="branding-preview-wrap">
-              <div class="muted smaller">Preview</div>
-              <div class="apple-touch-preview-mock">
-                <img id="apple-touch-preview-img" src="{{ _ati_src }}" alt="" style="width:60px;height:60px;border-radius:13px;display:block;">
-                <div class="apple-touch-preview-name muted smaller" id="apple-touch-preview-name" style="margin-top:6px;text-align:center;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ (site.apple_touch_icon_name if site else '') or 'Trusted Servants' }}</div>
-              </div>
-              <p class="muted smaller" style="margin-top:6px;">Recommended: 180×180 px, PNG, opaque background (iOS rounds the corners).</p>
-            </div>
-            <div class="branding-fields">
-              <label>Display name
-                <input type="text" name="apple_touch_icon_name" maxlength="100" value="{{ (site.apple_touch_icon_name if site else '') or '' }}" placeholder="Trusted Servants" id="apple-touch-name-input">
-              </label>
-              <label>Replace icon<input type="file" name="apple_touch_icon" accept="image/png,image/jpeg,image/webp" id="apple-touch-icon-input"></label>
-              <label class="check apple-touch-clear-label"{% if not _ati_has_icon %} hidden{% endif %}><input type="checkbox" name="clear_apple_touch_icon" value="1"><span>Remove custom icon (restore default)</span></label>
-            </div>
+        <section class="card data-card">
+          <div class="data-card-head">
+            {{ icon('smartphone') }}
+            <span>Home Screen Icon (iOS / iPadOS)</span>
           </div>
-          <div class="form-actions"><button class="btn btn-primary">Save Home Screen Icon</button></div>
-        </form>
-        </div>
-        <hr class="settings-sep">
-        <div class="appearance-grid">
-        <form class="form appearance-site-url-form" method="post" action="{{ url_for('main.site_url_save') }}">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <div class="u-name">Public Domain</div>
-          <p class="muted small">Canonical URL used in outbound emails and any other absolute link this portal sends out. Without this set, links fall back to whatever <code>Host</code> header the request carried — which is usually a Docker bridge IP for portals behind a reverse proxy. Save this once and every welcome email / access-request notification picks up the right hostname.</p>
-          <label>Site URL
-            <input name="site_url" type="url" value="{{ (site.site_url if site else '') or '' }}"
-                   placeholder="example.com">
-          </label>
-          <p class="muted smaller" style="margin-top:6px;">
-            Tip: omit the trailing slash. Bare domains (<code>example.com</code>) are auto-prefixed with <code>https://</code>.
+          <p class="muted small data-card-lead">
+            Icon and label used when this admin portal (<code>/tspro</code>) is pinned to an iPhone or iPad home screen via Safari's "Add to Home Screen." Independent from the public site's home-screen icon.
           </p>
-          <div class="form-actions"><button class="btn btn-primary">Save Domain</button></div>
-        </form>
-        </div>
+          <form class="form appearance-apple-touch-form" method="post" action="{{ url_for('main.apple_touch_icon_save') }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="branding-row">
+              <div class="branding-preview-wrap">
+                <div class="muted smaller">Preview</div>
+                <div class="apple-touch-preview-mock">
+                  <img id="apple-touch-preview-img" src="{{ _ati_src }}" alt="" style="width:60px;height:60px;border-radius:13px;display:block;">
+                  <div class="apple-touch-preview-name muted smaller" id="apple-touch-preview-name" style="margin-top:6px;text-align:center;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ (site.apple_touch_icon_name if site else '') or 'Trusted Servants' }}</div>
+                </div>
+                <p class="muted smaller" style="margin-top:6px;">Recommended: 180×180 px, PNG, opaque background (iOS rounds the corners).</p>
+              </div>
+              <div class="branding-fields">
+                <label>Display name
+                  <input type="text" name="apple_touch_icon_name" maxlength="100" value="{{ (site.apple_touch_icon_name if site else '') or '' }}" placeholder="Trusted Servants" id="apple-touch-name-input">
+                </label>
+                <label>Replace icon<input type="file" name="apple_touch_icon" accept="image/png,image/jpeg,image/webp" id="apple-touch-icon-input"></label>
+                <label class="check apple-touch-clear-label"{% if not _ati_has_icon %} hidden{% endif %}><input type="checkbox" name="clear_apple_touch_icon" value="1"><span>Remove custom icon (restore default)</span></label>
+              </div>
+            </div>
+            <div class="data-card-actions"><button class="btn btn-primary">Save Home Screen Icon</button></div>
+          </form>
+        </section>
+
+        {# ── Public Domain ───────────────────────────────────────── #}
+        <section class="card data-card">
+          <div class="data-card-head">
+            {{ icon('globe') }}
+            <span>Public Domain</span>
+          </div>
+          <p class="muted small data-card-lead">
+            Canonical URL used in outbound emails and any other absolute link this portal sends out. Without this set, links fall back to whatever <code>Host</code> header the request carried — which is usually a Docker bridge IP for portals behind a reverse proxy. Save this once and every welcome email / access-request notification picks up the right hostname.
+          </p>
+          <form class="form appearance-site-url-form" method="post" action="{{ url_for('main.site_url_save') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label>Site URL
+              <input name="site_url" type="url" value="{{ (site.site_url if site else '') or '' }}"
+                     placeholder="example.com">
+            </label>
+            <p class="muted smaller" style="margin-top:6px;">
+              Tip: omit the trailing slash. Bare domains (<code>example.com</code>) are auto-prefixed with <code>https://</code>.
+            </p>
+            <div class="data-card-actions"><button class="btn btn-primary">Save Domain</button></div>
+          </form>
+        </section>
         <script>
         (function(){
           const input = document.getElementById('og-image-input');
@@ -1187,6 +1230,56 @@
           </div>
         </section>
 
+        {# ── Off-site backups ──────────────────────────────────── #}
+        <section class="card data-card">
+          <div class="data-card-head">
+            {{ icon('cloud-upload') }}
+            <span>Off-site backups</span>
+          </div>
+          <p class="muted small data-card-lead">
+            Push the full app (database + uploads + Fernet key) to a remote
+            destination on a schedule you control. Local snapshots below
+            protect against accidents — off-site backups protect against
+            disasters that take the whole machine with them.
+          </p>
+          {% set _backup_targets = backup_targets() %}
+          {% if _backup_targets %}
+          <ul class="data-snapshot-list">
+            {% for t in _backup_targets %}
+            <li class="data-snapshot-row">
+              <span class="data-snapshot-name">
+                <span class="backup-status-pill backup-status-{{ t.last_status or 'never_run' }}">
+                  {% if t.last_status == 'ok' %}OK
+                  {% elif t.last_status == 'failed' %}Failed
+                  {% elif t.last_status == 'running' %}Running…
+                  {% else %}Never run{% endif %}
+                </span>
+                <strong>{{ t.name }}</strong>
+                <span class="muted smaller">· {{ t.kind|upper }}{% if not t.enabled %} · paused{% endif %}</span>
+              </span>
+              <span class="muted smaller">
+                {% if t.last_run_at %}last {{ t.last_run_at.strftime('%b %-d, %H:%M') }}{% else %}—{% endif %}
+              </span>
+              <button type="button" class="btn btn-sm" data-open-modal="backups-modal">Manage</button>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="muted">No off-site targets configured yet.</p>
+          {% endif %}
+          <div class="data-card-actions">
+            <button type="button" class="btn btn-primary"
+                    data-open-modal="backup-wizard-modal">
+              {{ icon('plus') }} {% if _backup_targets %}Add another backup{% else %}Set up off-site backup →{% endif %}
+            </button>
+            {% if _backup_targets %}
+            <button type="button" class="btn" data-open-modal="backups-modal">
+              {{ icon('cloud-upload') }} Manage backups
+            </button>
+            {% endif %}
+          </div>
+        </section>
+
         {# ── Daily SQLite snapshots ────────────────────────────── #}
         <section class="card data-card">
           <div class="data-card-head">
@@ -1396,6 +1489,41 @@
       <button type="button" class="icon-btn" data-close aria-label="Close">{{ icon('x') }}</button>
     </div>
     <iframe class="settings-frame" id="media-picker-frame" src="about:blank"></iframe>
+  </div>
+</div>
+
+{# Off-site backups admin modal (shared). Iframe loads the backups list
+   page in embed mode; nav between list/runs/restore stays inside the
+   iframe. "Add backup target" inside the iframe postMessages the parent
+   to open the wizard modal alongside (settings + admin + wizard all
+   visible stacked). #}
+<div class="modal modal-lg" id="backups-modal" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h2>Off-site backups</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close">{{ icon('x') }}</button>
+    </div>
+    <iframe class="settings-frame" id="backups-frame"
+            data-src="{{ url_for('main.backups_list', embed=1) }}"
+            src="about:blank"></iframe>
+  </div>
+</div>
+
+{# Off-site backup wizard modal (shared). Iframe loads lazily — src is
+   set from data-src the first time the modal opens (handled in app.js).
+   Closing the modal resets src so a fresh open starts at step 1, which
+   also avoids posting back to an abandoned half-filled wizard. #}
+<div class="modal modal-lg" id="backup-wizard-modal" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h2>Set up off-site backup</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close">{{ icon('x') }}</button>
+    </div>
+    <iframe class="settings-frame" id="backup-wizard-frame"
+            data-src="{{ url_for('main.backups_new', embed=1) }}"
+            src="about:blank"></iframe>
   </div>
 </div>
 

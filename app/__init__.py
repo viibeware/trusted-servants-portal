@@ -552,6 +552,22 @@ def create_app():
         app.logger.exception("daily_snapshot crashed during boot")
         app.jinja_env.globals["db_snapshots"] = lambda: []
 
+    # Off-site backup scheduler — file-locked so only one gunicorn
+    # worker drives the loop; the others see the lock and idle.
+    try:
+        from .backup_scheduler import start_scheduler
+        start_scheduler(app)
+    except Exception:  # noqa: BLE001
+        app.logger.exception("backup scheduler failed to start")
+
+    def _backup_targets_for_template():
+        try:
+            from .models import BackupTarget
+            return BackupTarget.query.order_by(BackupTarget.created_at.desc()).all()
+        except Exception:  # noqa: BLE001
+            return []
+    app.jinja_env.globals["backup_targets"] = _backup_targets_for_template
+
     from .metrics import prime as _prime_metrics
     _prime_metrics()
 
@@ -1432,6 +1448,7 @@ def _migrate_sqlite(app):
                          ("dash_show_deletions", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("dash_show_currently_online", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("dash_show_visitor_metrics", "BOOLEAN NOT NULL DEFAULT 1"),
+                         ("dash_show_backups", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("dash_order_json", "TEXT"),
                          ("last_seen_at", "DATETIME"),
                          ("phone", "VARCHAR(64)"),
