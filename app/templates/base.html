@@ -49,7 +49,10 @@
    chromeless instead of leaking the sidebar + header back in. #}
 {% set embed = request.args.get('embed') == '1'
                or (request.method == 'POST' and request.form.get('embed') == '1') %}
-<body class="{% if embed %}embed{% endif %}">
+{%- set _fe_admin = (request.endpoint or '').startswith('main.frontend_')
+                    and current_user.is_authenticated
+                    and current_user.fe_admin_autohide_sidebar -%}
+<body class="{% if embed %}embed{% endif %}{% if _fe_admin %} fe-admin-autohide{% endif %}">
 {% if current_user.is_authenticated %}
 {% if not embed %}
 <div class="layout">

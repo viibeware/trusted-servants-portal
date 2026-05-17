@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block heading %}Send an update to the Trusted Servants list{% endblock %}
-{% block heading_help %}{{ subscriber_count }} subscriber{% if subscriber_count != 1 %}s{% endif %} will receive this message individually — one SMTP send per recipient. Markdown is rendered to HTML; the plain-text version is the raw markdown source so recipients without HTML still see something readable.{% endblock %}
+{% block heading %}Send an update from the Trusted Servants list{% endblock %}
+{% block heading_help %}Pick who receives the update, then write the message. One SMTP send per recipient with duplicate emails de-duped across groups; Markdown is rendered to HTML and the raw markdown source is sent as the plain-text fallback.{% endblock %}
 {% block content %}
 
 <div class="ts-page-wrap">
@@ -8,18 +8,138 @@
     <a class="btn" href="{{ url_for('main.trusted_servants_list') }}">← Back to list</a>
   </div>
 
-  <section class="card data-card">
-    <div class="data-card-head">
-      {{ icon('send') }}
-      <span>Compose update</span>
-    </div>
-    <p class="muted small data-card-lead">
-      Use <code>{name}</code> anywhere in the subject or body to drop in each recipient's name. Leave it out for a generic message.
-    </p>
-    <form class="form ts-blast-form" method="post"
-          action="{{ url_for('main.trusted_servants_blast_send') }}"
-          data-ts-blast-form>
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <form class="form ts-blast-form" method="post"
+        action="{{ url_for('main.trusted_servants_blast_send') }}"
+        data-ts-blast-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    {# ── Audience controls ────────────────────────────────────────
+       Two-level mode + per-group toggles, same shape MeetingLibrary
+       uses for its all-vs-granular reading selection. The subscribers
+       group is further sub-divided into all-or-pick-which inside
+       granular mode — IG members and app users stay as on/off only. #}
+    <section class="card data-card">
+      <div class="data-card-head">
+        {{ icon('users') }}
+        <span>Audience</span>
+      </div>
+      <p class="muted small data-card-lead">
+        Pick who receives this update. <b>Full list</b> sends to every subscriber + every intergroup member + every regular app user. <b>Granular</b> lets you tick exactly which groups (and which specific subscribers) to include.
+      </p>
+
+      {%- set _all_total = subscriber_count + intergroup_count + app_user_count -%}
+      <div class="ts-aud-modes" role="radiogroup" aria-label="Audience mode">
+        <label class="ts-aud-mode">
+          <input type="radio" name="audience_mode" value="all" data-aud-mode checked>
+          <span>
+            <strong>Full list</strong>
+            <span class="muted smaller">Everyone across all three groups below.</span>
+            <span class="ts-aud-mode-summary muted smaller">
+              {{ subscriber_count }} subscriber{% if subscriber_count != 1 %}s{% endif %}
+              + {{ intergroup_count }} intergroup
+              + {{ app_user_count }} app user{% if app_user_count != 1 %}s{% endif %}
+              <b>· {{ _all_total }} total</b>
+              <span class="muted smaller">(before email-dedupe)</span>
+            </span>
+          </span>
+        </label>
+        <label class="ts-aud-mode">
+          <input type="radio" name="audience_mode" value="granular" data-aud-mode>
+          <span>
+            <strong>Granular</strong>
+            <span class="muted smaller">Pick the groups (and which subscribers) yourself.</span>
+            <span class="ts-aud-mode-summary muted smaller"
+                  data-aud-granular-summary
+                  data-sub-count="{{ subscriber_count }}"
+                  data-ig-count="{{ intergroup_count }}"
+                  data-app-count="{{ app_user_count }}">
+              <!-- populated by JS; static fallback so non-JS viewers see something -->
+              {{ subscriber_count }} subscriber{% if subscriber_count != 1 %}s{% endif %} selected
+            </span>
+          </span>
+        </label>
+      </div>
+
+      <div class="ts-aud-groups" data-aud-groups>
+
+        {# Subscribers — additional all/granular sub-mode. #}
+        <div class="ts-aud-group">
+          <label class="ts-aud-group-toggle">
+            <input type="checkbox" name="include_subscribers" value="1" checked data-aud-group="subscribers">
+            <span>
+              <strong>Subscribers</strong>
+              <span class="muted smaller">{{ subscriber_count }} on the Trusted Servants Email List.</span>
+            </span>
+          </label>
+          <div class="ts-aud-group-detail" data-aud-detail="subscribers">
+            <div class="ts-aud-submode" role="radiogroup" aria-label="Subscribers sub-mode">
+              <label class="ts-aud-submode-pill">
+                <input type="radio" name="subscribers_mode" value="all" checked data-aud-sub-mode>
+                <span>All subscribers</span>
+              </label>
+              <label class="ts-aud-submode-pill">
+                <input type="radio" name="subscribers_mode" value="granular" data-aud-sub-mode>
+                <span>Pick which subscribers</span>
+              </label>
+            </div>
+            <div class="ts-aud-sub-picker" data-aud-sub-picker hidden>
+              {% if subscribers %}
+              <div class="ts-aud-sub-picker-controls">
+                <button type="button" class="btn btn-sm" data-aud-pick-all>Select all</button>
+                <button type="button" class="btn btn-sm" data-aud-pick-none>Clear</button>
+              </div>
+              <ul class="ts-aud-sub-list">
+                {% for s in subscribers %}
+                <li>
+                  <label class="ts-aud-sub-row">
+                    <input type="checkbox" name="subscriber_ids" value="{{ s.id }}">
+                    <span class="ts-aud-sub-name">{{ s.name }}</span>
+                    <span class="muted smaller ts-aud-sub-email">{{ s.email }}</span>
+                  </label>
+                </li>
+                {% endfor %}
+              </ul>
+              {% else %}
+              <p class="muted small">No subscribers on the list yet.</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        {# Intergroup members. #}
+        <div class="ts-aud-group">
+          <label class="ts-aud-group-toggle">
+            <input type="checkbox" name="include_intergroup" value="1" data-aud-group="intergroup">
+            <span>
+              <strong>Intergroup members</strong>
+              <span class="muted smaller">{{ intergroup_count }} user{% if intergroup_count != 1 %}s{% endif %} with the Intergroup Member role.</span>
+            </span>
+          </label>
+        </div>
+
+        {# Other app-user roles (editor / viewer). Admins are excluded — they get the update via subscriber or IG paths if they're on those lists. #}
+        <div class="ts-aud-group">
+          <label class="ts-aud-group-toggle">
+            <input type="checkbox" name="include_app_users" value="1" data-aud-group="app_users">
+            <span>
+              <strong>App users</strong>
+              <span class="muted smaller">{{ app_user_count }} editor / viewer account{% if app_user_count != 1 %}s{% endif %} (admins + intergroup members are tracked under their own groups above).</span>
+            </span>
+          </label>
+        </div>
+
+      </div>
+    </section>
+
+    {# ── Compose ─────────────────────────────────────────────────── #}
+    <section class="card data-card">
+      <div class="data-card-head">
+        {{ icon('send') }}
+        <span>Compose update</span>
+      </div>
+      <p class="muted small data-card-lead">
+        Use <code>{name}</code> anywhere in the subject or body to drop in each recipient's name. Leave it out for a generic message.
+      </p>
       <label>Subject
         <input type="text" name="subject" maxlength="500" required
                placeholder="Quick update from the chair">
@@ -31,12 +151,12 @@
       </label>
       <div class="ts-blast-actions">
         <button type="submit" class="btn btn-primary" data-ts-blast-submit>
-          {{ icon('send') }} Send to {{ subscriber_count }} recipient{% if subscriber_count != 1 %}s{% endif %}
+          {{ icon('send') }} Send update
         </button>
         <a class="btn" href="{{ url_for('main.trusted_servants_list') }}">Cancel</a>
       </div>
-    </form>
-  </section>
+    </section>
+  </form>
 </div>
 
 {# Busy overlay — synchronous SMTP loop takes seconds per recipient,
@@ -54,14 +174,105 @@
 
 <script>
 (function () {
+  // Audience-mode toggle: when "Full list" is picked, hide the granular
+  // group toggles + disable their inputs so the form posts a clean
+  // ``audience_mode=all`` (the send route already ignores include_* in
+  // that case, but disabled inputs keep the post body tidy in DevTools).
+  const modes = document.querySelectorAll('[data-aud-mode]');
+  const groups = document.querySelector('[data-aud-groups]');
+  function syncMode() {
+    const checked = document.querySelector('[data-aud-mode]:checked');
+    const isAll = checked && checked.value === 'all';
+    if (groups) groups.hidden = isAll;
+  }
+  modes.forEach(m => m.addEventListener('change', syncMode));
+  syncMode();
+
+  // Subscribers sub-mode toggle: show / hide the checkbox picker, and
+  // enable/disable the picker's checkboxes so a stale "Pick which" set
+  // doesn't ride along with an "All subscribers" send.
+  const subModes = document.querySelectorAll('[data-aud-sub-mode]');
+  const picker = document.querySelector('[data-aud-sub-picker]');
+  function syncSubMode() {
+    const checked = document.querySelector('[data-aud-sub-mode]:checked');
+    const isGranular = checked && checked.value === 'granular';
+    if (picker) picker.hidden = !isGranular;
+  }
+  subModes.forEach(m => m.addEventListener('change', syncSubMode));
+  syncSubMode();
+
+  // Select all / clear on the subscriber checkbox list.
+  const pickAll = document.querySelector('[data-aud-pick-all]');
+  const pickNone = document.querySelector('[data-aud-pick-none]');
+  const subBoxes = () => document.querySelectorAll('input[name="subscriber_ids"]');
+  if (pickAll) pickAll.addEventListener('click', () => {
+    subBoxes().forEach(b => { b.checked = true; }); renderGranularSummary();
+  });
+  if (pickNone) pickNone.addEventListener('click', () => {
+    subBoxes().forEach(b => { b.checked = false; }); renderGranularSummary();
+  });
+
+  // Live granular summary — updates the count line under the
+  // Granular radio every time any audience input changes. Three
+  // numbers: subscribers (full count when subs_mode=all + included,
+  // ticked-count when subs_mode=granular + included, 0 when the
+  // group toggle is off), intergroup, app users. Final total reflects
+  // the sum before email-dedupe; the actual send dedupes by
+  // lowercased email so a person in two groups only gets one copy.
+  const summaryEl = document.querySelector('[data-aud-granular-summary]');
+  const totals = summaryEl ? {
+    sub: parseInt(summaryEl.dataset.subCount || '0', 10) || 0,
+    ig:  parseInt(summaryEl.dataset.igCount  || '0', 10) || 0,
+    app: parseInt(summaryEl.dataset.appCount || '0', 10) || 0,
+  } : { sub: 0, ig: 0, app: 0 };
+
+  function plural(n, word) {
+    return n + ' ' + word + (n === 1 ? '' : 's');
+  }
+
+  function renderGranularSummary() {
+    if (!summaryEl) return;
+    const subsOn = !!document.querySelector('[data-aud-group="subscribers"]:checked');
+    const igOn = !!document.querySelector('[data-aud-group="intergroup"]:checked');
+    const appOn = !!document.querySelector('[data-aud-group="app_users"]:checked');
+    const subMode = (document.querySelector('[data-aud-sub-mode]:checked') || {}).value || 'all';
+
+    let subN = 0;
+    if (subsOn) {
+      if (subMode === 'granular') {
+        subN = document.querySelectorAll('input[name="subscriber_ids"]:checked').length;
+      } else {
+        subN = totals.sub;
+      }
+    }
+    const igN = igOn ? totals.ig : 0;
+    const appN = appOn ? totals.app : 0;
+    const all = subN + igN + appN;
+
+    summaryEl.innerHTML =
+      plural(subN, 'subscriber') + ' + '
+      + igN + ' intergroup + '
+      + plural(appN, 'app user')
+      + ' <b>· ' + all + ' total</b>'
+      + ' <span class="muted smaller">(before email-dedupe)</span>';
+  }
+  // Re-render on every interaction inside the audience card — covers
+  // the group toggles, sub-mode flips, Select all / Clear, and the
+  // per-subscriber checkboxes.
+  document.querySelectorAll('input[data-aud-group], [data-aud-sub-mode], input[name="subscriber_ids"]')
+    .forEach(el => el.addEventListener('change', renderGranularSummary));
+  renderGranularSummary();
+
+  // Busy overlay on submit.
   const form = document.querySelector('[data-ts-blast-form]');
   const busy = document.querySelector('[data-ts-busy]');
   const btn = document.querySelector('[data-ts-blast-submit]');
-  if (!form || !busy) return;
-  form.addEventListener('submit', () => {
-    busy.hidden = false;
-    if (btn) btn.disabled = true;
-  });
+  if (form && busy) {
+    form.addEventListener('submit', () => {
+      busy.hidden = false;
+      if (btn) btn.disabled = true;
+    });
+  }
 })();
 </script>
 {% endblock %}

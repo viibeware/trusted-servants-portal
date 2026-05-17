@@ -5776,6 +5776,24 @@ h5.block-heading { font-size: 0.875rem; font-weight: 600; margin: 12px 0 4px; }
   .form .row { grid-template-columns: 1fr; }
 }
 
+/* Web Frontend admin auto-hide. Applies the same sidebar treatment the
+   <900px breakpoint already uses (hamburger toggle + slide-in sidebar)
+   at every viewport width when the user is inside /frontend/… AND has
+   the User.fe_admin_autohide_sidebar pref on. The Web Frontend has its
+   own .fe-admin-subnav so the outer sidebar otherwise competes for
+   width with the editing canvas on laptops. Mirrors the @media block
+   above; the existing menu-toggle JS handler already drives .sidebar
+   .open and works unchanged when this class is on at desktop widths. */
+body.fe-admin-autohide .layout { grid-template-columns: 1fr; }
+body.fe-admin-autohide .sidebar {
+  position: fixed; left: 0; top: 0; width: 260px;
+  height: 100dvh;
+  transform: translateX(-100%); transition: transform .2s ease; z-index: 30;
+  overflow: hidden;
+}
+body.fe-admin-autohide .sidebar.open { transform: translateX(0); }
+body.fe-admin-autohide .menu-btn { display: grid; place-items: center; }
+
 @media (max-width: 720px) {
   .hide-sm { display: none !important; }
   .tbl .mtype-chip { margin-left: 0; padding: 2px 8px; font-size: 0.6875rem; }
@@ -12457,6 +12475,16 @@ body.embed .backups-wrap {
   flex-direction: column;
   gap: 1rem;
 }
+/* Drop the cards' right border AND the brand-blue left accent on the
+   email-list pages — the soft shadow + the standard top/bottom
+   hairlines already define the card edges, and both verticals read
+   as redundant chrome against the .content gutter on these wide-table
+   pages. Scoped to .ts-page-wrap so other consumers of .data-card
+   (Settings panes, backups admin, etc.) keep their 4-sided border. */
+.ts-page-wrap .card.data-card {
+  border-right: 0;
+  border-left: 1px solid var(--border);
+}
 .ts-page-toolbar {
   display: flex;
   gap: .5rem;
@@ -12526,6 +12554,155 @@ body.embed .backups-wrap {
   display: flex;
   gap: .5rem;
   margin-top: .25rem;
+}
+
+/* Audience controls on the blast-compose page. Two-level pattern:
+   "Full list" / "Granular" radio at the top, then per-group toggles
+   inside granular mode (Subscribers gets a further all/granular
+   sub-mode with a checkbox picker — same shape MeetingLibrary uses
+   per-meeting for its reading selection). */
+.ts-aud-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .55rem;
+  margin: .25rem 0 1rem;
+}
+@media (max-width: 640px) {
+  .ts-aud-modes { grid-template-columns: 1fr; }
+}
+.ts-aud-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: .65rem;
+  padding: .85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  background: var(--panel, transparent);
+  margin: 0;
+  transition: border-color .12s ease, background .12s ease;
+}
+.ts-aud-mode:hover { border-color: var(--brand); }
+.ts-aud-mode input { margin-top: .25rem; }
+.ts-aud-mode > span {
+  display: flex; flex-direction: column; gap: .15rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ts-aud-mode-summary {
+  margin-top: .35rem;
+  padding-top: .35rem;
+  border-top: 1px dashed var(--border);
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+.ts-aud-mode-summary b {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.ts-aud-groups {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+  margin-top: .25rem;
+}
+/* `display: flex` above outranks the user-agent stylesheet's
+   `[hidden] { display: none }`, so toggling .hidden on this element
+   sets the attribute but the flex layout sticks. Explicit override
+   restores the hide-on-attribute behaviour the JS expects. */
+.ts-aud-groups[hidden] { display: none; }
+.ts-aud-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .85rem 1rem;
+  background: var(--panel-muted, rgba(0,0,0,.02));
+}
+.ts-aud-group-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: .65rem;
+  cursor: pointer;
+  margin: 0;
+}
+.ts-aud-group-toggle input[type="checkbox"] {
+  margin-top: .25rem;
+}
+.ts-aud-group-toggle > span {
+  display: flex; flex-direction: column; gap: .15rem;
+  flex: 1 1 auto;
+}
+.ts-aud-group-detail {
+  margin: .85rem 0 0 1.85rem;
+}
+@media (max-width: 640px) {
+  .ts-aud-group-detail { margin-left: 0; }
+}
+
+.ts-aud-submode {
+  display: flex;
+  gap: .4rem;
+  flex-wrap: wrap;
+  margin-bottom: .65rem;
+}
+.ts-aud-submode-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .35rem .75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: .85rem;
+  cursor: pointer;
+  background: var(--panel);
+  margin: 0;
+}
+.ts-aud-submode-pill input { margin: 0; }
+.ts-aud-submode-pill:has(input:checked) {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 8%, var(--panel));
+}
+
+.ts-aud-sub-picker {
+  border-top: 1px solid var(--border);
+  padding-top: .65rem;
+}
+.ts-aud-sub-picker-controls {
+  display: flex;
+  gap: .35rem;
+  margin-bottom: .5rem;
+}
+.ts-aud-sub-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.ts-aud-sub-row {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .35rem .65rem;
+  margin: 0;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.ts-aud-sub-row:hover { background: var(--panel-muted, rgba(0,0,0,.03)); }
+.ts-aud-sub-row input { margin: 0; }
+.ts-aud-sub-name { flex: 1 1 auto; min-width: 0; }
+.ts-aud-sub-email {
+  flex: 0 0 auto;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: .75rem;
 }
 
 /* Trusted Servants add/edit modals — label + input stack, with a

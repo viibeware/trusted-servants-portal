@@ -66,6 +66,14 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(32), nullable=False, default="viewer")
+    # Optional display name (first + last, or however the admin
+    # chooses to address them). Distinct from ``username`` — username
+    # is the login handle and stays in the form it was registered
+    # with; ``name`` is the friendly form ("Jane D.") used wherever
+    # the portal shows a person rather than an account, including
+    # welcome emails, the Trusted Servants list pre-fill, and the
+    # admin Users table.
+    name = db.Column(db.String(120))
     # Optional contact number captured at user creation. Prefilled from
     # the matching access-request row when the admin clicks Create User
     # from the Access Requests page; editable on the Users panel later.
@@ -85,6 +93,14 @@ class User(UserMixin, db.Model):
     dash_show_visitor_metrics = db.Column(db.Boolean, nullable=False, default=True)
     dash_show_backups = db.Column(db.Boolean, nullable=False, default=True)
     dash_show_trusted_servants = db.Column(db.Boolean, nullable=False, default=True)
+    # When True, the main app sidebar auto-collapses to a hamburger
+    # menu while the user is inside the Web Frontend admin (/frontend/…).
+    # The Web Frontend has its own sub-nav (fe-admin-subnav) so the
+    # outer sidebar competes with editing canvas width on laptops; the
+    # auto-collapse trades it for the existing mobile sidebar UX so
+    # admins get the full content area back. Default on per the user
+    # spec ("let the user access it when needed").
+    fe_admin_autohide_sidebar = db.Column(db.Boolean, nullable=False, default=True)
     dash_order_json = db.Column(db.Text)
     last_seen_at = db.Column(db.DateTime)
     # Current navigation location for the live "who's online" widget.

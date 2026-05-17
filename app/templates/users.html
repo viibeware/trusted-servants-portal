@@ -25,6 +25,7 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
         <label>Username<input name="username" value="{{ _prefill }}" required></label>
+        <label>Name<input name="name" value="{{ _prefill_name }}" placeholder="(optional)"></label>
         <label>Email<input name="email" type="email" value="{{ _prefill }}" required></label>
         <label>Phone<input name="phone" type="tel" value="{{ _prefill_phone }}" placeholder="(optional)"></label>
         <label>Password<input name="password" type="password" required></label>
@@ -90,13 +91,14 @@
     <span>All users</span>
   </div>
   <table class="tbl users-tbl">
-    <thead><tr><th>Username</th><th>Email</th><th>Phone</th><th>Role</th><th>Password</th><th></th></tr></thead>
+    <thead><tr><th>Username</th><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Password</th><th></th></tr></thead>
     <tbody>
     {% for u in users %}
     {% set _lock_seconds = lockouts.get(u.id, 0) %}
     <tr{% if _lock_seconds or u.disabled %} class="{% if _lock_seconds %}user-locked-row{% endif %}{% if u.disabled %}{% if _lock_seconds %} {% endif %}user-disabled-row{% endif %}"{% endif %}
         data-user-row="{{ u.id }}"
         data-username="{{ u.username }}"
+        data-name="{{ u.name or '' }}"
         data-email="{{ u.email or '' }}"
         data-phone="{{ u.phone or '' }}"
         data-role="{{ u.role }}"
@@ -111,6 +113,7 @@
         <span class="badge badge-muted user-disabled-badge" title="Sign-ins for this account are blocked">Disabled</span>
         {% endif %}
       </td>
+      <td data-label="Name"><span class="users-cell-text">{{ u.name or '—' }}</span></td>
       <td data-label="Email"><span class="users-cell-text">{{ u.email or '—' }}</span></td>
       <td data-label="Phone"><span class="users-cell-text">{{ u.phone or '—' }}</span></td>
       <td data-label="Role">
@@ -195,6 +198,9 @@
         <div class="form user-edit-form-grid">
           <label>Username
             <input name="username" id="user-edit-username" required maxlength="64">
+          </label>
+          <label>Name
+            <input name="name" id="user-edit-name" maxlength="120" placeholder="(optional)">
           </label>
           <label>Email
             <input name="email" id="user-edit-email" type="email" required>
@@ -287,6 +293,7 @@
   if (!modal) return;
   const form = document.getElementById('user-edit-form');
   const usernameIn = document.getElementById('user-edit-username');
+  const nameIn = document.getElementById('user-edit-name');
   const emailIn = document.getElementById('user-edit-email');
   const phoneIn = document.getElementById('user-edit-phone');
   const roleIn = document.getElementById('user-edit-role');
@@ -314,6 +321,7 @@
     if (!row) return;
     form.action = ACTION_TEMPLATE.replace(/\/0\/update$/, '/' + uid + '/update');
     usernameIn.value = row.dataset.username || '';
+    nameIn.value = row.dataset.name || '';
     emailIn.value = row.dataset.email || '';
     phoneIn.value = row.dataset.phone || '';
     roleIn.value = row.dataset.role || 'viewer';

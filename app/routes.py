@@ -2281,22 +2281,46 @@ def trusted_servants_delete(sid):
 @login_required
 def trusted_servants_blast_compose():
     _require_trusted_servants_admin()
-    count = TrustedServantSubscriber.query.count()
-    return render_template("trusted_servants_blast.html", subscriber_count=count)
+    # The subscriber rows themselves are listed (not just counted) so
+    # the compose page can render a checkbox list under the "Pick which"
+    # subscribers granular mode — same shape as MeetingLibrary's per-
+    # reading selection. Intergroup-members + app-users stay as bare
+    # counts (their granular controls are a follow-up if asked for).
+    subscribers = (TrustedServantSubscriber.query
+                   .order_by(TrustedServantSubscriber.name.asc()).all())
+    ig_count = User.query.filter(User.role == "intergroup_member").count()
+    app_count = User.query.filter(
+        User.role.notin_(("admin", "intergroup_member"))
+    ).count()
+    return render_template("trusted_servants_blast.html",
+                           subscribers=subscribers,
+                           subscriber_count=len(subscribers),
+                           intergroup_count=ig_count,
+                           app_user_count=app_count)
 
 
 @bp.route("/email-list/blast", methods=["POST"])
 @login_required
 def trusted_servants_blast_send():
-    """Send a one-message-per-recipient blast to every subscriber.
+    """Send a one-message-per-recipient blast.
 
-    Synchronous so the admin sees ok/failed inline rather than having
-    to poll a background queue. Failures don't abort the loop — each
-    recipient is tried independently, and the resulting BlastRun row
-    records how many sent vs failed. Markdown body is rendered to HTML
-    via the existing ``markdown`` filter; the plain-text fallback is
-    the raw markdown source (readers without HTML still see something
-    usable).
+    Three potential audience groups, controlled by the compose page's
+    mode + per-group toggles (same shape as MeetingLibrary's
+    ``all`` / ``granular`` mode):
+
+      • **Full list mode** (``audience_mode=all``) — fans out to every
+        subscriber + every intergroup member + every non-admin app user.
+      • **Granular mode** (``audience_mode=granular``) — only includes
+        the groups whose toggle is checked. Subscribers default on; the
+        other two default off so an admin who explicitly picks granular
+        but forgets to tick anything still gets the historical "send
+        to subscribers" behaviour.
+
+    The combined recipient list is deduped by lowercased email so a
+    single person who appears in two groups (e.g. on the list AND has
+    an intergroup-member account) only gets one copy. Synchronous SMTP
+    loop, one message per recipient — failures don't abort the loop;
+    each is tried independently and counted into the BlastRun row.
     """
     from datetime import datetime as _dt
     import markdown as _md_lib
@@ -2312,17 +2336,88 @@ def trusted_servants_blast_send():
         flash("Message body is required.", "danger")
         return redirect(url_for("main.trusted_servants_blast_compose"))
 
-    subs = (TrustedServantSubscriber.query
-            .order_by(TrustedServantSubscriber.name.asc()).all())
-    if not subs:
-        flash("No subscribers on the list — add some before sending.", "danger")
-        return redirect(url_for("main.trusted_servants_list"))
+    mode = (request.form.get("audience_mode") or "granular").strip().lower()
+    if mode not in ("all", "granular"):
+        mode = "granular"
+    if mode == "all":
+        include_subs = include_ig = include_app = True
+        subs_mode = "all"
+    else:
+        include_subs = request.form.get("include_subscribers") == "1"
+        include_ig = request.form.get("include_intergroup") == "1"
+        include_app = request.form.get("include_app_users") == "1"
+        # Within the subscribers group, the admin can further pick a
+        # specific subset via the "Pick which subscribers" radio — same
+        # all/granular shape MeetingLibrary uses per-meeting. Granular
+        # mode reads the checkbox list of ``subscriber_ids`` and only
+        # sends to those rows.
+        subs_mode = (request.form.get("subscribers_mode") or "all").strip().lower()
+        if subs_mode not in ("all", "granular"):
+            subs_mode = "all"
+
+    # Granular subscriber-id whitelist. ``request.form.getlist`` returns
+    # every checked value of the same name; we coerce to ints and drop
+    # anything malformed so a tampered POST can only pick known rows.
+    selected_sub_ids = set()
+    if include_subs and subs_mode == "granular":
+        for raw in request.form.getlist("subscriber_ids"):
+            try:
+                selected_sub_ids.add(int(raw))
+            except (TypeError, ValueError):
+                continue
+
+    # Build the combined recipient list. Tuple shape (name_for_token,
+    # email) so the {name} personalization works uniformly for every
+    # group regardless of which row supplied it.
+    recipients = []
+    seen = set()
+
+    def _add(name, email):
+        if not email:
+            return
+        key = email.strip().lower()
+        if not key or key in seen:
+            return
+        seen.add(key)
+        recipients.append((name or email, email))
+
+    if include_subs:
+        q = TrustedServantSubscriber.query.order_by(TrustedServantSubscriber.name.asc())
+        if subs_mode == "granular":
+            if not selected_sub_ids:
+                # The admin picked granular but didn't tick anyone —
+                # surface the error rather than silently sending zero
+                # from the subscribers group.
+                flash(
+                    "Pick at least one subscriber, or switch the subscribers "
+                    "mode to All before sending.",
+                    "danger")
+                return redirect(url_for("main.trusted_servants_blast_compose"))
+            q = q.filter(TrustedServantSubscriber.id.in_(selected_sub_ids))
+        for sub in q.all():
+            _add(sub.name, sub.email)
+    if include_ig:
+        for u in (User.query.filter(User.role == "intergroup_member")
+                  .order_by(User.username.asc()).all()):
+            _add(u.name or u.username, u.email)
+    if include_app:
+        for u in (User.query
+                  .filter(User.role.notin_(("admin", "intergroup_member")))
+                  .order_by(User.username.asc()).all()):
+            _add(u.name or u.username, u.email)
+
+    if not recipients:
+        flash(
+            "No one is in the audience you picked — turn on at least one group "
+            "(or pick Full list) before sending.",
+            "danger")
+        return redirect(url_for("main.trusted_servants_blast_compose"))
 
     blast = TrustedServantBlast(
         sent_by_user_id=current_user.id,
         subject=subject[:500],
         body_md=body_md,
-        recipient_count=len(subs),
+        recipient_count=len(recipients),
         started_at=_dt.utcnow(),
     )
     db.session.add(blast)
@@ -2331,21 +2426,21 @@ def trusted_servants_blast_send():
     sent = 0
     failed = 0
     body_html = _md_lib.markdown(body_md, extensions=["extra", "nl2br"])
-    for sub in subs:
+    for name, email in recipients:
         # Personalize the first-line greeting if the body opens with a
         # `{name}` token. Admins who don't use the token just get an
         # un-replaced body — opt-in personalization, no surprises.
-        text_body = body_md.replace("{name}", sub.name)
-        html_body = body_html.replace("{name}", sub.name)
+        text_body = body_md.replace("{name}", name)
+        html_body = body_html.replace("{name}", name)
         try:
-            ok, _err = send_mail(s, sub.email, subject, text_body, body_html=html_body)
+            ok, _err = send_mail(s, email, subject, text_body, body_html=html_body)
             if ok:
                 sent += 1
             else:
                 failed += 1
         except Exception:  # noqa: BLE001
             current_app.logger.exception(
-                "trusted_servants_blast: send to %s failed", sub.email)
+                "trusted_servants_blast: send to %s failed", email)
             failed += 1
 
     blast.sent_count = sent
@@ -4900,6 +4995,20 @@ def frontend_toggle():
         "success"
     )
     return redirect(url_for("main.frontend_dashboard"))
+
+
+@bp.route("/frontend/autohide-sidebar-save", methods=["POST"])
+@admin_required
+def frontend_autohide_sidebar_save():
+    """Per-user pref — collapse the outer app sidebar to a hamburger
+    while the user is inside /frontend/… Saves to User.fe_admin_autohide_sidebar
+    (default True). Body.fe-admin-autohide on every Web Frontend page
+    drives the existing mobile-hide CSS at all viewport widths when on."""
+    current_user.fe_admin_autohide_sidebar = (
+        request.form.get("fe_admin_autohide_sidebar") == "1")
+    db.session.commit()
+    flash("Sidebar auto-hide " + ("enabled" if current_user.fe_admin_autohide_sidebar else "disabled"), "success")
+    return redirect(_safe_referrer() or url_for("main.frontend_dashboard"))
 
 
 @bp.route("/frontend/module-toggle", methods=["POST"])

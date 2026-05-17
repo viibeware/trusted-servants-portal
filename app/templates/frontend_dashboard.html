@@ -45,6 +45,31 @@
           <noscript><button class="btn btn-sm btn-primary">Save</button></noscript>
         </form>
       </li>
+      {# Sidebar auto-hide — per-user pref. The Web Frontend has its own
+         sub-nav, so the outer app sidebar competes with editing canvas
+         width on laptops. When on, the outer sidebar collapses to a
+         hamburger here only; everywhere else in the portal it stays
+         visible. Default on. #}
+      <li class="special-page-row fe-status-row">
+        <div class="special-page-info">
+          <div class="u-name">Auto-hide app sidebar in Web Frontend</div>
+          <p class="muted small">
+            When on, the main app sidebar collapses to a hamburger menu while you're inside the Web Frontend admin so the content area gets the full viewport width. Tap the menu icon (top-left of the page) to slide it open. Off keeps both sidebars visible at all times.
+          </p>
+        </div>
+        <form method="post" action="{{ url_for('main.frontend_autohide_sidebar_save') }}"
+              class="special-page-toggle-form"
+              data-fe-auto-submit>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="mode-toggle" title="Auto-hide app sidebar in Web Frontend">
+            <input type="checkbox" name="fe_admin_autohide_sidebar" value="1"
+                   onchange="this.form.submit()"
+                   {% if current_user.fe_admin_autohide_sidebar %}checked{% endif %}>
+            <span class="mode-track"><span class="mode-thumb"></span></span>
+          </label>
+          <noscript><button class="btn btn-sm btn-primary">Save</button></noscript>
+        </form>
+      </li>
       <p class="muted" style="margin-top: 20px;">Pick a section on the left to edit:</p>
       <ul class="list">
         <li><a href="{{ url_for('main.frontend_header') }}"><b>Header</b><span class="muted">Width, padding, and navigation links</span></a></li>

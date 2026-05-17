@@ -668,6 +668,7 @@ def users_create():
     username = request.form["username"].strip()
     email = request.form["email"].strip()
     password = request.form["password"]
+    name = (request.form.get("name") or "").strip()[:120] or None
     phone = (request.form.get("phone") or "").strip() or None
     role = request.form.get("role", "viewer")
     if role not in ROLES:
@@ -678,7 +679,7 @@ def users_create():
     ).first():
         flash("Username or email already exists", "danger")
         return redirect(url_for("auth.users", embed=1) if request.form.get("embed") == "1" else url_for("auth.users"))
-    u = User(username=username, email=email, phone=phone,
+    u = User(username=username, email=email, name=name, phone=phone,
              password_hash=generate_password_hash(password), role=role)
     db.session.add(u)
     db.session.commit()
@@ -740,10 +741,12 @@ def users_update(uid):
             flash(f"Email {new_email} is already in use", "danger")
             return redirect(url_for("auth.users", embed=1) if request.form.get("embed") == "1" else url_for("auth.users"))
         u.email = new_email
-    # Phone is optional and editable on every user-row save. The form
-    # always submits the field (possibly blank), so a missing key here
-    # is treated as "no change" rather than "clear" — an admin can clear
-    # by submitting the field empty since "" → None below.
+    # Name + phone are optional and editable on every user-row save.
+    # The form always submits the field (possibly blank), so a missing
+    # key here is treated as "no change" rather than "clear" — an admin
+    # can clear by submitting the field empty since "" → None below.
+    if "name" in request.form:
+        u.name = (request.form.get("name") or "").strip()[:120] or None
     if "phone" in request.form:
         u.phone = (request.form.get("phone") or "").strip() or None
     # Disabled / self-reset toggles only ride along with the Edit modal

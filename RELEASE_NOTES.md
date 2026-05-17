@@ -7,7 +7,35 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.1.4 — 2026-05-17 (latest) — Trusted Servants widget stays put
+## 2.1.5 — 2026-05-17 (latest) — Email-list audience controls + Web Frontend sidebar auto-hide
+
+A few focused additions to the Trusted Servants module and the Web Frontend admin.
+
+### Audience controls when sending an email-list update
+
+The Send-an-update page now leads with an **Audience** card. Two modes:
+
+- **Full list** *(the new default)* — sends to every subscriber + every intergroup member + every app user (editor / viewer accounts). A summary line under the radio shows the count in each group so you know the spread before sending. Duplicate emails across groups only get one copy.
+- **Granular** — pick exactly which groups, and inside the subscribers group, pick exactly which subscribers via a scrollable checkbox list with Select all / Clear shortcuts. A live count under the Granular radio updates as you tick / untick, including the per-group breakdown and the total.
+
+Either way, the message is sent one SMTP send per recipient with `{name}` personalization, and duplicates across groups are merged so nobody gets two copies.
+
+### Web Frontend admin: auto-hide the app sidebar
+
+When you're inside the Web Frontend admin pages, the main left-edge app sidebar now collapses to a hamburger button so the content area can use the full viewport width. Tap the menu icon (top-left) to slide the sidebar in when needed; tap outside or pick a link and it slides back out. The Web Frontend has its own sub-nav so two sidebars side-by-side ate into editing canvas space on laptops. A toggle on the **Web Frontend → Overview** card lets you flip the auto-hide off if you'd rather keep both visible.
+
+Smarter sidebar behaviour: when you click a sidebar link that leaves the Web Frontend (e.g., Meetings, Settings), the sidebar **stays visible through the navigation** instead of sliding away and then re-appearing on the next page — that flash was distracting.
+
+### Name field on user accounts
+
+Every user account now has an optional **Name** field (e.g. "Jane D."), separate from the login username. It's editable from **Settings → Users** in both the Create form and the per-row Edit modal, and it shows up in the users table. The email-list blast uses it for `{name}` personalization when the recipient comes from the intergroup-members or app-users group, so the friendly name lands in their inbox even if they've never added themselves to the Trusted Servants list.
+
+### Minor polish
+
+- The email-list cards (the roster + the send-update pages) lost their right border and brand-blue left accent — the shadow + top/bottom hairlines define the cards without the redundant verticals against the page gutter on these wide-table pages. Other Settings cards keep the brand-blue accent.
+- Page heading on /email-list reads "Trusted Servants Email List" (the full module name) instead of just "Email List"; sidebar link stays as the shorter "Email List".
+
+## 2.1.4 — 2026-05-17 — Trusted Servants widget stays put
 
 Small follow-up to 2.1.3. The **Join the Trusted Servants list** widget on the dashboard no longer disappears once you've joined — it stays visible whenever the module is on and the dashboard toggle is checked. Once you're on the list, the widget switches to **Your Trusted Servants info**: name / email / phone are pre-filled with the values admins actually see on the roster, the button reads **Save changes** instead of Join, and a discreet **Remove me from the list** action appears below a thin divider for when you want to come off entirely.
 

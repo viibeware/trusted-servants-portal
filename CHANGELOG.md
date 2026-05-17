@@ -6,6 +6,46 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.1.5] — 2026-05-17
+
+### Added — Audience controls on the email-list blast (Full list / Granular)
+
+The Send-an-update page now opens with a full **Audience** card above Compose. Two radio modes, same shape MeetingLibrary uses for its all/granular reading selection:
+
+- **Full list** *(default)* — fans out to every subscriber + every user with the ``intergroup_member`` role + every editor / viewer account. A static summary line under the radio reads ``X subscribers + Y intergroup + Z app users · TOTAL total (before email-dedupe)`` so the admin can see the spread before sending. Group toggles collapse via ``.ts-aud-groups[hidden] { display: none }`` (the bare HTML ``hidden`` attribute was being outranked by the block's ``display: flex``).
+- **Granular** — reveals three group checkboxes (Subscribers / Intergroup members / App users). Inside Subscribers, a further "All subscribers" / "Pick which subscribers" radio reveals a scrollable checkbox list of every subscriber with Select all / Clear controls. A live summary line under the Granular radio updates on every audience-input change — group toggles, subs sub-mode flip, per-subscriber checkboxes, the bulk Select all / Clear — showing the same group + total counts the Full-list summary shows, recomputed from the current selection.
+
+The send handler now validates ``audience_mode`` to ``all`` / ``granular``, in ``all`` forces every group + the subs sub-mode on so a stale form posts cleanly, and in ``granular`` reads the per-group toggles + the ``subscriber_ids`` checkbox whitelist (coerced to ints, only known rows allowed). Combined recipient list is **deduped by lowercased email** so a person in two groups gets one copy; the personalization ``{name}`` token uses the row's own name (subscriber.name or ``user.name or user.username``) so each recipient still sees their own. The ``recipient_count`` on the resulting BlastRun row reflects the deduped count, not the raw group sum.
+
+### Added — Auto-hide app sidebar inside the Web Frontend admin
+
+New ``User.fe_admin_autohide_sidebar`` boolean column (default True, ``ALTER TABLE ADD COLUMN`` migration). When on, the main app sidebar collapses to a hamburger button while the user is on a ``/frontend/…`` route — the Web Frontend has its own sub-nav (``.fe-admin-subnav``) so the outer sidebar competes with editing canvas width on laptops. ``body.fe-admin-autohide`` is set from ``base.html`` only when both conditions match; a new CSS ruleset under the existing ``@media (max-width: 900px)`` block mirrors its selectors at every viewport width so ``.sidebar`` becomes ``position: fixed; transform: translateX(-100%)`` and ``.menu-btn { display: grid }``. The existing menu-toggle handler drives ``.sidebar.open`` unchanged.
+
+A new toggle row on the Web Frontend overview page lets the admin flip the pref off; the form carries ``data-fe-auto-submit`` so the FE save-bar tracker's ``trackable()`` check skips it (same opt-out the existing public-frontend toggle uses), avoiding a spurious "Unsaved changes" flash.
+
+### Added — Name field on User accounts
+
+``User.name`` — new optional ``String(120)`` column with a matching ``_migrate_sqlite ALTER TABLE`` entry. Distinct from ``username`` (the login handle): ``name`` is the friendly display form ("Jane D."). Surfaced everywhere User contact info shows up:
+
+- Create User card has a Name input between Username and Email.
+- All-users table has a Name column.
+- Edit user modal has a Name input alongside Username / Email / Phone.
+- ``users_create`` reads + persists ``name``; ``users_update`` honours an ``if "name" in request.form`` clause so submit-blank clears, omit-key leaves the row alone.
+
+The email-list blast falls back to ``user.name or user.username`` when building the ``{name}`` personalization token from the IG-members or app-users groups, so blast recipients see their friendly name even if they never set up a TrustedServantSubscriber row.
+
+### Changed — Sidebar links that leave the Web Frontend keep the sidebar open
+
+Click handler in ``app.js`` now checks ``body.fe-admin-autohide``: when the click target's ``href`` doesn't include ``/frontend/``, the sidebar stays open through the navigation. The destination page doesn't carry the auto-hide body class so its sidebar renders statically visible — the previous unconditional ``classList.remove('open')`` produced a distracting slide-out + reflow + slide-in. In-Web-Frontend links still close the slide-in sidebar as before, and the mobile-breakpoint behaviour on non-FE pages is unchanged.
+
+### Changed — Email-list cards drop the right border + the brand-blue left accent
+
+Scoped CSS rule ``.ts-page-wrap .card.data-card { border-right: 0; border-left: 1px solid var(--border) }`` runs only inside the email-list admin pages (``/email-list`` + ``/email-list/blast``). The cards now sit with shadow + top + bottom + faint 1 px left/no right hairlines — the brand-blue accent reads as redundant chrome against ``.content``'s gutter on these wide-table pages. Every other consumer of ``.data-card`` (Settings panes, backups admin modal, email-list import wizard) keeps the full four-sided border + brand-blue accent.
+
+### Changed — Email-list page title
+
+The ``/email-list`` page heading was set to "Trusted Servants Email List" (the full module name) while the sidebar link stays as the shorter "Email List". The ``.ts-page-wrap`` outer wrap dropped its narrowing ``max-width: 1080px; margin: 0 auto`` constraint so the page sits flush in ``main.content`` like every other admin page; the wrap keeps just the flex-column + 1 rem gap shape.
+
 ## [2.1.4] — 2026-05-17
 
 ### Changed — Trusted Servants dashboard widget always shows when enabled

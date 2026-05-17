@@ -74,7 +74,20 @@
       side.classList.remove("open");
     });
     side.querySelectorAll("nav a").forEach(a =>
-      a.addEventListener("click", () => side.classList.remove("open")));
+      a.addEventListener("click", () => {
+        // Auto-hide context (body.fe-admin-autohide): when the click
+        // is leaving the Web Frontend admin entirely (i.e. the link
+        // does not go to another /frontend/… page), keep the sidebar
+        // open through the navigation. The destination page won't
+        // carry the auto-hide body class so its own sidebar will be
+        // statically visible anyway — sliding the current one away
+        // before the reload only produces a distracting flash.
+        if (document.body.classList.contains("fe-admin-autohide")) {
+          const href = a.getAttribute("href") || "";
+          if (href && !href.includes("/frontend/")) return;
+        }
+        side.classList.remove("open");
+      }));
   }
 
   // ── Sidebar section collapse/expand ───────────────────────────────
