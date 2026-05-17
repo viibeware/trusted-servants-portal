@@ -12,6 +12,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY run.py .
+# Source of truth for the in-app About modal's Release Notes + Changelog
+# (rendered via app/about_docs.py). Must ship with the image so the
+# parser at /srv/app/../{CHANGELOG,RELEASE_NOTES}.md can find them.
+COPY CHANGELOG.md RELEASE_NOTES.md ./
 
 ENV FLASK_APP=run.py \
     PYTHONUNBUFFERED=1 \

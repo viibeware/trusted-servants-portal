@@ -558,6 +558,14 @@ def create_app():
     from .icons import icon as _icon
     app.jinja_env.globals["icon"] = _icon
 
+    # Release-notes + changelog single source of truth. The About modal
+    # in templates/base.html iterates these at render time so editing
+    # RELEASE_NOTES.md / CHANGELOG.md at the repo root is the only step
+    # needed to update the in-app view. See app/about_docs.py.
+    from . import about_docs as _about_docs
+    app.jinja_env.globals["app_release_notes"] = _about_docs.load_release_notes
+    app.jinja_env.globals["app_changelog"] = _about_docs.load_changelog
+
     # Dynamic-background catalog. The admin's dynbg picker macro and
     # any future template that wants to enumerate available presets
     # reads this at render time, so a new entry in app/dynbg.py
