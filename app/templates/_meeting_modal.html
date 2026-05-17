@@ -556,6 +556,9 @@
           throw new Error('save failed: ' + r.status);
         }
         if (msg) msg.textContent = 'Saved';
+        // Mark the modal so closing it reloads the host page — the
+        // page behind still shows pre-save data until then.
+        modal.dataset.reloadOnClose = '1';
         // Drop the bar back down with the same fe-save-leave keyframe
         // the global save bar uses, then reset state so the next edit
         // re-shows it as a fresh "Unsaved changes" pill.
@@ -574,6 +577,22 @@
         if (saveBtn) saveBtn.disabled = false;
       });
     });
+
+    // When the modal is closed after a successful save, reload the page
+    // so the host view reflects the saved edits. The global close
+    // handler in app.js flips `aria-hidden` to "true" — observe that
+    // and reload when our save flag is set.
+    if (window.MutationObserver) {
+      var closeObs = new MutationObserver(function () {
+        if (modal.getAttribute('aria-hidden') === 'true'
+            && modal.dataset.reloadOnClose === '1') {
+          // Clear first in case reload is intercepted (e.g. beforeunload).
+          delete modal.dataset.reloadOnClose;
+          window.location.reload();
+        }
+      });
+      closeObs.observe(modal, { attributes: true, attributeFilter: ['aria-hidden'] });
+    }
   });
 })();
 </script>

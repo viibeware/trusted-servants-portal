@@ -30,4 +30,4 @@ Flask + SQLAlchemy + SQLite app factory (`app/__init__.py::create_app`). Two blu
 
 ## Configuration
 
-Env vars (see README table): `TSP_SECRET_KEY` (also the Fernet key seed — rotating it invalidates stored encrypted credentials), `TSP_ADMIN_*` (seed only, ignored after first user exists), `TSP_DATA_DIR` (default `/data`), `TSP_UPLOAD_DIR` (default `$TSP_DATA_DIR/uploads`). Max upload size 256 MB.
+Env vars (see README table): `TSP_SECRET_KEY` (also the Fernet key seed — rotating it invalidates stored encrypted credentials), `TSP_ADMIN_*` (seed only, ignored after first user exists), `TSP_DATA_DIR` (default `/data`), `TSP_UPLOAD_DIR` (default `$TSP_DATA_DIR/uploads`), `TSP_MAX_UPLOAD_MB` (default `4096`). Max upload size defaults to 4 GiB so full-portal restore bundles (DB + uploads dir in one multipart POST) aren't truncated; lower it via `TSP_MAX_UPLOAD_MB` if you need a tighter ceiling.

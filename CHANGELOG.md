@@ -6,6 +6,27 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.1.6] — 2026-05-17
+
+### Added — Restore bundle: busy spinner while the upload is in flight
+
+The Settings → Data → Import form now mounts a full-viewport ``.backup-busy`` overlay (re-using the spinner already styled for the backup wizard) on submit, with **"Restoring bundle…"** / "Uploading the archive and replacing data. Don't close this tab." copy. The submit button flips to ``Restoring…`` and is disabled so the operator can't double-post. Resolves the silent-click confusion on multi-hundred-MB bundles where the browser shows no progress for tens of seconds while the upload streams.
+
+### Fixed — Full-portal Import: lift 256 MiB upload cap + friendly 413 page
+
+The Settings → Data → Import form was silently failing on any prod restore bundle bigger than 256 MiB. Flask's ``MAX_CONTENT_LENGTH`` (hard-coded at ``256 * 1024 * 1024``) short-circuits the request with HTTP 413 before ``data_import`` even runs, so the browser navigated to a bare error body that rendered as a blank page — no flash, no clue. After back-button the app still worked, but no data had imported. Triggered as soon as the source install accumulated a couple hundred MB of media — the uploads dir alone is part of the bundle.
+
+Two changes in ``app/__init__.py``:
+
+- **Default cap raised to 4 GiB and made env-configurable** via new ``TSP_MAX_UPLOAD_MB`` (megabytes; default ``4096``, falls back to ``4096`` on a bad value). Headroom for whole-portal restore archives without committing to "unlimited" — installs that need a tighter ceiling can dial it down.
+- **413 errorhandler** flashes ``"Upload too large — exceeds the N MB limit. Raise TSP_MAX_UPLOAD_MB on the server and restart, then retry."`` and redirects to the Referer (same-host validated against ``request.host`` to avoid open-redirect; falls back to ``main.index``). The user lands back on the form they submitted instead of staring at a blank page.
+
+CLAUDE.md updated to document the new default + env var.
+
+### Fixed — Meeting edit modal: page behind reloads after a successful save
+
+The meeting edit modal intercepts submit via ``fetch()`` to keep the modal open after a save (so the operator can keep editing), but the host page behind the modal was still rendering pre-save data once the modal was dismissed. The save handler in ``_meeting_modal.html`` now sets ``modal.dataset.reloadOnClose = '1'`` on a successful save, and a ``MutationObserver`` on the modal's ``aria-hidden`` attribute fires ``window.location.reload()`` the moment the modal closes by any path (Cancel button, X, Esc, or backdrop click). The keep-open-after-save UX is preserved — the reload only fires when the operator actually dismisses the modal, and saving twice before closing still results in exactly one reload.
+
 ## [2.1.5] — 2026-05-17
 
 ### Added — Audience controls on the email-list blast (Full list / Granular)

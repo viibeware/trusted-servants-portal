@@ -83,6 +83,17 @@ def create_app():
         "TSP_REMEMBER_COOKIE_NAME", f"tspro_remember_{_cookie_suffix}")
 
     db_path = os.path.join(data_dir, "tsp.db")
+    # Upload cap. Default is generous (4 GiB) so full-portal restore bundles
+    # — which carry the whole uploads dir + the SQLite DB inside a single
+    # multipart POST — aren't truncated to HTTP 413 the moment a deployment
+    # accumulates non-trivial media. Override via ``TSP_MAX_UPLOAD_MB``
+    # (megabytes) for installs that need a tighter ceiling. The previous
+    # 256 MiB default was a foot-gun: any prod export much past a few-hundred
+    # media uploads silently failed to import on the destination.
+    try:
+        _max_upload_mb = int(os.environ.get("TSP_MAX_UPLOAD_MB", "4096"))
+    except ValueError:
+        _max_upload_mb = 4096
     app.config.update(
         SECRET_KEY=secret_key,
         SQLALCHEMY_DATABASE_URI=f"sqlite:///{db_path}",
@@ -90,7 +101,7 @@ def create_app():
         DATA_DIR=data_dir,
         DB_PATH=db_path,
         UPLOAD_FOLDER=upload_dir,
-        MAX_CONTENT_LENGTH=256 * 1024 * 1024,
+        MAX_CONTENT_LENGTH=_max_upload_mb * 1024 * 1024,
         PERMANENT_SESSION_LIFETIME=timedelta(days=180),
         REMEMBER_COOKIE_DURATION=timedelta(days=180),
         REMEMBER_COOKIE_NAME=remember_cookie_name,
@@ -979,6 +990,30 @@ def create_app():
     from flask import render_template, request as _request, redirect, url_for
     from flask_login import current_user as _current_user
     from .models import SiteSetting as _SiteSetting
+
+    # Upload-too-large: Flask short-circuits with HTTP 413 BEFORE the route
+    # runs, so the bundle-restore form would otherwise navigate to a bare
+    # error body the browser renders as a blank page. Flash a useful message
+    # and bounce back to where the user came from so they see what went wrong.
+    from flask import flash as _flash
+    @app.errorhandler(413)
+    def _handle_413(_err):
+        cap_mb = app.config.get("MAX_CONTENT_LENGTH", 0) // (1024 * 1024)
+        _flash(
+            f"Upload too large — exceeds the {cap_mb} MB limit. "
+            f"Raise TSP_MAX_UPLOAD_MB on the server and restart, then retry.",
+            "danger",
+        )
+        # Prefer the Referer so the user lands back on the form that
+        # triggered the upload; fall back to the admin index. Validate
+        # the referrer points at this host to avoid open-redirect.
+        from urllib.parse import urlparse
+        ref = _request.headers.get("Referer", "")
+        try:
+            host_ok = bool(ref) and urlparse(ref).netloc == _request.host
+        except ValueError:
+            host_ok = False
+        return redirect(ref if host_ok else url_for("main.index"))
 
     @app.errorhandler(404)
     def _handle_404(_err):

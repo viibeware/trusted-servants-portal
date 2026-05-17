@@ -1235,12 +1235,43 @@
                 data directory before the import is applied. You will be signed out
                 when the import completes. Type <code>REPLACE</code> to confirm.
               </p>
-              <form class="form" method="post" action="{{ url_for('main.data_import') }}" enctype="multipart/form-data" data-no-ajax="1">
+              <form class="form" method="post" action="{{ url_for('main.data_import') }}" enctype="multipart/form-data" data-no-ajax="1" data-import-bundle-form>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <label>Export archive (.zip)<input type="file" name="archive" accept=".zip,application/zip" required></label>
                 <label>Type <code>REPLACE</code> to confirm<input type="text" name="confirm" placeholder="REPLACE" autocomplete="off" required></label>
-                <div class="form-actions"><button class="btn btn-danger">Import &amp; Replace All Data</button></div>
+                <div class="form-actions"><button class="btn btn-danger" data-import-bundle-submit>Import &amp; Replace All Data</button></div>
               </form>
+              {# Busy overlay shown on submit so the operator sees the upload
+                 is in flight. Full-bundle restores can take a while (multi-
+                 hundred-MB POST + DB swap + uploads copy on the server), so
+                 the previous silent button-click looked like the page had
+                 hung. Reuses the existing .backup-busy styles. #}
+              <div class="backup-busy" data-import-bundle-busy hidden role="status" aria-live="polite">
+                <div class="backup-busy-card">
+                  <div class="backup-busy-spinner" aria-hidden="true"></div>
+                  <div class="backup-busy-text">
+                    <strong>Restoring bundle…</strong>
+                    <span class="muted small">Uploading the archive and replacing data. Don't close this tab.</span>
+                  </div>
+                </div>
+              </div>
+              <script>
+              (function () {
+                var form = document.querySelector('[data-import-bundle-form]');
+                if (!form) return;
+                var busy = document.querySelector('[data-import-bundle-busy]');
+                var btn  = form.querySelector('[data-import-bundle-submit]');
+                form.addEventListener('submit', function () {
+                  // Browser still applies HTML5 ``required`` validation
+                  // before firing submit; if we're here, the form passed.
+                  if (busy) busy.hidden = false;
+                  if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = 'Restoring…';
+                  }
+                });
+              })();
+              </script>
             </div>
             <div class="data-card-col">
               <div class="u-name">Export</div>
