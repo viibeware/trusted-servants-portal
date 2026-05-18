@@ -6,7 +6,7 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
-## [2.1.15] — 2026-05-18
+## [2.1.16] — 2026-05-18
 
 ### Changed — Off-site backup datetimes now render in the site's configured timezone
 
@@ -30,6 +30,8 @@ The widget used to drop a user the moment their ``last_seen_at`` aged past 5 min
 ### Fixed — Newly-logged-in user shows up in the Currently Online widget immediately
 
 ``User.last_seen_at`` was only ever set by the request-tracker's before_request hook on a non-skipped GET. If a fresh login's post-redirect GET happened to be skip-listed (an asset request, an API ping) or the visitor closed the tab before the redirect resolved, the user wouldn't appear in the widget on the next 5-second poll. ``auth.login`` now stamps ``user.last_seen_at = utcnow()`` at the moment ``login_user()`` returns, so the row enters the widget regardless of what the redirect lands on.
+
+## [2.1.15] — 2026-05-18
 
 ### Changed — Form Submissions moved out of the Web Frontend admin into the main app sidebar
 

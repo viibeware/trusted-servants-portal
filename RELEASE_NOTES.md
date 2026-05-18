@@ -7,13 +7,9 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.1.15 — 2026-05-18 (latest) — Form Submissions sidebar, local-time backups, idle Currently-Online rows
+## 2.1.16 — 2026-05-18 (latest) — Local-time backups, idle Currently-Online rows, instant post-login appearance
 
-A few admin-experience polishes that build on the 2.1.12 forms feature and tighten the dashboard widget.
-
-### Form Submissions sidebar entry
-
-The **Form Submissions** inbox moved out of the Web Frontend admin and into the main app sidebar's **Admin** section, right next to **Contact Form**. Visible only to admins. One click from anywhere in the portal opens the submissions list. The submissions list and detail pages also picked up a small cleanup: they render as standalone admin pages now, without the Web Frontend admin's two-column subnav chrome.
+Three admin-experience polishes around dates, the dashboard widget, and login UX.
 
 ### Off-site backup times now show in your local timezone
 
@@ -30,6 +26,10 @@ The header count ("X users") still reflects only the currently-active users (wit
 ### Newly-logged-in user shows up in the widget right away
 
 A small reliability fix: a user who just logged in now appears in the widget on the very next 5-second poll regardless of what page their post-login redirect lands on. (Previously the widget waited for the first non-asset GET to fire its tracker, which was 99% of the time the next page they loaded but had occasional misses.)
+
+## 2.1.15 — 2026-05-18 — Form Submissions now lives in the main app sidebar
+
+The **Form Submissions** inbox moved out of the Web Frontend admin and into the main app sidebar's **Admin** section, right next to **Contact Form**. Visible only to admins. One click from anywhere in the portal opens the submissions list. The submissions list and detail pages also picked up a small cleanup: they render as standalone admin pages now, without the Web Frontend admin's two-column subnav chrome.
 
 ## 2.1.14 — 2026-05-18 — Fix: custom form submit 500'd while sending recipient email
 
