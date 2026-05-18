@@ -66,6 +66,15 @@
           {% if t.last_status == 'failed' and t.last_error %}
           <div class="backup-target-error small">{{ icon('alert-triangle') }} {{ t.last_error }}</div>
           {% endif %}
+          {% if t.kind == 'dropbox' and t.oauth_token_enc and not t.refresh_token_enc %}
+          <div class="backup-target-error small" style="background:#fff6e1; color:#7c4a03; border-color:#fde4b3;">
+            {{ icon('alert-triangle') }}
+            <strong>Legacy short-lived token.</strong>
+            Dropbox access tokens generated from the app console expire every 4 hours. Open
+            <a href="{{ url_for('main.backups_edit', target_id=t.id, embed=1 if embed else None) }}">Edit</a>
+            and complete the OAuth authorization step to upgrade to a refresh token (long-lived, auto-refreshes).
+          </div>
+          {% endif %}
         </div>
         <div class="backup-target-actions">
           <form method="post" action="{{ url_for('main.backups_run_now', target_id=t.id) }}" style="display:inline" data-backup-runnow-form>

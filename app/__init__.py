@@ -1574,6 +1574,15 @@ def _migrate_sqlite(app):
         for col, ddl in (("open_in_new_tab", "BOOLEAN NOT NULL DEFAULT 0"),
                          ("form_trigger", "VARCHAR(64)")):
             add("frontend_nav_item", col, ddl)
+        # Dropbox OAuth refresh-token columns. The legacy
+        # ``oauth_token_enc`` column already exists from earlier migrations
+        # (it shipped with the original Dropbox backend); these add the
+        # app credentials + refresh token so the SDK can mint short-lived
+        # access tokens on every call instead of failing every 4 hours.
+        for col, ddl in (("app_key", "VARCHAR(64)"),
+                         ("app_secret_enc", "BLOB"),
+                         ("refresh_token_enc", "BLOB")):
+            add("backup_target", col, ddl)
         for col, ddl in (("asset_files_json", "TEXT"),):
             add("custom_font", col, ddl)
         for col, ddl in (("is_draft", "BOOLEAN NOT NULL DEFAULT 0"),

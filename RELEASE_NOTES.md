@@ -7,7 +7,19 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.1.10 — 2026-05-18 (latest) — Bundle encryption, Frontend overview, edit-in-place backups, card shadow colour
+## 2.1.11 — 2026-05-18 (latest) — Dropbox backups stop expiring every 4 hours
+
+If you were using Dropbox as an off-site backup destination, the access token Dropbox's "Generate access token" button gives you is only valid for **4 hours** — so the scheduler worked once the day you set it up, then failed every subsequent morning with `expired_access_token` and you had to keep generating new tokens. (Dev mode wasn't the cause — the token lifetime is the same on dev and published apps.)
+
+Switched to Dropbox's proper OAuth refresh-token flow so the connection stays live indefinitely. Here's what changes for you:
+
+- The Dropbox backup wizard now asks for **App key**, **App secret**, and a one-time **authorization code** instead of an access token. The App key and App secret come from your Dropbox app's **Settings** tab; the authorization code comes from clicking the new **Open Dropbox authorization page** button on the form — Dropbox shows you a code, you paste it back in, and we exchange it for a long-lived refresh token at save time.
+- The Dropbox SDK then auto-mints a fresh short-lived access token on every backup call. No more daily expiry. The refresh token doesn't expire until you manually revoke the app's access from your Dropbox account settings.
+- **Migrating an existing Dropbox target:** open **Off-site Backups** in Settings — your existing target will show a yellow banner reading "Legacy short-lived token" with a link straight into the Edit page. Fill in the three fields (App key, App secret, fresh authorization code from the auth page) and Save. Same Dropbox app, same remote path, same schedule — just upgraded auth.
+
+The legacy raw-token path is still supported in code (so a pre-2.1.11 target keeps working until you upgrade it), but it'll continue to expire every 4 hours and the banner will keep nagging you to upgrade.
+
+## 2.1.10 — 2026-05-18 — Bundle encryption, Frontend overview, edit-in-place backups, card shadow colour
 
 A grab-bag release focused on making the admin surface easier to live in and locking down the things that travel off-machine.
 

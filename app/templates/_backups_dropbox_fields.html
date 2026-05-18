@@ -1,0 +1,117 @@
+{# Dropbox connection fields — shared by the create wizard's step 2 and
+   the edit page. Implements the OAuth-with-refresh-token flow:
+
+     1. Operator creates a Dropbox app (or reuses an existing one) and
+        pastes its App key + App secret.
+     2. Clicks the auto-generated authorization link, which opens
+        Dropbox's consent screen for THAT app with `token_access_type=
+        offline` so Dropbox issues a long-lived refresh token instead
+        of a short-lived access token.
+     3. Dropbox shows a one-time authorization code; operator pastes it
+        here.
+     4. On Save, the server POSTs to https://api.dropboxapi.com/oauth2/
+        token to exchange the code for a refresh token (one-shot — the
+        code itself is single-use) and stores the refresh token
+        encrypted alongside the app credentials.
+
+   The SDK then mints a fresh short-lived access token on every API
+   call using the stored credentials — no more 4-hour expiry pain.
+
+   `t` is the BackupTarget row (template context provides it from
+   either wizard step 2 or the edit page). #}
+<ol class="backup-dropbox-steps">
+  <li>
+    Visit <a href="https://www.dropbox.com/developers/apps" target="_blank" rel="noopener">Dropbox developers → My apps</a> and create a new app
+    (Scoped access, App folder), or open an existing one. Dev mode is
+    fine — the app doesn't need to be published.
+  </li>
+  <li>
+    Under the new app's <b>Permissions</b> tab, enable
+    <code>files.content.write</code>, <code>files.content.read</code>,
+    <code>files.metadata.write</code>, <code>files.metadata.read</code>. Save.
+  </li>
+  <li>
+    Open the <b>Settings</b> tab and copy the <b>App key</b> and
+    <b>App secret</b> into the two fields below.
+  </li>
+  <li>
+    Click <b>Open Dropbox authorization page</b>. Dropbox will ask you
+    to grant the app access; after you allow, it shows a one-time
+    <b>authorization code</b>. Paste that code into the third field.
+  </li>
+</ol>
+
+<div class="form-row">
+  <label>App key
+    <input type="text" name="app_key" value="{{ t.app_key or '' }}"
+           autocomplete="off" data-dropbox-app-key
+           placeholder="e.g. ab12cd34ef56gh7">
+  </label>
+  <label>App secret
+    <input type="password" name="app_secret" autocomplete="new-password"
+           placeholder="{% if t.app_secret_enc %}(leave blank to keep current){% else %}(from the app's Settings tab){% endif %}">
+  </label>
+</div>
+
+<div class="backup-test-row">
+  <a class="btn" target="_blank" rel="noopener" data-dropbox-auth-link
+     href="#" aria-disabled="true">
+    {{ icon('external-link') }} Open Dropbox authorization page
+  </a>
+  <span class="muted smaller">Enter App key above first, then click to open.</span>
+</div>
+
+<label>Authorization code
+  <input type="text" name="auth_code" autocomplete="off"
+         placeholder="{% if t.refresh_token_enc %}(leave blank to keep current connection){% else %}(paste the code Dropbox shows you){% endif %}">
+  <span class="muted smaller">
+    {% if t.refresh_token_enc %}
+      A refresh token is already stored — the SDK will keep using it
+      indefinitely. Paste a new authorization code only if you've
+      revoked access or rotated the app secret.
+    {% elif t.oauth_token_enc %}
+      <strong>This target is using a legacy short-lived access token</strong> that
+      expires every 4 hours. Paste an authorization code above and save
+      to upgrade to a long-lived refresh token.
+    {% else %}
+      One-time code from Dropbox. Single-use — we exchange it for a
+      long-lived refresh token at save time.
+    {% endif %}
+  </span>
+</label>
+
+<label>Remote path
+  <input type="text" name="remote_path" value="{{ t.remote_path or '/' }}" placeholder="/">
+  <span class="muted smaller">Relative to the app folder. Use "/" to put backups directly in the app folder.</span>
+</label>
+
+<script>
+(function () {
+  // Wire the "Open Dropbox authorization page" link to the live App key
+  // value — so the operator can change the key and reuse the same
+  // button. The URL is the standard OAuth 2 authorize endpoint with
+  // token_access_type=offline (required to get back a refresh token
+  // rather than the short-lived default).
+  var keyInput = document.querySelector('[data-dropbox-app-key]');
+  var authLink = document.querySelector('[data-dropbox-auth-link]');
+  if (!keyInput || !authLink) return;
+  function sync() {
+    var k = (keyInput.value || '').trim();
+    if (!k) {
+      authLink.setAttribute('href', '#');
+      authLink.setAttribute('aria-disabled', 'true');
+      authLink.classList.add('disabled');
+      return;
+    }
+    var u = 'https://www.dropbox.com/oauth2/authorize'
+          + '?client_id=' + encodeURIComponent(k)
+          + '&response_type=code'
+          + '&token_access_type=offline';
+    authLink.setAttribute('href', u);
+    authLink.setAttribute('aria-disabled', 'false');
+    authLink.classList.remove('disabled');
+  }
+  keyInput.addEventListener('input', sync);
+  sync();
+})();
+</script>

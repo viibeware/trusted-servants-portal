@@ -3969,6 +3969,56 @@ def _validate_cron(expr):
         return f"Not a valid cron expression: {e}"
 
 
+def _exchange_dropbox_auth_code(app_key, app_secret, auth_code):
+    """Exchange a Dropbox one-time authorization code for a long-lived
+    refresh token. Returns ``(refresh_token, None)`` on success or
+    ``(None, error_message)`` on failure — caller flashes the error and
+    rejects the form. The Dropbox SDK provides a higher-level
+    ``DropboxOAuth2FlowNoRedirect`` helper, but a raw POST is enough
+    here and keeps the dependency surface tight."""
+    if not (app_key and app_secret and auth_code):
+        return None, "App key, app secret, and authorization code are all required."
+    import requests
+    try:
+        resp = requests.post(
+            "https://api.dropboxapi.com/oauth2/token",
+            data={
+                "code": auth_code,
+                "grant_type": "authorization_code",
+                "client_id": app_key,
+                "client_secret": app_secret,
+            },
+            timeout=15,
+        )
+    except requests.RequestException as e:
+        return None, f"Couldn't reach Dropbox to exchange the code: {e}"
+    try:
+        body = resp.json()
+    except ValueError:
+        return None, f"Dropbox returned a non-JSON response ({resp.status_code})."
+    if resp.status_code != 200:
+        err = body.get("error_description") or body.get("error") or f"HTTP {resp.status_code}"
+        # Map the common cases to actionable copy.
+        if "invalid_grant" in str(err).lower() or "expired" in str(err).lower() or "code" in str(err).lower():
+            err = (f"Dropbox rejected the authorization code ({err}). "
+                   f"Codes are single-use and expire quickly — open the "
+                   f"authorization page again, allow access, and paste the "
+                   f"fresh code.")
+        elif "invalid_client" in str(err).lower():
+            err = (f"Dropbox rejected the app credentials ({err}). "
+                   f"Double-check the App key and App secret from your "
+                   f"app's Settings tab.")
+        return None, f"Dropbox auth-code exchange failed: {err}"
+    refresh_token = body.get("refresh_token")
+    if not refresh_token:
+        return None, ("Dropbox didn't return a refresh token. Make sure "
+                      "the authorization URL included "
+                      "`token_access_type=offline` — use the "
+                      "auto-generated button above the code field "
+                      "rather than a hand-crafted URL.")
+    return refresh_token, None
+
+
 @bp.route("/settings/backups")
 @admin_required
 def backups_list():
@@ -4062,9 +4112,36 @@ def backups_wizard_step2_post(target_id):
         if key_text:
             t.private_key_enc = encrypt(key_text)
     elif t.kind == "dropbox":
-        token = (request.form.get("oauth_token") or "").strip()
-        if token:
-            t.oauth_token_enc = encrypt(token)
+        # Dropbox refresh-token flow. The wizard collects three things:
+        # app_key (public client id), app_secret (encrypted at rest),
+        # and an optional one-time authorization code which we exchange
+        # for a refresh token here. Legacy oauth_token field still
+        # accepted so a paste-the-access-token workflow keeps working
+        # for back-compat, but is no longer surfaced in the UI.
+        new_app_key = (request.form.get("app_key") or "").strip()
+        if new_app_key:
+            t.app_key = new_app_key
+        new_app_secret = (request.form.get("app_secret") or "").strip()
+        if new_app_secret:
+            t.app_secret_enc = encrypt(new_app_secret)
+        auth_code = (request.form.get("auth_code") or "").strip()
+        if auth_code:
+            secret_plain = (new_app_secret
+                            or (decrypt(t.app_secret_enc) if t.app_secret_enc else None))
+            refresh, err = _exchange_dropbox_auth_code(
+                t.app_key, secret_plain, auth_code)
+            if err:
+                flash(err, "danger")
+                return redirect(url_for("main.backups_wizard",
+                                        target_id=t.id, step=2,
+                                        **_backup_embed_kwargs()))
+            t.refresh_token_enc = encrypt(refresh)
+            # Refresh token supersedes any legacy short-lived access
+            # token — clear it so DropboxBackend doesn't fall back.
+            t.oauth_token_enc = None
+        legacy_token = (request.form.get("oauth_token") or "").strip()
+        if legacy_token:
+            t.oauth_token_enc = encrypt(legacy_token)
 
     db.session.commit()
     return redirect(url_for("main.backups_wizard", target_id=t.id, step=3,
@@ -4216,9 +4293,30 @@ def backups_edit_post(target_id):
         if key_text:
             t.private_key_enc = encrypt(key_text)
     elif t.kind == "dropbox":
-        token = (request.form.get("oauth_token") or "").strip()
-        if token:
-            t.oauth_token_enc = encrypt(token)
+        # Mirror of the wizard step 2 Dropbox flow — see comments there.
+        # Pulls app_key / app_secret / auth_code from the form; when an
+        # auth_code is present we exchange it for a refresh token.
+        new_app_key = (request.form.get("app_key") or "").strip()
+        if new_app_key:
+            t.app_key = new_app_key
+        new_app_secret = (request.form.get("app_secret") or "").strip()
+        if new_app_secret:
+            t.app_secret_enc = encrypt(new_app_secret)
+        auth_code = (request.form.get("auth_code") or "").strip()
+        if auth_code:
+            secret_plain = (new_app_secret
+                            or (decrypt(t.app_secret_enc) if t.app_secret_enc else None))
+            refresh, err = _exchange_dropbox_auth_code(
+                t.app_key, secret_plain, auth_code)
+            if err:
+                flash(err, "danger")
+                return redirect(url_for("main.backups_edit", target_id=t.id,
+                                        **_backup_embed_kwargs()))
+            t.refresh_token_enc = encrypt(refresh)
+            t.oauth_token_enc = None
+        legacy_token = (request.form.get("oauth_token") or "").strip()
+        if legacy_token:
+            t.oauth_token_enc = encrypt(legacy_token)
 
     # ── Schedule (same as step 3) ──
     preset = request.form.get("schedule_preset") or ""

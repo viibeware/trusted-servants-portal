@@ -73,15 +73,9 @@
       </details>
       {% endif %}
       {% else %}
-      {# Dropbox #}
-      <label>Access token
-        <input type="text" name="oauth_token" autocomplete="off"
-               placeholder="{% if t.oauth_token_enc %}(leave blank to keep current){% else %}sl.B1AbCdEf...{% endif %}">
-      </label>
-      <label>Remote path
-        <input type="text" name="remote_path" value="{{ t.remote_path or '/' }}" placeholder="/">
-        <span class="muted smaller">Relative to the app folder. Use "/" to put backups directly in the app folder.</span>
-      </label>
+      {# Dropbox — same refresh-token flow as the wizard. Shared partial
+         so a future change to the OAuth fields lands in one place. #}
+      {% include "_backups_dropbox_fields.html" %}
       {% endif %}
 
       <div class="backup-test-row">

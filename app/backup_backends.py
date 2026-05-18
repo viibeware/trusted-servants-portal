@@ -309,19 +309,28 @@ class SFTPBackend:
 class DropboxBackend:
     """Uses the Dropbox HTTP SDK.
 
-    Tokens are issued via the wizard's OAuth flow — the SDK call below
-    uploads to ``<remote_path>/<remote_name>``. We always normalize the
-    path to start with "/" because Dropbox rejects relative paths.
+    Auth: prefers the refresh-token path
+    (``app_key`` + ``app_secret`` + ``refresh_token``) so the SDK can mint
+    a short-lived access token on every call. Falls back to a raw
+    ``oauth_token`` for legacy targets created before Dropbox flipped to
+    short-lived-only tokens in Sept 2021; those targets will expire every
+    4 hours and the operator needs to upgrade via the Edit page.
 
-    The 150 MB chunked-upload threshold is the SDK's documented cutoff
-    where ``files_upload`` stops being safe; below it we use the simple
-    one-shot call, above it ``files_upload_session_*``.
+    We always normalize the remote path to start with "/" because
+    Dropbox rejects relative paths. The 150 MB chunked-upload threshold
+    is the SDK's documented cutoff where ``files_upload`` stops being
+    safe; below it we use the simple one-shot call, above it
+    ``files_upload_session_*``.
     """
     CHUNK = 8 * 1024 * 1024
     SIMPLE_UPLOAD_LIMIT = 150 * 1024 * 1024
 
-    def __init__(self, oauth_token, remote_path="/"):
-        self.token = oauth_token
+    def __init__(self, oauth_token=None, app_key=None, app_secret=None,
+                 refresh_token=None, remote_path="/"):
+        self.token = oauth_token or None
+        self.app_key = app_key or None
+        self.app_secret = app_secret or None
+        self.refresh_token = refresh_token or None
         self.remote_path = self._normalize(remote_path)
         self._dbx = None
 
@@ -348,7 +357,25 @@ class DropboxBackend:
             # HTTP pool — that pool gets reused for all subsequent calls
             # on this client, so v4-only resolution sticks.
             with _prefer_ipv4():
-                self._dbx = dropbox.Dropbox(self.token, timeout=60)
+                # Refresh-token path (new targets): SDK auto-mints a
+                # fresh short-lived access token on every call using the
+                # app credentials + refresh token. No 4-hour expiry pain.
+                if self.refresh_token and self.app_key and self.app_secret:
+                    self._dbx = dropbox.Dropbox(
+                        oauth2_refresh_token=self.refresh_token,
+                        app_key=self.app_key,
+                        app_secret=self.app_secret,
+                        timeout=60,
+                    )
+                elif self.token:
+                    # Legacy raw-token path — kept for pre-2.1.11 targets.
+                    self._dbx = dropbox.Dropbox(self.token, timeout=60)
+                else:
+                    raise BackendError(
+                        "Dropbox target is missing credentials. Edit the "
+                        "target and supply App key + App secret + an OAuth "
+                        "authorization code to upgrade to a refresh-token "
+                        "configuration.")
                 # check_user is the cheapest authenticated call — fails fast
                 # if the token was revoked. Also forces the pool to open
                 # its first connection while the patch is active.
@@ -474,6 +501,9 @@ def make_backend(target):
     if kind == "dropbox":
         return DropboxBackend(
             oauth_token=decrypt(target.oauth_token_enc) if target.oauth_token_enc else "",
+            app_key=target.app_key or None,
+            app_secret=decrypt(target.app_secret_enc) if target.app_secret_enc else None,
+            refresh_token=decrypt(target.refresh_token_enc) if target.refresh_token_enc else None,
             remote_path=target.remote_path or "/",
         )
     raise BackendError(f"unknown backup kind {kind!r}")

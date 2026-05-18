@@ -2264,13 +2264,26 @@ class BackupTarget(db.Model):
     enabled = db.Column(db.Boolean, nullable=False, default=False)
 
     # Connection — FTP/SFTP use host/port/username/password_enc; SFTP can
-    # alternatively use private_key_enc; Dropbox uses oauth_token_enc.
+    # alternatively use private_key_enc.
+    #
+    # Dropbox: ``oauth_token_enc`` holds a legacy short-lived access
+    # token (4-hour lifetime since Dropbox's Sept-2021 auth change) and
+    # is kept only for backward compat with pre-2.1.11 targets. New
+    # targets store a long-lived OAuth refresh token in
+    # ``refresh_token_enc`` plus the app's ``app_key`` (plaintext —
+    # half of a public OAuth client id) and ``app_secret_enc``
+    # (encrypted) so the SDK can mint a fresh access token on every
+    # call. ``DropboxBackend`` prefers the refresh-token path and
+    # falls back to the legacy token when the refresh trio is empty.
     host = db.Column(db.String(255))
     port = db.Column(db.Integer)
     username = db.Column(db.String(255))
     password_enc = db.Column(db.LargeBinary)
     private_key_enc = db.Column(db.LargeBinary)
     oauth_token_enc = db.Column(db.LargeBinary)
+    app_key = db.Column(db.String(64))
+    app_secret_enc = db.Column(db.LargeBinary)
+    refresh_token_enc = db.Column(db.LargeBinary)
 
     # FTPS toggle (FTP only). When false, plain FTP — surface a warning
     # in the wizard so the admin opts in deliberately.

@@ -59,28 +59,14 @@
     </details>
     {% endif %}
     {% else %}
-    {# Dropbox #}
-    <ol class="backup-dropbox-steps">
-      <li>
-        Visit <a href="https://www.dropbox.com/developers/apps" target="_blank" rel="noopener">Dropbox developers → My apps</a> and create a new app (Scoped access, App folder).
-      </li>
-      <li>
-        Under the new app's <b>Permissions</b> tab, enable
-        <code>files.content.write</code>, <code>files.content.read</code>,
-        <code>files.metadata.write</code>, <code>files.metadata.read</code>. Save.
-      </li>
-      <li>
-        Open the <b>Settings</b> tab and click <b>Generate access token</b>. Copy the value and paste it below.
-      </li>
-    </ol>
-    <label>Access token
-      <input type="text" name="oauth_token" autocomplete="off"
-             placeholder="{% if t.oauth_token_enc %}(leave blank to keep current){% else %}sl.B1AbCdEf...{% endif %}">
-    </label>
-    <label>Remote path
-      <input type="text" name="remote_path" value="{{ t.remote_path or '/' }}" placeholder="/">
-      <span class="muted smaller">Relative to the app folder. Use "/" to put backups directly in the app folder.</span>
-    </label>
+    {# Dropbox — refresh-token OAuth flow. The legacy "Generate access
+       token" path produced a token that expires after 4 hours, so the
+       scheduler would fail every morning. Now we collect the app's
+       OAuth client credentials (app_key + app_secret) plus a one-time
+       authorization code, exchange it for a refresh token at save
+       time, and the SDK handles re-minting access tokens on every
+       call automatically. #}
+    {% include "_backups_dropbox_fields.html" %}
     {% endif %}
 
     <div class="backup-test-row">

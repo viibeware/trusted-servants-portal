@@ -6,6 +6,21 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.1.11] — 2026-05-18
+
+### Fixed — Dropbox backup target no longer expires every 4 hours
+
+The Dropbox backup wizard collected a raw access token from the Dropbox developer console's "Generate access token" button. Since Dropbox's Sept-2021 auth change those tokens are **short-lived (4-hour lifetime)**, so the scheduler's daily 3 AM run worked once and then failed every subsequent morning with ``AuthError('expired_access_token', None)``. Dev mode is unrelated — the token lifetime is the same on dev and published apps.
+
+Switched the Dropbox path to the OAuth-with-refresh-token flow:
+
+- **Three new ``BackupTarget`` columns** (``app_key``, ``app_secret_enc``, ``refresh_token_enc``) + matching ``_migrate_sqlite`` entries. The legacy ``oauth_token_enc`` column stays so pre-2.1.11 targets keep working until they're migrated; the backend falls back to it when the refresh trio is empty.
+- **``DropboxBackend.open()``** prefers ``dropbox.Dropbox(oauth2_refresh_token=…, app_key=…, app_secret=…)`` when those three are present — the SDK auto-mints a fresh short-lived access token on every call. Falls back to the legacy raw-token constructor when only ``oauth_token_enc`` is set; raises a clear error message when neither is set.
+- **New shared template partial ``_backups_dropbox_fields.html``** — App key + App secret + Authorization code fields, plus a JS-driven "Open Dropbox authorization page" link that fills in the OAuth URL (``https://www.dropbox.com/oauth2/authorize?client_id=<key>&response_type=code&token_access_type=offline``) so the operator gets back a *refresh* token rather than another short-lived access token. Reused by both the wizard step 2 and the edit page so future changes land in one place.
+- **New helper ``_exchange_dropbox_auth_code()``** — POSTs to ``https://api.dropboxapi.com/oauth2/token`` to swap the operator's one-time authorization code for a refresh token at save time. Maps ``invalid_grant`` / ``invalid_client`` / missing-refresh-token / network errors to actionable flash messages.
+- **Both POST handlers** (``backups_wizard_step2_post`` + ``backups_edit_post``) run the exchange when ``auth_code`` is present, persist the encrypted refresh token, and clear ``oauth_token_enc`` so the backend stops falling back to the (now-expired) legacy token.
+- **Yellow banner on ``backups_list.html``** for any Dropbox target that still has only the legacy ``oauth_token_enc``, with a direct link to Edit so the operator can finish the OAuth dance in one click.
+
 ## [2.1.10] — 2026-05-18
 
 ### Added — Edit an off-site backup target after it's been added
