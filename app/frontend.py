@@ -1749,6 +1749,14 @@ def story_submission_form():
         abort(404)
     if not getattr(site, "story_form_enabled", True):
         abort(404)
+    # When the admin set a custom slug, the canonical /storyform
+    # bounces to /<custom-slug>. The page_detail catch-all invokes
+    # this function directly with request.path == /<custom-slug>,
+    # so the canonical-path check below only fires on direct
+    # /storyform hits.
+    _custom = (site.story_form_slug or "").strip()
+    if _custom and request.path.rstrip("/") == "/storyform":
+        return redirect(url_for("frontend.page_detail", slug=_custom))
     ctx = _frontend_context(site)
     # Reuse the shared Submission Form chrome — the same Classic /
     # Minimal / Split variants the events-submission form and every
@@ -1967,6 +1975,16 @@ def submission_form():
         return gate
     if not site or not getattr(site, "submission_form_enabled", True):
         abort(404)
+    # When the admin set a custom slug for this form the canonical
+    # ``/submissionform`` path is no longer the active URL — redirect
+    # to the custom slug instead so the browser bar shows the
+    # operator's chosen URL. The page_detail catch-all calls this
+    # function directly (request.path == /<custom-slug>) so the
+    # canonical-path check below only fires for direct
+    # /submissionform hits.
+    _custom = (site.submission_form_slug or "").strip()
+    if _custom and request.path.rstrip("/") == "/submissionform":
+        return redirect(url_for("frontend.page_detail", slug=_custom))
     ctx = _frontend_context(site)
 
     tpl = _template_meta(SUBMISSION_FORM_TEMPLATES,
@@ -3683,6 +3701,13 @@ def contact():
         return gate
     if not site or not getattr(site, "contact_form_enabled", False):
         abort(404)
+    # When the admin set a custom slug, the canonical /contact path
+    # redirects to /<custom-slug>. The page_detail catch-all calls
+    # this function directly so request.path will be /<custom-slug>
+    # in that branch and this check skips.
+    _custom = (site.contact_form_slug or "").strip()
+    if _custom and request.path.rstrip("/") == "/contact":
+        return redirect(url_for("frontend.page_detail", slug=_custom))
     ctx = _frontend_context(site)
     return render_template("frontend/contact.html", **ctx)
 

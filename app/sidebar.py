@@ -49,7 +49,7 @@ _ADMIN_CATALOG = [
     # Watchtower as the canonical entry point.
     {"key": "watchtower",      "label": "Watchtower",             "endpoint": "main.watchtower",       "active_kind": "contains:watchtower"},
     {"key": "contact_form",    "label": "Contact Form",           "endpoint": "main.contact_form",     "active_kind": "contains:contact_form"},
-    {"key": "form_submissions", "label": "Custom Forms",      "endpoint": "main.frontend_form_submissions",
+    {"key": "form_submissions", "label": "Custom Form Submissions",      "endpoint": "main.frontend_form_submissions",
      "active_kind": "prefix:main.frontend_form_submission"},
 ]
 

@@ -3,7 +3,13 @@
 {% block heading_help %}Configures the public contact-us form at <code>/contact</code>. Visitor messages email the public information chair (with reply-to set to the visitor) and persist in the Contact Form admin section so nothing is lost when the email lands in spam.{% endblock %}
 {% block top_actions %}
 <a class="btn" href="{{ url_for('main.frontend_forms') }}">← All forms</a>
-<a class="btn" href="{{ url_for('frontend.contact') }}" target="_blank" rel="noopener">Preview /contact ↗</a>
+{%- set _custom_slug = (site.contact_form_slug or '').strip() if site else '' -%}
+{%- if _custom_slug -%}
+  {%- set _preview_url = url_for('frontend.page_detail', slug=_custom_slug) -%}
+{%- else -%}
+  {%- set _preview_url = url_for('frontend.contact') -%}
+{%- endif -%}
+<a class="btn" href="{{ _preview_url }}" target="_blank" rel="noopener">Preview {{ _preview_url }} ↗</a>
 <a class="btn" href="{{ url_for('main.contact_form') }}">View messages</a>
 {% endblock %}
 {% block content %}

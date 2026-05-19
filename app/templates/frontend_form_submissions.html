@@ -1,6 +1,9 @@
 {% extends "base.html" %}
-{% block heading %}Form Submissions{% endblock %}
+{% block heading %}Custom Form Submissions{% endblock %}
 {% block heading_help %}Everything visitors have submitted through your custom forms. Filter by form using the dropdown; click any row for the full detail view. Most recent 200 shown.{% endblock %}
+{% block top_actions %}
+<a class="btn" href="{{ url_for('main.frontend_forms') }}">{{ icon('settings') }} Manage forms</a>
+{% endblock %}
 {% block content %}
 <section class="card">
   <div class="card-head">

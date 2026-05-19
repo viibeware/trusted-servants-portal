@@ -3,7 +3,13 @@
 {% block heading_help %}Configures the public story submission form at <code>/storyform</code>. Visitor submissions land in the Pending review tab on the Stories admin page; the recipients below also get an email notification with any attached file referenced for download from the admin.{% endblock %}
 {% block top_actions %}
 <a class="btn" href="{{ url_for('main.frontend_forms') }}">← All forms</a>
-<a class="btn" href="{{ url_for('frontend.story_submission_form') }}" target="_blank" rel="noopener">Preview /storyform ↗</a>
+{%- set _custom_slug = (site.story_form_slug or '').strip() if site else '' -%}
+{%- if _custom_slug -%}
+  {%- set _preview_url = url_for('frontend.page_detail', slug=_custom_slug) -%}
+{%- else -%}
+  {%- set _preview_url = url_for('frontend.story_submission_form') -%}
+{%- endif -%}
+<a class="btn" href="{{ _preview_url }}" target="_blank" rel="noopener">Preview {{ _preview_url }} ↗</a>
 <a class="btn" href="{{ url_for('main.stories', show='pending') }}">Holding tank</a>
 {% endblock %}
 {% block content %}
