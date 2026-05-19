@@ -134,12 +134,19 @@
       </section>
       {% endif %}
 
-      {% if event.website_url %}
+      {% set _links = event.event_links %}
+      {% if _links %}
       <section class="fe-event-detail-card">
-        <h3>{{ icon('external-link') }} Event website</h3>
-        <a class="fe-btn fe-btn-primary" href="{{ event.website_url }}" target="_blank" rel="noopener">
-          {{ event.website_label or 'Visit event website' }} ↗
-        </a>
+        <h3>{{ icon('external-link') }} Links</h3>
+        <div class="fe-event-detail-links">
+          {% for link in _links %}
+          <a class="fe-btn fe-btn-{{ 'ghost' if link.style == 'secondary' else 'primary' }}"
+             href="{{ link.url }}"
+             {% if link.new_tab %}target="_blank" rel="noopener"{% endif %}>
+            {{ link.label or link.url }}{% if link.new_tab %} ↗{% endif %}
+          </a>
+          {% endfor %}
+        </div>
       </section>
       {% endif %}
 

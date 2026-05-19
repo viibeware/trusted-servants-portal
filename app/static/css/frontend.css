@@ -3474,6 +3474,11 @@ html[data-theme="dark"] .fe-meeting-detail-alert {
   font-size: 1rem; margin: 0 0 12px; color: var(--fe-ink);
 }
 .fe-event-detail-card h3 .icon { width: 18px; height: 18px; color: var(--fe-accent); }
+.fe-event-detail-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 .fe-event-detail-when {
   margin: 0; display: flex; flex-direction: column; gap: 4px;
 }

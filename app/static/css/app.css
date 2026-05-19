@@ -1466,6 +1466,59 @@ html[data-theme="dark"] .post-chip-private      { background: rgba(168, 85, 247,
   line-height: 1.4;
 }
 
+/* Multi-row Links editor on the announcement/event edit page.
+   Each row is a card-ish stack: URL + label inputs side-by-side on
+   top, the "open in new tab" toggle + remove button on the bottom. */
+.post-links-editor { margin-top: .5rem; }
+.post-links-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+}
+.post-links-row {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .65rem .85rem;
+  background: var(--panel-2, transparent);
+}
+.post-links-row-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: .75rem;
+}
+@media (max-width: 720px) {
+  .post-links-row-fields { grid-template-columns: 1fr; }
+}
+.post-links-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .85rem;
+  margin-top: .5rem;
+}
+.post-links-row-style {
+  display: inline-flex;
+  flex-direction: column;
+  gap: .2rem;
+  min-width: 180px;
+}
+.post-links-row-style select { font: inherit; }
+.post-links-row-newtab {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+}
+.post-links-row-remove {
+  margin-left: auto;
+}
+.post-links-row-remove .icon { width: 14px; height: 14px; }
+.post-links-actions {
+  margin-top: .65rem;
+}
+
 /* Branding & SEO: two-panel grid inside the Site Identity card —
    Site name + Favicon | Open Graph. Mirrors .fe-header-grid. */
 .fe-branding-grid {

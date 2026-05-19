@@ -91,16 +91,17 @@
           </li>
           {% endif %}
 
-          {% if event.website_url %}
+          {% for link in event.event_links %}
           <li>
             <span class="fe-event-time-meta-icon">{{ icon('external-link') }}</span>
             <span>
-              <a class="fe-event-time-link" href="{{ event.website_url }}" target="_blank" rel="noopener">
-                {{ event.website_label or 'Event website' }} ↗
+              <a class="fe-event-time-link" href="{{ link.url }}"
+                 {% if link.new_tab %}target="_blank" rel="noopener"{% endif %}>
+                {{ link.label or link.url }}{% if link.new_tab %} ↗{% endif %}
               </a>
             </span>
           </li>
-          {% endif %}
+          {% endfor %}
         </ul>
 
         {% if event.is_online and (event.zoom_meeting_id or event.zoom_passcode) %}

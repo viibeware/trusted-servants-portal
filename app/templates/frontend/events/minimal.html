@@ -77,10 +77,14 @@
       </dd>
       {% endif %}
 
-      {% if event.website_url %}
-      <dt>Website</dt>
+      {% set _links = event.event_links %}
+      {% if _links %}
+      <dt>Links</dt>
       <dd>
-        <a class="fe-event-min-link" href="{{ event.website_url }}" target="_blank" rel="noopener">{{ event.website_label or event.website_url }} →</a>
+        {% for link in _links %}
+        <a class="fe-event-min-link" href="{{ link.url }}"
+           {% if link.new_tab %}target="_blank" rel="noopener"{% endif %}>{{ link.label or link.url }} →</a>{% if not loop.last %}<br>{% endif %}
+        {% endfor %}
       </dd>
       {% endif %}
 

@@ -13685,8 +13685,43 @@ def post_save():
     post.location_address = (request.form.get("location_address") or "").strip() or None
     post.google_maps_url = (request.form.get("google_maps_url") or "").strip()[:500] or None
 
-    post.website_url = (request.form.get("website_url") or "").strip()[:500] or None
-    post.website_label = (request.form.get("website_label") or "").strip()[:120] or None
+    # Multi-row Links section. Each row submits as parallel
+    # ``link_url[]``, ``link_label[]``, plus an indexed
+    # ``link_new_tab_<idx>`` checkbox (HTML checkboxes that aren't
+    # ticked simply don't post — using indices lets the server keep
+    # row-to-checkbox alignment even when some checkboxes are off).
+    # Empty URL rows are dropped so a removed/blank entry doesn't
+    # produce an orphan link.
+    import json as _json
+    _urls = request.form.getlist("link_url")
+    _labels = request.form.getlist("link_label")
+    _styles = request.form.getlist("link_style")
+    _links = []
+    for i, raw_url in enumerate(_urls):
+        url = (raw_url or "").strip()[:500]
+        if not url:
+            continue
+        label = (_labels[i] if i < len(_labels) else "").strip()[:120] or None
+        new_tab = (request.form.get(f"link_new_tab_{i}") == "1")
+        # Button style — defaults to primary so links typed without
+        # touching the dropdown still render as a solid CTA.
+        style = (_styles[i] if i < len(_styles) else "").strip().lower()
+        if style not in ("primary", "secondary"):
+            style = "primary"
+        _links.append({"url": url, "label": label,
+                       "new_tab": new_tab, "style": style})
+    post.links_json = _json.dumps(_links) if _links else None
+    # Keep the legacy single-pair columns in sync with the first
+    # link so import scripts + older code paths still surface
+    # *something* sensible. Set to NULL when there are no links so
+    # the legacy fallback inside ``event_links`` doesn't resurrect a
+    # stale single link after the admin clears the list.
+    if _links:
+        post.website_url = _links[0]["url"]
+        post.website_label = _links[0]["label"]
+    else:
+        post.website_url = None
+        post.website_label = None
 
     post.zoom_meeting_id = (request.form.get("zoom_meeting_id") or "").strip()[:64] or None
     post.zoom_passcode = (request.form.get("zoom_passcode") or "").strip()[:128] or None

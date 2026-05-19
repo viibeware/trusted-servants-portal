@@ -1630,7 +1630,8 @@ def _migrate_sqlite(app):
                          ("submitter_notes", "TEXT"),
                          ("submitted_at", "DATETIME"),
                          ("published_at", "DATETIME"),
-                         ("announcement_auto_archive_at", "DATETIME")):
+                         ("announcement_auto_archive_at", "DATETIME"),
+                         ("links_json", "TEXT")):
             add("post", col, ddl)
         for col, ddl in (("published_at", "DATETIME"),):
             add("story", col, ddl)

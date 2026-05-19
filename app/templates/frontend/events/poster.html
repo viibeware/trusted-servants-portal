@@ -81,11 +81,13 @@
           {{ icon('map-pin') }} Open in Maps <em>↗</em>
         </a>
         {% endif %}
-        {% if event.website_url %}
-        <a class="fe-btn fe-btn-ghost fe-event-poster-cta" href="{{ event.website_url }}" target="_blank" rel="noopener">
-          {{ icon('external-link') }} {{ event.website_label or 'Event website' }} <em>↗</em>
+        {% for link in event.event_links %}
+        <a class="fe-btn fe-btn-{{ 'ghost' if link.style == 'secondary' else 'primary' }} fe-event-poster-cta"
+           href="{{ link.url }}"
+           {% if link.new_tab %}target="_blank" rel="noopener"{% endif %}>
+          {{ icon('external-link') }} {{ link.label or 'Link' }}{% if link.new_tab %} <em>↗</em>{% endif %}
         </a>
-        {% endif %}
+        {% endfor %}
         {% if event.event_starts_at %}
         <a class="fe-btn fe-btn-ghost fe-event-poster-cta"
            href="{{ url_for('frontend.event_calendar_ics', slug=event.public_slug) }}"

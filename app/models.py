@@ -1664,9 +1664,74 @@ class Post(db.Model):
     google_maps_url = db.Column(db.String(500))
 
     # Event website (free URL with a label so the link reads as the
-    # admin wants it to read on the public site).
+    # admin wants it to read on the public site). Retained for
+    # backwards compat with older rows + import scripts; new edits
+    # use the multi-row ``links_json`` column below, which falls back
+    # to this pair when empty so existing posts keep their single
+    # link without an explicit migration.
     website_url = db.Column(db.String(500))
     website_label = db.Column(db.String(120))
+    # Multi-row "Links" list, replacing the single website_url/label
+    # pair on the edit UI. Serialised as a JSON list of
+    # ``{"url": str, "label": str, "new_tab": bool}`` dicts. The
+    # ``event_links`` property below transparently falls back to the
+    # legacy single-pair columns when this is unset so renderers can
+    # iterate one consistent collection.
+    links_json = db.Column(db.Text)
+
+    @property
+    def event_links(self):
+        """Return the resolved list of public links for this post.
+
+        Each entry is a dict with ``url``, ``label``, and ``new_tab``
+        keys; entries with no URL are filtered out. When
+        ``links_json`` is empty (legacy rows + rows whose admin
+        hasn't opened the new editor yet), the legacy
+        ``website_url`` / ``website_label`` pair is wrapped into a
+        single-item list so the public templates keep rendering the
+        same link they always did."""
+        import json
+        out = []
+        if self.links_json:
+            try:
+                parsed = json.loads(self.links_json)
+                if isinstance(parsed, list):
+                    for it in parsed:
+                        if not isinstance(it, dict):
+                            continue
+                        url = (it.get("url") or "").strip()
+                        if not url:
+                            continue
+                        # ``style`` picks the button chrome on
+                        # templates that render links as buttons —
+                        # ``primary`` = solid accent button,
+                        # ``secondary`` = ghost / outline button.
+                        # Unknown values fall back to ``primary`` so
+                        # the link still renders prominently.
+                        style = (it.get("style") or "").strip().lower()
+                        if style not in ("primary", "secondary"):
+                            style = "primary"
+                        out.append({
+                            "url": url,
+                            "label": (it.get("label") or "").strip() or None,
+                            "new_tab": bool(it.get("new_tab", True)),
+                            "style": style,
+                        })
+            except (ValueError, TypeError):
+                out = []
+        if not out and self.website_url:
+            out.append({
+                "url": self.website_url,
+                "label": self.website_label or None,
+                # Legacy links always opened in a new tab on the
+                # public templates, so mirror that default here.
+                "new_tab": True,
+                # Legacy single-link rendering always used the
+                # primary (solid) button style on the classic +
+                # poster templates, so default to that.
+                "style": "primary",
+            })
+        return out
 
     # Zoom (announcements never have these; events do, when online).
     zoom_meeting_id = db.Column(db.String(64))

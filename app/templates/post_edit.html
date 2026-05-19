@@ -364,31 +364,9 @@
       </label>
     </div>
 
-    {# Event website / external link — folded into the Event details
-       card so all event-only fields live in one place. Same field
-       names as before, so the save handler doesn't need to change. #}
-    <h3 class="post-subhead">Event website <span class="muted smaller">(optional)</span></h3>
-    <div class="form-row">
-      <label>URL <span class="muted small">(absolute or relative)</span>
-        {# `type="text"` + `inputmode="url"` instead of `type="url"`
-           so the browser doesn't reject relative paths like
-           `/about-us` (which the public renderer resolves against
-           the app's own domain). The mobile URL keyboard still
-           comes up via `inputmode="url"`. #}
-        <input type="text" inputmode="url" name="website_url" maxlength="500"
-               value="{{ (_p.website_url if _p else '') or '' }}"
-               placeholder="https://example.org/event or /page-slug">
-      </label>
-      <label>Link label <span class="muted small">(what visitors see on the button)</span>
-        <input type="text" name="website_label" maxlength="120"
-               value="{{ (_p.website_label if _p else '') or '' }}"
-               placeholder="Register on Eventbrite">
-      </label>
-    </div>
-
-    {# Event contact — also folded in. Shown publicly when set; admins
-       can leave all three fields blank when an event has no host
-       contact info to surface. #}
+    {# Event contact — folded in above Links. Shown publicly when
+       set; admins can leave all three fields blank when an event
+       has no host contact info to surface. #}
     <h3 class="post-subhead">Event contact <span class="muted smaller">(optional)</span></h3>
     <label>Name
       <input type="text" name="contact_name" maxlength="120"
@@ -404,6 +382,140 @@
                value="{{ (_p.contact_email if _p else '') or '' }}">
       </label>
     </div>
+
+  </section>
+
+  {# ── Links ────────────────────────────────────────────────────
+     Universal to both announcements and events — pulled out of the
+     Event details card so a pure announcement can still attach
+     call-to-action buttons. Each row carries a URL, a label that
+     becomes the visible button text on the public site, a button
+     style (primary / secondary), and a checkbox controlling whether
+     the link opens in a new tab. Rows with a blank URL are silently
+     dropped at save time. #}
+  <section class="card">
+    <div class="card-head">
+      <h2>Links</h2>
+      <span class="muted smaller">Optional call-to-action buttons rendered on the public page. Applies to announcements and events.</span>
+    </div>
+    {%- set _existing_links = (_p.event_links if _p else []) -%}
+    <div class="post-links-editor" data-links-editor>
+      <ul class="post-links-list" data-links-list>
+        {% if _existing_links %}
+          {% for link in _existing_links %}
+          {% set _idx = loop.index0 %}
+          <li class="post-links-row" data-link-row data-link-index="{{ _idx }}">
+            <div class="post-links-row-fields">
+              <label>URL <span class="muted small">(absolute or relative)</span>
+                {# `type="text"` + `inputmode="url"` instead of
+                   `type="url"` so the browser doesn't reject
+                   relative paths like `/about-us` (which the
+                   public renderer resolves against the app's own
+                   domain). The mobile URL keyboard still comes
+                   up via `inputmode="url"`. #}
+                <input type="text" inputmode="url" name="link_url" maxlength="500"
+                       value="{{ link.url }}"
+                       placeholder="https://example.org/event or /page-slug">
+              </label>
+              <label>Link label <span class="muted small">(button text)</span>
+                <input type="text" name="link_label" maxlength="120"
+                       value="{{ link.label or '' }}"
+                       placeholder="Register on Eventbrite">
+              </label>
+            </div>
+            <div class="post-links-row-meta">
+              <label class="post-links-row-style">
+                <span class="muted small">Button style</span>
+                <select name="link_style">
+                  <option value="primary" {% if (link.style or 'primary') == 'primary' %}selected{% endif %}>Primary (solid)</option>
+                  <option value="secondary" {% if link.style == 'secondary' %}selected{% endif %}>Secondary (outline)</option>
+                </select>
+              </label>
+              <label class="check post-links-row-newtab">
+                <input type="checkbox" name="link_new_tab_{{ _idx }}" value="1"
+                       data-link-newtab
+                       {% if link.new_tab %}checked{% endif %}>
+                <span>Open in new tab</span>
+              </label>
+              <button type="button" class="btn btn-sm btn-danger post-links-row-remove"
+                      data-link-remove
+                      title="Remove this link">{{ icon('x') }}</button>
+            </div>
+          </li>
+          {% endfor %}
+        {% else %}
+          <li class="post-links-row" data-link-row data-link-index="0">
+            <div class="post-links-row-fields">
+              <label>URL <span class="muted small">(absolute or relative)</span>
+                <input type="text" inputmode="url" name="link_url" maxlength="500"
+                       placeholder="https://example.org/event or /page-slug">
+              </label>
+              <label>Link label <span class="muted small">(button text)</span>
+                <input type="text" name="link_label" maxlength="120"
+                       placeholder="Register on Eventbrite">
+              </label>
+            </div>
+            <div class="post-links-row-meta">
+              <label class="post-links-row-style">
+                <span class="muted small">Button style</span>
+                <select name="link_style">
+                  <option value="primary" selected>Primary (solid)</option>
+                  <option value="secondary">Secondary (outline)</option>
+                </select>
+              </label>
+              <label class="check post-links-row-newtab">
+                <input type="checkbox" name="link_new_tab_0" value="1"
+                       data-link-newtab checked>
+                <span>Open in new tab</span>
+              </label>
+              <button type="button" class="btn btn-sm btn-danger post-links-row-remove"
+                      data-link-remove
+                      title="Remove this link">{{ icon('x') }}</button>
+            </div>
+          </li>
+        {% endif %}
+      </ul>
+      <div class="post-links-actions">
+        <button type="button" class="btn btn-sm" data-link-add>
+          {{ icon('plus') }} Add another link
+        </button>
+      </div>
+      {# Hidden template the JS clones when "Add another link" is
+         clicked. Lives outside the live list so the server-side
+         form never sees its inputs. #}
+      <template data-link-template>
+        <li class="post-links-row" data-link-row data-link-index="__IDX__">
+          <div class="post-links-row-fields">
+            <label>URL <span class="muted small">(absolute or relative)</span>
+              <input type="text" inputmode="url" name="link_url" maxlength="500"
+                     placeholder="https://example.org/event or /page-slug">
+            </label>
+            <label>Link label <span class="muted small">(button text)</span>
+              <input type="text" name="link_label" maxlength="120"
+                     placeholder="Register on Eventbrite">
+            </label>
+          </div>
+          <div class="post-links-row-meta">
+            <label class="post-links-row-style">
+              <span class="muted small">Button style</span>
+              <select name="link_style">
+                <option value="primary" selected>Primary (solid)</option>
+                <option value="secondary">Secondary (outline)</option>
+              </select>
+            </label>
+            <label class="check post-links-row-newtab">
+              <input type="checkbox" name="link_new_tab___IDX__" value="1"
+                     data-link-newtab checked>
+              <span>Open in new tab</span>
+            </label>
+            <button type="button" class="btn btn-sm btn-danger post-links-row-remove"
+                    data-link-remove
+                    title="Remove this link">{{ icon('x') }}</button>
+          </div>
+        </li>
+      </template>
+    </div>
+
   </section>
 
 </form>
@@ -446,6 +558,59 @@
     highlightTimer = setTimeout(() => {
       slugInput.classList.remove('slug-input-field--synced');
     }, 1400);
+  });
+})();
+</script>
+
+{# Multi-row Links editor: add / remove rows and keep each row's
+   checkbox `name` aligned with its index so the server can match
+   the "open in new tab" flag to the right URL. #}
+<script>
+(function () {
+  var editor = document.querySelector('[data-links-editor]');
+  if (!editor) return;
+  var list = editor.querySelector('[data-links-list]');
+  var addBtn = editor.querySelector('[data-link-add]');
+  var tpl = editor.querySelector('[data-link-template]');
+  if (!list || !addBtn || !tpl) return;
+
+  function reindex() {
+    var rows = list.querySelectorAll('[data-link-row]');
+    rows.forEach(function (row, i) {
+      row.dataset.linkIndex = String(i);
+      var cb = row.querySelector('[data-link-newtab]');
+      if (cb) cb.name = 'link_new_tab_' + i;
+    });
+  }
+
+  addBtn.addEventListener('click', function () {
+    var html = tpl.innerHTML.replace(/__IDX__/g, String(list.children.length));
+    var wrap = document.createElement('div');
+    wrap.innerHTML = html.trim();
+    var node = wrap.firstChild;
+    list.appendChild(node);
+    reindex();
+    var input = node.querySelector('input[name="link_url"]');
+    if (input) input.focus();
+  });
+
+  list.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-link-remove]');
+    if (!btn) return;
+    var row = btn.closest('[data-link-row]');
+    if (!row) return;
+    // Always leave at least one editable row in place so admins
+    // who emptied the list can start typing without re-clicking
+    // "Add another link" — saving with a blank URL is a no-op
+    // anyway, so the row reads as "no link" without extra UI.
+    if (list.children.length === 1) {
+      row.querySelectorAll('input[type="text"]').forEach(function (i) { i.value = ''; });
+      var cb = row.querySelector('[data-link-newtab]');
+      if (cb) cb.checked = true;
+    } else {
+      row.remove();
+    }
+    reindex();
   });
 })();
 </script>
