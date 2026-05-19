@@ -975,6 +975,52 @@ def template_css_vars(settings):
     return " ".join(parts)
 
 
+def _accept_matches(rule, file_storage):
+    """Check whether an uploaded ``FileStorage`` satisfies an HTML5
+    ``accept``-style rule (comma-separated list of extensions and / or
+    MIME types). Mirrors the client-side behaviour built into the
+    file picker so a tampered POST can't bypass the field's type
+    restriction.
+
+    Each token in ``rule`` is one of:
+
+      • ``.ext`` — case-insensitive extension match against the
+        uploaded filename's tail.
+      • ``image/*`` — wildcard MIME-type match by main type.
+      • ``application/pdf`` — exact MIME-type match.
+
+    Empty rule string skips validation (anything goes). Returns True
+    when *any* token in the rule matches the uploaded file.
+    """
+    if not rule:
+        return True
+    fname = (getattr(file_storage, "filename", None) or "").strip().lower()
+    mime = (getattr(file_storage, "mimetype", None) or "").strip().lower()
+    ext = ""
+    if "." in fname:
+        ext = "." + fname.rsplit(".", 1)[-1]
+    for token in rule.split(","):
+        token = token.strip().lower()
+        if not token:
+            continue
+        if token.startswith("."):
+            if ext == token:
+                return True
+        elif token.endswith("/*"):
+            main = token[:-2]
+            if main and mime.startswith(main + "/"):
+                return True
+        elif "/" in token:
+            if mime == token:
+                return True
+        else:
+            # Bare token without leading dot — treat as extension
+            # for forgiving admin input (e.g. ``pdf`` vs ``.pdf``).
+            if ext == "." + token:
+                return True
+    return False
+
+
 def _site():
     return SiteSetting.query.first()
 
@@ -4015,6 +4061,12 @@ def custom_form_submit(slug):
         elif ftype == "file":
             f = request.files.get(name)
             if f and f.filename:
+                accept_rule = (block.get("accept") or "").strip()
+                if accept_rule and not _accept_matches(accept_rule, f):
+                    errors[name] = (
+                        f"File type not allowed. Accepted: {accept_rule}"
+                    )
+                    continue
                 # UUID-prefix the filename to match the rest of the
                 # uploads dir's convention. Storing only the filename
                 # in payload (not the full path) keeps the FormSubmission

@@ -89,6 +89,7 @@
         </span>
       {% elif block.type == 'file' %}
         <input type="file" name="{{ block.name }}"
+               {% if block.get('accept') %}accept="{{ block.accept }}"{% endif %}
                {% if block.required %}required{% endif %}>
       {% endif %}
 

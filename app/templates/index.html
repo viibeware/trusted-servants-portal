@@ -397,7 +397,7 @@
               </span>
               <span class="dash-forms-meta muted smaller">
                 {{ row.subtitle }} ·
-                {% if row.total %}{{ row.total }} submission{{ '' if row.total == 1 else 's' }}{% else %}no submissions yet{% endif %}
+                {% if row.attention %}{{ row.attention }} {{ row.attention_label or 'awaiting review' }}{% else %}all caught up{% endif %}
                 {% if row.last_at %} · last {{ row.last_at.strftime('%b %-d') }}{% endif %}
               </span>
             </span>

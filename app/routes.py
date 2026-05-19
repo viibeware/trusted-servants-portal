@@ -7220,6 +7220,16 @@ def _parse_form_fields(form):
             opts_raw = form.get(f"field_{idx}_options") or ""
             opts = [o.strip()[:200] for o in opts_raw.splitlines() if o.strip()]
             block["options"] = opts[:50]  # hard ceiling per field
+        if ftype == "file":
+            # Accepted file types — comma-separated list of MIME
+            # types or extensions (e.g. ``.pdf,.doc,image/*``). The
+            # HTML5 ``accept`` attribute drives client-side picker
+            # filtering; the server-side handler enforces the same
+            # list on submit so a tampered POST can't smuggle a
+            # disallowed type through.
+            accept = (form.get(f"field_{idx}_accept") or "").strip()[:500]
+            if accept:
+                block["accept"] = accept
         fields.append(block)
 
     return fields

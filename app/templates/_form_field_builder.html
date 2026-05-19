@@ -68,6 +68,12 @@
           <textarea name="field_{{ idx }}_options" rows="4" placeholder="Option 1&#10;Option 2">{{ (f.get('options') or [])|join('\n') }}</textarea>
         </label>
         {% endif %}
+        <label data-field-accept-wrap {% if f.type != 'file' %}hidden{% endif %}>
+          Accepted file types
+          <span class="muted smaller">— comma-separated extensions or MIME types. Examples: <code>.pdf,.doc,.docx</code> · <code>image/*</code> · <code>.jpg,.png,.webp</code>. Leave blank to accept any file.</span>
+          <input type="text" name="field_{{ idx }}_accept" value="{{ f.get('accept', '') }}" maxlength="500"
+                 placeholder=".pdf,.doc,.docx">
+        </label>
         <label class="check">
           <input type="checkbox" name="field_{{ idx }}_required" value="1" {% if f.required %}checked{% endif %}>
           Required
@@ -109,6 +115,12 @@
         </label>
         <label data-field-options-wrap hidden>Options <span class="muted smaller">(one per line)</span>
           <textarea name="field___IDX___options" rows="4" placeholder="Option 1&#10;Option 2"></textarea>
+        </label>
+        <label data-field-accept-wrap hidden>
+          Accepted file types
+          <span class="muted smaller">— comma-separated extensions or MIME types. Examples: <code>.pdf,.doc,.docx</code> · <code>image/*</code> · <code>.jpg,.png,.webp</code>. Leave blank to accept any file.</span>
+          <input type="text" name="field___IDX___accept" maxlength="500"
+                 placeholder=".pdf,.doc,.docx">
         </label>
         <label class="check">
           <input type="checkbox" name="field___IDX___required" value="1">
@@ -165,8 +177,11 @@
   function showOptionsIfNeeded(card) {
     var type = (card.querySelector('input[name$="_type"]') || {}).value;
     var wrap = card.querySelector('[data-field-options-wrap]');
-    if (!wrap) return;
-    wrap.hidden = !OPTION_TYPES[type];
+    if (wrap) wrap.hidden = !OPTION_TYPES[type];
+    // ``accept`` (file-type restriction) only applies to file
+    // fields; hide it elsewhere so the card body stays tidy.
+    var acceptWrap = card.querySelector('[data-field-accept-wrap]');
+    if (acceptWrap) acceptWrap.hidden = type !== 'file';
   }
 
   function swapHelpInputForCheckboxes(card) {
