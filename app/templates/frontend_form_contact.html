@@ -34,6 +34,20 @@
 
       <section class="card">
         <div class="card-head">
+          <h2>Public URL</h2>
+          <span class="muted smaller">The form's built-in URL is <code>/contact</code>. Set a custom slug below to serve the form at <code>/&lt;your-slug&gt;</code> as well.</span>
+        </div>
+        <label>Public URL slug
+          <input type="text" name="contact_form_slug" maxlength="120"
+                 pattern="[a-z0-9-]*"
+                 value="{{ site.contact_form_slug or 'contact' }}"
+                 placeholder="contact">
+          <span class="muted small">Lowercase letters, numbers, and hyphens only. The built-in URL (<code>/contact</code>) always works as a fallback; saving the default value here means no custom alias is added.</span>
+        </label>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
           <h2>Recipient</h2>
           <span class="muted smaller">Where messages are emailed. Comma-separated for multiple recipients. Replies in your inbox go straight to the visitor — the message is sent with <code>Reply-To</code> set to the email they typed in the form.</span>
         </div>
@@ -52,21 +66,8 @@
       <section class="card">
         <div class="card-head">
           <h2>Form behaviour</h2>
-          <span class="muted smaller">What the visitor sees and which fields are required.</span>
+          <span class="muted smaller">Submit-button label. Per-field visibility / required state now lives in the field builder below.</span>
         </div>
-        <fieldset class="fieldset">
-          <legend>Visible fields</legend>
-          <label class="check">
-            <input type="checkbox" name="contact_form_show_phone" value="1"
-                   {% if site.contact_form_show_phone %}checked{% endif %}>
-            <span><b>Show the phone field</b> <span class="muted smaller">— always optional for the visitor.</span></span>
-          </label>
-          <label class="check">
-            <input type="checkbox" name="contact_form_subject_required" value="1"
-                   {% if site.contact_form_subject_required %}checked{% endif %}>
-            <span><b>Require a subject line</b> <span class="muted smaller">— blocks submission until the visitor fills it in.</span></span>
-          </label>
-        </fieldset>
         <label>Submit button label
           <input type="text" name="contact_form_submit_label" maxlength="100"
                  value="{{ site.contact_form_submit_label or '' }}"
@@ -96,6 +97,16 @@
           Configure it on <a href="{{ url_for('main.index') }}">Settings → Login &amp; security</a>.
         </p>
       </section>
+
+      {# Field builder. Saved override drives the public form; leaving
+         the builder at its defaults keeps the form's built-in field
+         set. Keep names <code>name</code>, <code>email</code>,
+         <code>subject</code>, <code>phone</code>, <code>message</code>
+         to preserve the structured ContactSubmission row mapping. #}
+      {% with fields=form_fields, field_types=field_types,
+              builder_help='These are the fields rendered on the public form at <code>/contact</code>. Drag to reorder. Field names map submissions to the ContactSubmission row — keep <code>name</code>, <code>email</code>, <code>subject</code>, <code>phone</code>, and <code>message</code> if you want the existing inbox to surface those columns.' %}
+        {% include "_form_field_builder.html" %}
+      {% endwith %}
 
       <div class="form-actions">
         <button class="btn btn-primary">Save contact form</button>

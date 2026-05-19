@@ -39,7 +39,7 @@ def all_forms():
     return [
         {
             "key": "submission",
-            "name": "Submission Form",
+            "name": "Announcements/Events Form",
             "description": (
                 "Lets visitors submit events and announcements for "
                 "admin review. Submissions land in a holding tank on "
@@ -54,6 +54,23 @@ def all_forms():
             # this column directly through its inline toggle, so a
             # future form just needs to declare its own column here.
             "enabled_setting": "submission_form_enabled",
+        },
+        {
+            "key": "story",
+            "name": "Story Submission Form",
+            "description": (
+                "Lets visitors submit recovery stories for admin "
+                "review. Submissions land as drafts in the Stories "
+                "admin under a Pending review tab; an optional file "
+                "attachment (text doc / audio recording) rides "
+                "along for the admin to download before editing the "
+                "draft and publishing. An email goes to the "
+                "configured recipients on each submission."
+            ),
+            "icon": "book-open",
+            "settings_endpoint": "main.frontend_form_story",
+            "public_url_endpoint": "frontend.story_submission_form",
+            "enabled_setting": "story_form_enabled",
         },
         {
             "key": "contact",

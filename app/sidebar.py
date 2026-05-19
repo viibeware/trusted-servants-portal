@@ -49,7 +49,7 @@ _ADMIN_CATALOG = [
     # Watchtower as the canonical entry point.
     {"key": "watchtower",      "label": "Watchtower",             "endpoint": "main.watchtower",       "active_kind": "contains:watchtower"},
     {"key": "contact_form",    "label": "Contact Form",           "endpoint": "main.contact_form",     "active_kind": "contains:contact_form"},
-    {"key": "form_submissions", "label": "Form Submissions",      "endpoint": "main.frontend_form_submissions",
+    {"key": "form_submissions", "label": "Custom Forms",      "endpoint": "main.frontend_form_submissions",
      "active_kind": "prefix:main.frontend_form_submission"},
 ]
 
@@ -134,7 +134,19 @@ def _is_visible(key, site, user):
     # to see counts.
     if key == "watchtower":      return False
     if key == "contact_form":    return bool(user.is_admin())
-    if key == "form_submissions": return bool(user.is_admin())
+    if key == "form_submissions":
+        # Only surface "Custom Forms" when at least one CustomForm
+        # row exists — the page itself is custom-form-only and the
+        # sidebar entry would 404-feel for a fresh install with no
+        # custom forms yet. Wrap the query in try/except so the
+        # sidebar doesn't crash if the table isn't migrated yet.
+        if not user.is_admin():
+            return False
+        try:
+            from .models import CustomForm
+            return CustomForm.query.limit(1).count() > 0
+        except Exception:  # noqa: BLE001
+            return False
     if key == "web_frontend":    return False
     return False
 

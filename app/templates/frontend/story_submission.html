@@ -1,0 +1,101 @@
+{% extends "frontend/base.html" %}
+{%- set _heading = (site.story_form_heading if site else None) or 'Share your story' -%}
+{%- set _subheading = (site.story_form_subheading if site else None)
+    or 'Recovery stories help newcomers feel less alone. Submit yours below and an editor will follow up.' -%}
+{%- set _intro = (site.story_form_intro if site else None) -%}
+{%- set _submit_label = (site.story_form_submit_label if site else None) or 'Submit your story' -%}
+{%- set _name_label = (site.story_form_name_label if site else None) or 'Name' -%}
+{%- set _email_label = (site.story_form_email_label if site else None) or 'Email' -%}
+{%- set _email_required = (site.story_form_email_required if site else False) -%}
+{%- set _story_label = (site.story_form_story_label if site else None) or 'Story' -%}
+{%- set _story_placeholder = (site.story_form_story_placeholder if site else None) or 'Type/Paste your story here' -%}
+{%- set _file_label = (site.story_form_file_label if site else None) or 'File Upload' -%}
+{%- set _file_help = (site.story_form_file_help if site else None)
+    or 'If your story is in a file, optionally upload it here instead of pasting it' -%}
+{%- set _terms_label = (site.story_form_terms_label if site else None) or 'Accept Terms' -%}
+{%- set _terms_intro = (site.story_form_terms_intro if site else None) or 'Please read and accept the terms below:' -%}
+{%- set _terms_text = (site.story_form_terms_text if site else None) -%}
+{%- set _terms_checkbox_label = (site.story_form_terms_checkbox_label if site else None) or 'I accept the terms below' -%}
+{% block title %}{{ _heading }} · {{ frontend_title }}{% endblock %}
+{% block content %}
+{# Public story submission page. Layout mirrors the original
+   "Story Submission Form" custom-form fields: Name + Email + Story
+   textarea + optional file upload + Accept Terms checkbox. Every
+   label / placeholder / help text reads from SiteSetting so the
+   admin can edit the form's wording without touching code; each
+   setting falls back to a baked default that matches the original
+   custom form, so a fresh install renders identically to what was
+   already in production. Posts land as Story rows with
+   ``is_pending_review=True``; admins review + edit + publish from
+   the Stories admin's Pending review tab. #}
+<section class="fe-section fe-submission-section">
+  <div class="fe-container fe-submission-page">
+    <header class="fe-submission-header">
+      <h1>{{ _heading }}</h1>
+      <p class="fe-submission-sub">{{ _subheading }}</p>
+      {% if _intro %}
+      <div class="fe-submission-intro">{{ _intro|markdown }}</div>
+      {% endif %}
+    </header>
+
+    {% with flashes = get_flashed_messages(with_categories=true) %}
+    {% if flashes %}
+    <ul class="flashes" role="status">
+      {% for category, msg in flashes %}
+      <li class="flash flash-{{ category or 'info' }}">{{ msg }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% endwith %}
+
+    <form method="post"
+          action="{{ url_for('frontend.story_submission_submit') }}"
+          enctype="multipart/form-data"
+          class="form fe-submission-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <label>{{ _name_label }} <span class="req">*</span>
+        <input type="text" name="submitter_name" maxlength="120" required
+               placeholder="{{ _name_label }}">
+      </label>
+
+      <label>{{ _email_label }} {% if _email_required %}<span class="req">*</span>{% endif %}
+        <input type="email" name="submitter_email" maxlength="255"
+               {% if _email_required %}required{% endif %}>
+      </label>
+
+      <label>{{ _story_label }} <span class="req">*</span>
+        <textarea name="body" rows="10" required
+                  placeholder="{{ _story_placeholder }}"></textarea>
+      </label>
+
+      <label>{{ _file_label }} <span class="muted smaller">(optional)</span>
+        <input type="file" name="attachment">
+        {% if _file_help %}<span class="fe-field-help muted small">{{ _file_help }}</span>{% endif %}
+      </label>
+
+      <fieldset class="fe-submission-fieldset fe-story-terms-fieldset">
+        <legend>{{ _terms_label }} <span class="req">*</span></legend>
+        {% if _terms_intro %}<p class="fe-story-terms-intro">{{ _terms_intro }}</p>{% endif %}
+        {% if _terms_text %}
+        <div class="fe-story-terms-text">{{ _terms_text|markdown }}</div>
+        {% endif %}
+        <label class="check fe-story-terms-check">
+          <input type="checkbox" name="accept_terms" value="1" required>
+          <span>{{ _terms_checkbox_label }}</span>
+        </label>
+      </fieldset>
+
+      {% if site and site.turnstile_enabled and site.turnstile_site_key %}
+      <div class="cf-turnstile"
+           data-sitekey="{{ site.turnstile_site_key }}"></div>
+      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+      {% endif %}
+
+      <div class="form-actions">
+        <button type="submit" class="fe-btn fe-btn-primary">{{ _submit_label }}</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

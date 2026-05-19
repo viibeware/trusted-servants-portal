@@ -1,0 +1,113 @@
+{# Story submission form body. Included by the shared
+   ``frontend/submission.html`` chrome via the ``form_body_partial``
+   override so the story form picks up the same template variants
+   (Classic / Minimal / Split) + width / dynbg knobs the events
+   Submission Form and custom forms get. Field labels / placeholders /
+   help texts read from SiteSetting with baked defaults matching the
+   original "Story Submission Form" custom-form layout. #}
+{# Per-field labels / help texts: the field builder (saved on
+   ``site.story_form_blocks_json``) wins when set, with the legacy
+   per-field SiteSetting columns + baked defaults as fallbacks. This
+   lets admins edit field copy directly inside the builder cards
+   (which is now the canonical UI) while older installs that only
+   ever touched the "Field labels & help" card keep their saved
+   values. The block lookup is by canonical ``name`` (submitter_name,
+   submitter_email, body, attachment, accept_terms); admins renaming
+   those names in the builder will lose the mapping, which is by
+   design — name-based mapping is what makes the holding-tank
+   pipeline pick up the right values on POST. #}
+{%- set _blocks_raw = (site.story_form_blocks_json if site else None) or '' -%}
+{%- set _blocks = _blocks_raw|from_json if _blocks_raw else [] -%}
+{%- set _by_name = {} -%}
+{%- for _b in _blocks %}{%- if _b is mapping and _b.name %}{%- set _ = _by_name.update({_b.name: _b}) %}{%- endif %}{%- endfor -%}
+{%- set _b_name = _by_name.get('submitter_name') or {} -%}
+{%- set _b_email = _by_name.get('submitter_email') or {} -%}
+{%- set _b_body = _by_name.get('body') or {} -%}
+{%- set _b_file = _by_name.get('attachment') or {} -%}
+{%- set _b_terms = _by_name.get('accept_terms') or {} -%}
+{%- set _submit_label = (site.story_form_submit_label if site else None) or 'Submit your story' -%}
+{%- set _name_label = _b_name.get('label')
+    or (site.story_form_name_label if site else None) or 'Name' -%}
+{%- set _name_placeholder = _b_name.get('placeholder') or _name_label -%}
+{%- set _email_label = _b_email.get('label')
+    or (site.story_form_email_label if site else None) or 'Email' -%}
+{%- set _email_required = _b_email.get('required',
+    site.story_form_email_required if site else False) -%}
+{%- set _story_label = _b_body.get('label')
+    or (site.story_form_story_label if site else None) or 'Story' -%}
+{%- set _story_placeholder = _b_body.get('placeholder')
+    or (site.story_form_story_placeholder if site else None) or 'Type/Paste your story here' -%}
+{%- set _file_label = _b_file.get('label')
+    or (site.story_form_file_label if site else None) or 'File Upload' -%}
+{%- set _file_help = _b_file.get('help')
+    or (site.story_form_file_help if site else None)
+    or 'If your story is in a file, optionally upload it here instead of pasting it' -%}
+{%- set _terms_label = _b_terms.get('label')
+    or (site.story_form_terms_label if site else None) or 'Accept Terms' -%}
+{%- set _terms_intro = _b_terms.get('placeholder')
+    or (site.story_form_terms_intro if site else None)
+    or 'Please read and accept the terms below:' -%}
+{# Terms paragraph — the field builder's ``help`` text on the
+   accept_terms checkboxes block is the primary source now since
+   that's where the admin enters it via the builder UI. Falls back
+   to the legacy ``story_form_terms_text`` column for existing
+   installs that wrote the long terms there before the builder was
+   integrated. #}
+{%- set _terms_text = _b_terms.get('help')
+    or (site.story_form_terms_text if site else None) -%}
+{%- set _terms_checkbox_label = (_b_terms.get('options') and _b_terms.options[0])
+    or (site.story_form_terms_checkbox_label if site else None)
+    or 'I accept the terms below' -%}
+<form method="post"
+      action="{{ url_for('frontend.story_submission_submit') }}"
+      enctype="multipart/form-data"
+      class="form fe-submission-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <label>{{ _name_label }} <span class="req">*</span>
+    <input type="text" name="submitter_name" maxlength="120" required
+           placeholder="{{ _name_label }}">
+  </label>
+
+  <label>{{ _email_label }} {% if _email_required %}<span class="req">*</span>{% endif %}
+    <input type="email" name="submitter_email" maxlength="255"
+           {% if _email_required %}required{% endif %}>
+  </label>
+
+  <label>{{ _story_label }} <span class="req">*</span>
+    <textarea name="body" rows="10" required
+              placeholder="{{ _story_placeholder }}"></textarea>
+  </label>
+
+  <label>{{ _file_label }} <span class="muted smaller">(optional)</span>
+    <input type="file" name="attachment">
+    {% if _file_help %}<span class="fe-field-help muted small">{{ _file_help }}</span>{% endif %}
+  </label>
+
+  <fieldset class="fe-submission-fieldset fe-story-terms-fieldset">
+    <legend>{{ _terms_label }} <span class="req">*</span></legend>
+    {% if _terms_intro %}<p class="fe-story-terms-intro">{{ _terms_intro }}</p>{% endif %}
+    {% if _terms_text %}
+    {# ``markdown_block`` produces block-level HTML (``<p>``, ``<ul>``)
+       which is what the long terms paragraphs need; matches how the
+       custom-form renderer handles checkboxes help text so the two
+       paths render visually identical content. #}
+    <div class="fe-story-terms-text">{{ _terms_text|markdown_block }}</div>
+    {% endif %}
+    <label class="check fe-story-terms-check">
+      <input type="checkbox" name="accept_terms" value="1" required>
+      <span>{{ _terms_checkbox_label }}</span>
+    </label>
+  </fieldset>
+
+  {% if site and site.turnstile_enabled and site.turnstile_site_key %}
+  <div class="cf-turnstile fe-submission-turnstile"
+       data-sitekey="{{ site.turnstile_site_key }}"
+       data-theme="auto"
+       data-size="flexible"></div>
+  {% endif %}
+
+  <div class="form-actions">
+    <button type="submit" class="fe-btn fe-btn-primary">{{ _submit_label }}</button>
+  </div>
+</form>

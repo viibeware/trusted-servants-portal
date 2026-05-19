@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block heading %}Submission Form{% endblock %}
-{% block heading_help %}Configures the public submission form at <code>/submissionform</code> and its sibling site-wide modal. Visitor submissions land in the holding tank on the Announcements &amp; Events admin page; the recipients below also get an email notification.{% endblock %}
+{% block heading %}Announcements/Events Form{% endblock %}
+{% block heading_help %}Configures the public announcements/events submission form at <code>/submissionform</code> and its sibling site-wide modal. Visitor submissions land in the holding tank on the Announcements &amp; Events admin page; the recipients below also get an email notification.{% endblock %}
 {% block top_actions %}
 <a class="btn" href="{{ url_for('main.frontend_forms') }}">← All forms</a>
 <a class="btn" href="{{ url_for('frontend.submission_form') }}" target="_blank" rel="noopener">Preview /submissionform ↗</a>
@@ -21,7 +21,7 @@
         </div>
         <li class="special-page-row" style="list-style:none; padding: 1rem;">
           <div class="special-page-info">
-            <div class="u-name">Submission form enabled</div>
+            <div class="u-name">Announcements/Events form enabled</div>
             <p class="muted small">Hard off-switch. Settings below are preserved when off.</p>
           </div>
           <label class="mode-toggle">
@@ -30,6 +30,20 @@
             <span class="mode-track"><span class="mode-thumb"></span></span>
           </label>
         </li>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Public URL</h2>
+          <span class="muted smaller">The form's built-in URL is <code>/submissionform</code>. Set a custom slug below to serve the form at <code>/&lt;your-slug&gt;</code> as well (the built-in URL keeps working).</span>
+        </div>
+        <label>Public URL slug
+          <input type="text" name="submission_form_slug" maxlength="120"
+                 pattern="[a-z0-9-]*"
+                 value="{{ site.submission_form_slug or 'submissionform' }}"
+                 placeholder="submissionform">
+          <span class="muted small">Lowercase letters, numbers, and hyphens only. The built-in URL (<code>/submissionform</code>) always works as a fallback; saving the default value here means no custom alias is added.</span>
+        </label>
       </section>
 
       <section class="card">
@@ -118,8 +132,19 @@
         </label>
       </section>
 
+      {# Field builder — same drag-and-drop UI the custom-form editor
+         uses. Saved override drives the public form; leaving the
+         builder at its defaults keeps the form's built-in field set.
+         Field name heuristics in the POST handler map known names
+         (title, submitter_email, body, …) back to the Post columns
+         that drive the holding-tank workflow. #}
+      {% with fields=form_fields, field_types=field_types,
+              builder_help='These are the fields rendered on the public form at <code>/submissionform</code>. Drag to reorder. Field <b>names</b> drive how submissions map to the holding-tank row — keep names like <code>title</code>, <code>submitter_email</code>, <code>body</code>, <code>event_starts_at</code>, etc. if you want the admin review flow to pick those values up.' %}
+        {% include "_form_field_builder.html" %}
+      {% endwith %}
+
       <div class="form-actions">
-        <button class="btn btn-primary">Save submission form</button>
+        <button class="btn btn-primary">Save announcements/events form</button>
       </div>
     </form>
 

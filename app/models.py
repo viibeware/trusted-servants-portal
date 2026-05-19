@@ -673,6 +673,54 @@ class SiteSetting(db.Model):
     # submission-form columns from one row. All admin-tunable copy
     # is admin-only — visitors only see what survives the renderer.
     submission_form_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    # Optional override of the form's field set. Same shape as
+    # ``CustomForm.blocks_json`` (a JSON list of field dicts produced
+    # by the field builder UI). When NULL, the form renders its
+    # built-in default field set; when set, the saved blocks drive
+    # what's shown on the public form. Each module's POST handler
+    # uses name heuristics to map submitted values back into the
+    # row's structured columns (see _match_module_field_names).
+    submission_form_blocks_json = db.Column(db.Text)
+    # Customizable public URL slug. When set, the form is served at
+    # ``/<slug>`` (in addition to its canonical ``/submissionform``);
+    # admin-facing URL surfaces (forms registry, nav-link picker,
+    # CTAs) prefer the customized slug so the public site reads it
+    # the way the admin wants. NULL keeps the form on its built-in
+    # path only.
+    submission_form_slug = db.Column(db.String(120))
+    # Stories submission form gate — same shape as
+    # ``submission_form_enabled`` for announcements/events. When off,
+    # the public ``/storyform`` endpoint 404s and the stories-list
+    # CTA hides itself. Heading / subheading / success message
+    # columns mirror the events/announcements submission form so the
+    # Forms admin can render a single settings page for both.
+    story_form_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    story_form_heading = db.Column(db.String(200))
+    story_form_subheading = db.Column(db.String(500))
+    story_form_intro = db.Column(db.Text)
+    story_form_success_message = db.Column(db.String(500))
+    story_form_submit_label = db.Column(db.String(100))
+    story_form_to = db.Column(db.String(500))
+    # Per-field labels / help text. Each falls back to a baked
+    # default at render time so a fresh install renders the form
+    # exactly like the original "Story Submission Form" custom
+    # form the user had built — admins only need to touch these
+    # when they want to deviate. Wired up via the Story Form
+    # settings page; persisted as plain text so editors aren't
+    # locked into a structured editor.
+    story_form_name_label = db.Column(db.String(120))
+    story_form_email_label = db.Column(db.String(120))
+    story_form_email_required = db.Column(db.Boolean, nullable=False, default=False)
+    story_form_story_label = db.Column(db.String(120))
+    story_form_story_placeholder = db.Column(db.String(200))
+    story_form_file_label = db.Column(db.String(120))
+    story_form_file_help = db.Column(db.Text)
+    story_form_terms_label = db.Column(db.String(120))
+    story_form_terms_intro = db.Column(db.String(200))
+    story_form_terms_text = db.Column(db.Text)
+    story_form_terms_checkbox_label = db.Column(db.String(200))
+    story_form_blocks_json = db.Column(db.Text)
+    story_form_slug = db.Column(db.String(120))
     submission_form_heading = db.Column(db.String(200))
     submission_form_subheading = db.Column(db.String(500))
     submission_form_modal_heading = db.Column(db.String(200))
@@ -1169,6 +1217,8 @@ class SiteSetting(db.Model):
     contact_form_submit_label = db.Column(db.String(100))
     contact_form_subject_required = db.Column(db.Boolean, nullable=False, default=False)
     contact_form_show_phone = db.Column(db.Boolean, nullable=False, default=True)
+    contact_form_blocks_json = db.Column(db.Text)
+    contact_form_slug = db.Column(db.String(120))
     # Per-channel toggles for the PIC contact panel rendered on the
     # /contact page aside. Each channel is shown only when (a) the
     # underlying SiteSetting field is populated AND (b) the matching
@@ -1820,6 +1870,29 @@ class Story(db.Model):
     # the publication timestamp; it falls back to created_at when
     # NULL so legacy rows still surface a date.
     published_at = db.Column(db.DateTime)
+    # Public-submission holding tank. When True, the story was
+    # submitted via the public ``/storyform`` endpoint and hasn't
+    # been reviewed yet. The public site filters these out alongside
+    # drafts; the admin Stories page surfaces them under a dedicated
+    # "Pending review" tab so they can be approved (publish or move
+    # to draft) or deleted. Same shape Post uses for its own
+    # holding-tank flow.
+    is_pending_review = db.Column(db.Boolean, nullable=False, default=False)
+    submitter_name = db.Column(db.String(120))
+    submitter_email = db.Column(db.String(255))
+    submitter_phone = db.Column(db.String(64))
+    submitter_notes = db.Column(db.Text)
+    submitted_at = db.Column(db.DateTime)
+    # Optional file the submitter attached with their story (a
+    # written draft document, audio recording, etc). Stored under
+    # UPLOAD_FOLDER with a UUID-prefixed filename, same convention
+    # the rest of the app uses. Admins download via the admin
+    # pending-review row before transferring the content into the
+    # story body. Preserved across approve / move-to-draft lifecycle
+    # changes so admins can re-read the original submission later;
+    # cleaned up when the story is deleted.
+    submission_attachment_filename = db.Column(db.String(500))
+    submission_attachment_original = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"))

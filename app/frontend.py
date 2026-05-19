@@ -1727,6 +1727,221 @@ def hyperlist():
                                           or "Trusted Servants")
 
 
+@bp.route("/storyform", methods=["GET"])
+@public_section("Share your story",
+                gate=lambda s: bool(getattr(s, "story_form_enabled", True)))
+def story_submission_form():
+    """Public form for submitting a recovery story. Lands a Story row
+    in the holding tank (``is_pending_review=True``) when POSTed to
+    ``/storyform/submit``. Visitors get a single self-contained page;
+    admins themed-flow gets the story material into the existing
+    Stories admin pending-review tab, same flow as the
+    announcement / event submission pipeline.
+
+    Honours the ``story_form_enabled`` SiteSetting toggle — when off,
+    the page 404s and the CTA on the stories list hides itself.
+    """
+    site = _site()
+    gate = _frontend_gate(site)
+    if gate is not None:
+        return gate
+    if not site or not getattr(site, "stories_enabled", False):
+        abort(404)
+    if not getattr(site, "story_form_enabled", True):
+        abort(404)
+    ctx = _frontend_context(site)
+    # Reuse the shared Submission Form chrome — the same Classic /
+    # Minimal / Split variants the events-submission form and every
+    # CustomForm render through. Overrides the dispatcher's
+    # default heading / subheading / intro with the story-form-
+    # specific copy and points it at the story body partial so the
+    # fields render correctly inside whichever variant the admin
+    # picked.
+    tpl = _template_meta(SUBMISSION_FORM_TEMPLATES,
+                         (site.frontend_submission_form_template if site else None) or "classic")
+    width_mode = (site.frontend_submission_form_width_mode if site else None) or "boxed"
+    if width_mode not in ("boxed", "full"):
+        width_mode = "boxed"
+    try:
+        max_width = int(site.frontend_submission_form_max_width) if site else 720
+    except (TypeError, ValueError):
+        max_width = 720
+    max_width = max(480, min(2400, max_width))
+    try:
+        pad_pct = int(site.frontend_submission_form_padding_pct) if site else 5
+    except (TypeError, ValueError):
+        pad_pct = 5
+    pad_pct = max(0, min(20, pad_pct))
+    _tpl_settings = template_settings(site, "submission_form", tpl["key"])
+    tpl_style = template_css_vars(_tpl_settings)
+    return render_template(
+        "frontend/submission.html",
+        submission_partial=tpl["partial"],
+        submission_template_key=tpl["key"],
+        submission_width_mode=width_mode,
+        submission_max_width=max_width,
+        submission_padding_pct=pad_pct,
+        tpl_style=tpl_style,
+        heading_override=(site.story_form_heading if site else None) or "Share your story",
+        # Pass an empty string (not None) when the admin hasn't set
+        # a subheading — the dispatcher template treats "" as
+        # "explicitly suppress" so the events-form default doesn't
+        # bleed onto the story page.
+        subheading_override=(site.story_form_subheading if site else None) or "",
+        intro_override=(site.story_form_intro if site else None),
+        form_body_partial="frontend/_story_form_body.html",
+        **ctx,
+    )
+
+
+@bp.route("/storyform/submit", methods=["POST"])
+def story_submission_submit():
+    """Process a public story submission. Validates required fields,
+    runs the Turnstile gate when enabled, saves any uploaded
+    attachment to the upload folder, persists a Story row in the
+    pending-review state, and emails the configured recipients.
+
+    Mirrors ``/submissionform/submit`` for events/announcements but
+    the persisted row lives in the ``story`` table so the existing
+    Stories admin surfaces it for review instead of routing through
+    Form Submissions."""
+    from flask import flash, current_app
+    from .auth import _verify_turnstile
+    from .mail import send_mail
+    from .models import Story
+    site = _site()
+    gate = _frontend_gate(site)
+    if gate is not None:
+        return gate
+    if not site or not getattr(site, "stories_enabled", False):
+        abort(404)
+    if not getattr(site, "story_form_enabled", True):
+        abort(404)
+
+    f = request.form
+    submitter_name = (f.get("submitter_name") or "").strip()[:120]
+    submitter_email = (f.get("submitter_email") or "").strip()[:255]
+    body = (f.get("body") or "").strip()
+    accepted = f.get("accept_terms") == "1"
+    email_required = bool(getattr(site, "story_form_email_required", False))
+
+    if not submitter_name:
+        flash("Please include your name so we can follow up.", "danger")
+        return redirect(url_for("frontend.story_submission_form"))
+    if email_required and not submitter_email:
+        flash("Please include your email so we can follow up.", "danger")
+        return redirect(url_for("frontend.story_submission_form"))
+    if not body and not (request.files.get("attachment") and request.files["attachment"].filename):
+        # Body OR an attached file is required — either way the
+        # admin needs something to read. Custom-form behaviour kept
+        # the textarea required, but a file-only submission is a
+        # reasonable accommodation for visitors who'd rather not
+        # paste their story into a browser textarea.
+        flash("Either paste your story or upload it as a file.", "danger")
+        return redirect(url_for("frontend.story_submission_form"))
+    if not accepted:
+        flash("Please accept the terms before submitting.", "danger")
+        return redirect(url_for("frontend.story_submission_form"))
+
+    # Admin sets a real title during review; the form doesn't ask
+    # for one (matches the custom form's layout). Default to the
+    # submitter's name so the row reads as something coherent in
+    # the pending-review list until the admin renames it.
+    title = f"Story from {submitter_name}"[:255]
+
+    if site.turnstile_enabled:
+        token = f.get("cf-turnstile-response", "")
+        ok, err = _verify_turnstile(site, token, request.remote_addr)
+        if not ok:
+            flash(err or "Security check failed — please try again.", "danger")
+            return redirect(url_for("frontend.story_submission_form"))
+
+    from datetime import datetime as _dt
+    s = Story()
+    s.title = title
+    s.slug = None
+    s.summary = None
+    s.body = body or None
+    # Author byline is set by the admin during review — the public
+    # form intentionally doesn't ask for one (matches the custom
+    # form's original layout).
+    s.author_name = None
+    s.is_draft = False
+    s.is_archived = False
+    s.is_pending_review = True
+    s.submitter_name = submitter_name
+    s.submitter_email = submitter_email or None
+    s.submitter_phone = None
+    s.submitter_notes = None
+    s.submitted_at = _dt.utcnow()
+
+    # Optional attachment — text document, audio recording, etc. The
+    # admin downloads it from the pending-review row before editing
+    # the draft. Same UPLOAD_FOLDER + UUID-prefix convention used
+    # everywhere else; rejected silently when the request didn't ship
+    # one. Size is bounded by ``TSP_MAX_UPLOAD_MB`` (Flask config).
+    upload = request.files.get("attachment")
+    if upload and upload.filename:
+        from werkzeug.utils import secure_filename
+        import os, uuid as _uuid
+        original = secure_filename(upload.filename) or "attachment"
+        ext = os.path.splitext(original)[1].lower()
+        stored = f"{_uuid.uuid4().hex}{ext}"
+        target = os.path.join(current_app.config["UPLOAD_FOLDER"], stored)
+        try:
+            upload.save(target)
+            s.submission_attachment_filename = stored
+            s.submission_attachment_original = original[:500]
+        except (OSError, IOError):
+            s.submission_attachment_filename = None
+            s.submission_attachment_original = None
+
+    from .models import db as _db
+    _db.session.add(s)
+    _db.session.commit()
+
+    # Email the admins. Falls back to access_request_to / submission_to
+    # if the dedicated ``story_form_to`` recipient list is blank, so
+    # installs that haven't configured stories-specific recipients
+    # still see incoming submissions. Reply-to is the submitter's
+    # email so admins can respond directly.
+    recipients = (getattr(site, "story_form_to", None)
+                  or getattr(site, "submission_to", None)
+                  or getattr(site, "access_request_to", None)
+                  or "").strip()
+    if site.smtp_host and recipients:
+        submitter_line = f"{submitter_name}"
+        if submitter_email:
+            submitter_line += f" <{submitter_email}>"
+        lines = [
+            f"A new recovery story submission has come in via the "
+            f"public {site.frontend_title or 'Trusted Servants'} site.",
+            "",
+        ]
+        if submitter_email:
+            lines += ["Reply directly to this email to reach the submitter.", ""]
+        lines += [f"Submitter:  {submitter_line}"]
+        if s.body:
+            lines += ["", "Story:", s.body]
+        if s.submission_attachment_original:
+            lines += ["", f"Attachment: {s.submission_attachment_original} "
+                          f"(download via the Stories admin)"]
+        email_body = "\n".join(lines)
+        try:
+            send_mail(site, [r.strip() for r in recipients.split(",") if r.strip()],
+                      f"[{site.frontend_title or 'Trusted Servants'}] "
+                      f"New story submission — {title}",
+                      email_body,
+                      reply_to=submitter_email or None)
+        except Exception:  # noqa: BLE001
+            current_app.logger.exception("Story submission email failed")
+
+    flash(getattr(site, "story_form_success_message", None)
+          or "Thank you — your story has been submitted for review.",
+          "success")
+    return redirect(url_for("frontend.story_submission_form"))
+
+
 @bp.route("/submissionform")
 @public_section("Submit an event or announcement",
                 gate=lambda s: bool(getattr(s, "submission_form_enabled", True)))
@@ -2828,6 +3043,25 @@ def _resolve_form_link(identifier):
     endpoint = entry.get("public_url_endpoint")
     if not endpoint:
         return None, None
+    # Prefer the admin-customised slug when set — the canonical
+    # path keeps working too, but URL surfaces (CTAs, nav links)
+    # should read the operator's chosen URL so the public site
+    # matches what they picked. ``identifier`` is the registry
+    # key (``submission`` / ``story`` / ``contact``); the matching
+    # SiteSetting slug column lives under
+    # ``<key>_form_slug`` (or just ``contact_form_slug`` etc).
+    site = _site()
+    slug_overrides = {
+        "submission": getattr(site, "submission_form_slug", None) if site else None,
+        "story": getattr(site, "story_form_slug", None) if site else None,
+        "contact": getattr(site, "contact_form_slug", None) if site else None,
+    }
+    custom_slug = (slug_overrides.get(identifier) or "").strip()
+    if custom_slug:
+        try:
+            return url_for("frontend.page_detail", slug=custom_slug), entry.get("name") or "Submit"
+        except Exception:  # noqa: BLE001
+            pass
     try:
         return url_for(endpoint), entry.get("name") or "Submit"
     except Exception:  # noqa: BLE001 — endpoint missing / module disabled
@@ -4131,6 +4365,23 @@ def page_detail(slug):
     gate = _frontend_gate(site)
     if gate is not None:
         return gate
+    # Module-form slug aliases — admins can pick a friendly URL for
+    # each of the three built-in module forms on the form's settings
+    # page. We resolve those here BEFORE the Page / CustomForm
+    # lookups so a custom slug like ``/submit-an-event`` lands on
+    # the real submission form rather than 404'ing through the
+    # Page catalog. The canonical paths
+    # (``/submissionform``, ``/storyform``, ``/contact``) keep
+    # working via their dedicated routes so existing bookmarks
+    # don't break.
+    if site:
+        slug_lower = (slug or "").strip().lower()
+        if slug_lower and slug_lower == (site.submission_form_slug or "").strip().lower():
+            return submission_form()
+        if slug_lower and slug_lower == (site.story_form_slug or "").strip().lower():
+            return story_submission_form()
+        if slug_lower and slug_lower == (site.contact_form_slug or "").strip().lower():
+            return contact()
     q = Page.query.filter_by(slug=slug, is_published=True)
     # Private pages are visible only to signed-in editors / admins; anon
     # visitors get the same 404 they'd see for an unpublished slug so the

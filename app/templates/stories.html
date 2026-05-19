@@ -10,6 +10,10 @@
          href="{{ url_for('main.stories', show='drafts', sort=sort) }}">Drafts</a>
       <a class="btn btn-sm {% if show == 'archived' %}active{% endif %}"
          href="{{ url_for('main.stories', show='archived', sort=sort) }}">Archived</a>
+      <a class="btn btn-sm {% if show == 'pending' %}active{% endif %}"
+         href="{{ url_for('main.stories', show='pending', sort=sort) }}">
+        Pending review{% if pending_count %} <span class="nav-badge">{{ pending_count }}</span>{% endif %}
+      </a>
     </div>
   </div>
   <button type="button" class="btn btn-primary"
@@ -109,6 +113,14 @@
                   data-modal-src="{{ url_for('main.story_edit', sid=s.id, embed=1) }}"
                   data-modal-title="Edit story">{{ s.title }}</button>
           {% if s.summary %}<div class="muted small posts-summary">{{ s.summary[:140] }}{% if s.summary|length > 140 %}…{% endif %}</div>{% endif %}
+          {% if s.is_pending_review and (s.submitter_name or s.submitter_email) %}
+          <div class="muted smaller posts-submitter">
+            Submitted by
+            {% if s.submitter_email %}<a href="mailto:{{ s.submitter_email }}">{{ s.submitter_name or s.submitter_email }}</a>
+            {% else %}{{ s.submitter_name }}{% endif %}
+            {% if s.submitted_at %} · {{ s.submitted_at|fmt_site_local('%b %-d, %Y · %-I:%M %p') }}{% endif %}
+          </div>
+          {% endif %}
         </td>
         <td class="hide-sm">
           {% if s.author_name %}<span class="muted small">{{ s.author_name }}</span>{% else %}<span class="muted smaller">—</span>{% endif %}
@@ -129,12 +141,36 @@
           {% endif %}
         </td>
         <td class="hide-sm">
+          {% if s.is_pending_review %}<span class="post-chip post-chip-warning">Pending</span>{% endif %}
           {% if s.is_draft %}<span class="post-chip post-chip-draft">Draft</span>{% endif %}
           {% if s.is_archived %}<span class="post-chip">Archived</span>{% endif %}
           {% if s.is_featured and not s.is_draft and not s.is_archived %}<span class="post-chip post-chip-announcement">Featured</span>{% endif %}
         </td>
         <td class="posts-td-actions">
           <div class="row-actions">
+            {% if s.is_pending_review %}
+            {# Pending-review submissions get a dedicated action set:
+               an Approve button that flips the row to a regular draft
+               (and lands the admin on the edit page), a download link
+               for the submitter's attached file when present, and
+               Delete to reject. The pending submitter contact line
+               below the title shows who sent it in. #}
+            <button type="submit" form="single-story-approve-{{ s.id }}-form"
+                    class="btn btn-sm btn-primary" title="Approve into drafts for editing">
+              Approve to drafts
+            </button>
+            {% if s.submission_attachment_filename %}
+            <a class="btn btn-sm"
+               href="{{ url_for('main.story_submission_attachment', sid=s.id) }}"
+               title="Download the submitter's attached file">
+              {{ icon('paperclip') }} Download attachment
+            </a>
+            {% endif %}
+            <button type="submit" form="single-story-delete-{{ s.id }}-form" class="btn btn-sm btn-danger"
+                    onclick="return confirm('Reject and delete this submission permanently? The submitter is not notified automatically.');">
+              Reject
+            </button>
+            {% else %}
             <button type="button" class="btn btn-sm"
                     data-open-modal="story-edit-modal"
                     data-modal-src="{{ url_for('main.story_edit', sid=s.id, embed=1) }}"
@@ -151,6 +187,7 @@
             {% endif %}
             <button type="submit" form="single-story-delete-{{ s.id }}-form" class="btn btn-sm btn-danger"
                     onclick="return confirm('Delete this story permanently? Featured image will be cleaned up.');">Delete</button>
+            {% endif %}
           </div>
         </td>
       </tr>
@@ -165,6 +202,12 @@
    button) so the row-action buttons can sit inside the bulk form
    without nesting. Each one POSTs to a single-row endpoint. #}
 {% for s in stories %}
+{% if s.is_pending_review %}
+<form id="single-story-approve-{{ s.id }}-form" method="post"
+      action="{{ url_for('main.story_approve_pending', sid=s.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endif %}
 {% if s.is_draft %}
 <form id="single-story-publish-{{ s.id }}-form" method="post" action="{{ url_for('main.story_publish', sid=s.id) }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -193,6 +236,7 @@
   <p class="muted">
     {% if show == 'archived' %}Nothing archived.
     {% elif show == 'drafts' %}No drafts yet.
+    {% elif show == 'pending' %}No story submissions waiting for review.
     {% else %}Nothing here yet — click <b>+ New story</b> above to start one.{% endif %}
   </p>
 </section>

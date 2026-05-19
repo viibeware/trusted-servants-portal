@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block heading %}Story Submission Form{% endblock %}
+{% block heading_help %}Configures the public story submission form at <code>/storyform</code>. Visitor submissions land in the Pending review tab on the Stories admin page; the recipients below also get an email notification with any attached file referenced for download from the admin.{% endblock %}
+{% block top_actions %}
+<a class="btn" href="{{ url_for('main.frontend_forms') }}">← All forms</a>
+<a class="btn" href="{{ url_for('frontend.story_submission_form') }}" target="_blank" rel="noopener">Preview /storyform ↗</a>
+<a class="btn" href="{{ url_for('main.stories', show='pending') }}">Holding tank</a>
+{% endblock %}
+{% block content %}
+<div class="fe-admin-layout">
+  {% include "_frontend_subnav.html" %}
+  <div class="fe-admin-main">
+
+    <form class="form" method="post" action="{{ url_for('main.frontend_form_story') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Visibility</h2>
+          <span class="muted smaller">Off-switch for the form site-wide. When off, the standalone page 404s; any CTA pointing at it on the stories list hides itself automatically.</span>
+        </div>
+        <li class="special-page-row" style="list-style:none; padding: 1rem;">
+          <div class="special-page-info">
+            <div class="u-name">Story form enabled</div>
+            <p class="muted small">Hard off-switch. Settings below are preserved when off.</p>
+          </div>
+          <label class="mode-toggle">
+            <input type="checkbox" name="story_form_enabled" value="1"
+                   {% if site.story_form_enabled %}checked{% endif %}>
+            <span class="mode-track"><span class="mode-thumb"></span></span>
+          </label>
+        </li>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Public URL</h2>
+          <span class="muted smaller">The form's built-in URL is <code>/storyform</code>. Set a custom slug below to serve the form at <code>/&lt;your-slug&gt;</code> as well.</span>
+        </div>
+        <label>Public URL slug
+          <input type="text" name="story_form_slug" maxlength="120"
+                 pattern="[a-z0-9-]*"
+                 value="{{ site.story_form_slug or 'storyform' }}"
+                 placeholder="storyform">
+          <span class="muted small">Lowercase letters, numbers, and hyphens only. The built-in URL (<code>/storyform</code>) always works as a fallback; saving the default value here means no custom alias is added.</span>
+        </label>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Recipients</h2>
+          <span class="muted smaller">Comma-separated list of admin email addresses. Falls back to the Submission Form recipients then Access Request recipients when blank.</span>
+        </div>
+        <label>Email addresses
+          <input type="text" name="story_form_to" maxlength="500"
+                 value="{{ site.story_form_to or '' }}"
+                 placeholder="stories@example.com, editor@example.com">
+        </label>
+        <p class="muted small">
+          Fallback order when blank:
+          <code>{{ site.submission_to or '(submission_to unset)' }}</code> →
+          <code>{{ site.access_request_to or '(access_request_to unset)' }}</code>
+        </p>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Page content</h2>
+          <span class="muted smaller">Copy shown on the public <code>/storyform</code> page. Each field has a baked default — leave a field blank to use it.</span>
+        </div>
+        <label>Page heading
+          <input type="text" name="story_form_heading" maxlength="200"
+                 value="{{ site.story_form_heading or '' }}"
+                 placeholder="Share your story">
+        </label>
+        <label>Page subheading
+          <textarea name="story_form_subheading" rows="2" maxlength="500"
+                    placeholder="Recovery stories help newcomers feel less alone. Submit yours below and an editor will follow up.">{{ site.story_form_subheading or '' }}</textarea>
+        </label>
+        <label>Optional intro <span class="muted smaller">(Markdown supported, shown above the form fields)</span>
+          <textarea name="story_form_intro" rows="4"
+                    placeholder="**Tip:** attach a document if you'd rather write your story in your own editor. We'll read it before publishing.">{{ site.story_form_intro or '' }}</textarea>
+        </label>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Behaviour</h2>
+        </div>
+        <label>Success message <span class="muted smaller">(shown after a successful submission)</span>
+          <input type="text" name="story_form_success_message" maxlength="500"
+                 value="{{ site.story_form_success_message or '' }}"
+                 placeholder="Thank you — your story has been submitted for review.">
+        </label>
+        <label>Submit button label
+          <input type="text" name="story_form_submit_label" maxlength="100"
+                 value="{{ site.story_form_submit_label or '' }}"
+                 placeholder="Submit your story">
+        </label>
+      </section>
+
+      {# Field builder. Saved override drives the public form; leaving
+         the builder at its defaults keeps the form's built-in field
+         set. The POST handler matches field names — keep
+         <code>submitter_name</code> / <code>submitter_email</code> /
+         <code>body</code> / <code>attachment</code> / <code>accept_terms</code>
+         to preserve the holding-tank pipeline. #}
+      {% with fields=form_fields, field_types=field_types,
+              builder_help='These are the fields rendered on the public form at <code>/storyform</code>. Drag to reorder. Field names map submissions to the Stories pending-review row — keep <code>submitter_name</code>, <code>submitter_email</code>, <code>body</code>, <code>attachment</code>, and <code>accept_terms</code> if you want the existing review flow to map values automatically.' %}
+        {% include "_form_field_builder.html" %}
+      {% endwith %}
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

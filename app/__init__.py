@@ -1342,6 +1342,30 @@ def _migrate_sqlite(app):
                          ("access_request_to", "VARCHAR(500)"),
                          ("submission_to", "VARCHAR(500)"),
                          ("submission_form_enabled", "BOOLEAN NOT NULL DEFAULT 1"),
+                         ("submission_form_blocks_json", "TEXT"),
+                         ("submission_form_slug", "VARCHAR(120)"),
+                         ("contact_form_blocks_json", "TEXT"),
+                         ("contact_form_slug", "VARCHAR(120)"),
+                         ("story_form_blocks_json", "TEXT"),
+                         ("story_form_slug", "VARCHAR(120)"),
+                         ("story_form_enabled", "BOOLEAN NOT NULL DEFAULT 1"),
+                         ("story_form_heading", "VARCHAR(200)"),
+                         ("story_form_subheading", "VARCHAR(500)"),
+                         ("story_form_intro", "TEXT"),
+                         ("story_form_success_message", "VARCHAR(500)"),
+                         ("story_form_submit_label", "VARCHAR(100)"),
+                         ("story_form_to", "VARCHAR(500)"),
+                         ("story_form_name_label", "VARCHAR(120)"),
+                         ("story_form_email_label", "VARCHAR(120)"),
+                         ("story_form_email_required", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("story_form_story_label", "VARCHAR(120)"),
+                         ("story_form_story_placeholder", "VARCHAR(200)"),
+                         ("story_form_file_label", "VARCHAR(120)"),
+                         ("story_form_file_help", "TEXT"),
+                         ("story_form_terms_label", "VARCHAR(120)"),
+                         ("story_form_terms_intro", "VARCHAR(200)"),
+                         ("story_form_terms_text", "TEXT"),
+                         ("story_form_terms_checkbox_label", "VARCHAR(200)"),
                          ("submission_form_heading", "VARCHAR(200)"),
                          ("submission_form_subheading", "VARCHAR(500)"),
                          ("submission_form_modal_heading", "VARCHAR(200)"),
@@ -1633,7 +1657,15 @@ def _migrate_sqlite(app):
                          ("announcement_auto_archive_at", "DATETIME"),
                          ("links_json", "TEXT")):
             add("post", col, ddl)
-        for col, ddl in (("published_at", "DATETIME"),):
+        for col, ddl in (("published_at", "DATETIME"),
+                         ("is_pending_review", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("submitter_name", "VARCHAR(120)"),
+                         ("submitter_email", "VARCHAR(255)"),
+                         ("submitter_phone", "VARCHAR(64)"),
+                         ("submitter_notes", "TEXT"),
+                         ("submitted_at", "DATETIME"),
+                         ("submission_attachment_filename", "VARCHAR(500)"),
+                         ("submission_attachment_original", "VARCHAR(500)")):
             add("story", col, ddl)
         # Blog post body block editor: stores the visual drag-and-drop
         # payload as a JSON list. NULL means "fall back to the legacy

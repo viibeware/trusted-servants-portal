@@ -263,6 +263,7 @@ def inject_globals():
     unread_contact_count = 0
     locked_accounts_count = 0
     pending_posts_count = 0
+    pending_stories_count = 0
     try:
         if current_user.is_authenticated and current_user.is_admin():
             pending_access_count = AccessRequest.query.filter_by(
@@ -288,11 +289,20 @@ def inject_globals():
             pending_posts_count = Post.query.filter(
                 Post.is_pending_review.is_(True),
                 Post.is_archived.is_(False)).count()
+        # Pending Stories submissions chip. Same shape as the posts
+        # chip — gated by editor role + the stories module being on.
+        if (current_user.is_authenticated
+                and getattr(current_user, "can_edit", lambda: False)()
+                and site and getattr(site, "stories_enabled", False)):
+            pending_stories_count = Story.query.filter(
+                Story.is_pending_review.is_(True),
+                Story.is_archived.is_(False)).count()
     except Exception:
         pending_access_count = 0
         unread_contact_count = 0
         locked_accounts_count = 0
         pending_posts_count = 0
+        pending_stories_count = 0
     try:
         otp = _get_otp_email()
     except Exception:
@@ -302,7 +312,8 @@ def inject_globals():
             "pending_access_count": pending_access_count,
             "unread_contact_count": unread_contact_count,
             "locked_accounts_count": locked_accounts_count,
-            "pending_posts_count": pending_posts_count, "otp": otp}
+            "pending_posts_count": pending_posts_count,
+            "pending_stories_count": pending_stories_count, "otp": otp}
 
 
 DASHBOARD_WIDGET_KEYS = ("server-metrics", "visitor-metrics", "currently-online", "backups", "trusted-servants", "meetings", "libraries", "files", "access-requests", "forms", "deletions")
@@ -494,12 +505,17 @@ def _forms_widget_data():
     """Aggregate every form the operator might need to action into a
     single ordered list for the dashboard Forms widget.
 
-    Each row carries the form's display name, an icon, the link to its
-    admin surface, a lifetime submission count, and an ``attention``
-    count for items that haven't been actioned yet (unread contact
-    messages, pending event/announcement submissions). Custom forms
-    are picked up from ``CustomForm`` automatically so a new form
-    surfaces on the dashboard without further code changes.
+    Each row carries the form's display name, an icon, the link to
+    its admin surface, a lifetime submission count, and an
+    ``attention`` count for items that haven't been actioned yet
+    (unread contact messages, pending event/announcement
+    submissions, pending story submissions). Built-in forms
+    (Submission, Story, Contact) each have their own dedicated
+    landing surface — the row deep-links to *that* surface, not the
+    generic Form Submissions index, so clicking through always lands
+    where the work actually happens. Custom forms keep using the
+    Form Submissions index since they have no dedicated holding
+    tank.
 
     Returns ``(rows, total_attention, total_submissions)``. The rows
     are sorted attention-first so anything needing review floats to
@@ -509,9 +525,9 @@ def _forms_widget_data():
     rows = []
     now = datetime.utcnow()
     week_cutoff = now - _td(days=7)
-    # Submission form (legacy events/announcements holding tank). Only
-    # surfaces if the module is reachable on the public site so the
-    # widget doesn't dangle a link to a disabled form.
+    # Submission form — events / announcements holding tank. The row
+    # deep-links to the Posts admin's Pending tab where the admin can
+    # approve / edit / reject each submission inline.
     if s and getattr(s, "posts_enabled", False):
         pending = (Post.query
                    .filter(Post.is_pending_review.is_(True),
@@ -524,8 +540,8 @@ def _forms_widget_data():
         last_at = recent_pending.submitted_at if recent_pending else None
         rows.append({
             "key": "submission",
-            "name": "Submission Form",
-            "subtitle": "Events & announcements",
+            "name": "Announcements/Events Form",
+            "subtitle": "Visitor submissions",
             "icon": "send",
             "url": url_for("main.posts", show="pending"),
             "attention": pending,
@@ -536,8 +552,36 @@ def _forms_widget_data():
             "last_at": last_at,
             "enabled": bool(getattr(s, "submission_form_enabled", True)),
         })
-    # Contact form. Always listed when present in SiteSetting (which it
-    # always is once the app has run once).
+    # Story submission form — recovery story holding tank. Same
+    # shape as the events/announcements row above but pointing at
+    # the Stories admin's Pending tab. Gated on the stories module
+    # being on so the row doesn't dangle a link to a disabled
+    # surface.
+    if s and getattr(s, "stories_enabled", False):
+        pending = (Story.query
+                   .filter(Story.is_pending_review.is_(True),
+                           Story.is_archived.is_(False)).count())
+        recent_pending = (Story.query
+                          .filter(Story.is_pending_review.is_(True),
+                                  Story.is_archived.is_(False),
+                                  Story.submitted_at.isnot(None))
+                          .order_by(Story.submitted_at.desc()).first())
+        last_at = recent_pending.submitted_at if recent_pending else None
+        rows.append({
+            "key": "story",
+            "name": "Story Submission Form",
+            "subtitle": "Recovery stories",
+            "icon": "book-open",
+            "url": url_for("main.stories", show="pending"),
+            "attention": pending,
+            "attention_label": "pending review",
+            "total": (Story.query
+                      .filter(Story.submitted_at.isnot(None)).count()),
+            "last_at": last_at,
+            "enabled": bool(getattr(s, "story_form_enabled", True)),
+        })
+    # Contact form — always listed once SiteSetting exists, since the
+    # contact page is portal-wide and not module-gated.
     if s is not None:
         unread = ContactSubmission.query.filter_by(
             is_read=False, is_archived=False).count()
@@ -7186,8 +7230,14 @@ def _load_form_fields(cf):
     empty list when unset / malformed). Trust nothing — strip any
     field whose ``type`` isn't in the allowlist, in case a downgrade
     rolled the schema back through this row."""
+    return _decode_blocks_json(cf.blocks_json or "")
+
+
+def _decode_blocks_json(raw):
+    """Shared blocks_json → field-list decoder. Reused by CustomForm
+    and the three built-in module forms whose blocks_json columns
+    live on SiteSetting."""
     import json as _json
-    raw = cf.blocks_json or ""
     if not raw:
         return []
     try:
@@ -7204,6 +7254,161 @@ def _load_form_fields(cf):
             continue
         out.append(entry)
     return out
+
+
+_MODULE_FORM_DEFAULT_SLUGS = {
+    "submission_form_slug": "submissionform",
+    "story_form_slug": "storyform",
+    "contact_form_slug": "contact",
+}
+
+
+def _normalise_module_form_slug(raw, exclude_attr=None):
+    """Sanitise a user-typed module-form slug and reject it when it
+    would collide with another reserved or already-claimed slug.
+
+    Returns the cleaned slug (lowercase, ``[a-z0-9-]`` only) or
+    None when blank / rejected. Collisions are flashed via Flask's
+    flash so the admin sees why the value didn't save, but the
+    rest of the settings still persist.
+
+    Saving the canonical built-in slug for the same column (e.g.
+    typing ``submissionform`` into the Announcements/Events form's
+    URL field) round-trips to None, so the DB doesn't accumulate
+    redundant overrides — the built-in route handles those paths
+    natively and the catch-all only kicks in for *different*
+    slugs.
+
+    ``exclude_attr`` names the SiteSetting column the caller is
+    saving into so we don't conflict against the very value we're
+    about to overwrite — e.g. saving ``submission_form_slug`` =
+    ``story-submit`` shouldn't reject itself just because it
+    previously held the same value."""
+    cleaned = _slugify_form_title((raw or "").strip().lower())
+    if not cleaned:
+        return None
+    # The canonical default round-trips to None — no alias needed,
+    # the built-in route serves that path natively.
+    if cleaned == _MODULE_FORM_DEFAULT_SLUGS.get(exclude_attr):
+        return None
+    # Reserved against the rest of the routing table.
+    if cleaned in _RESERVED_FORM_SLUGS:
+        flash(f"'{cleaned}' is a reserved URL — slug unchanged.", "danger")
+        return _peek_existing_module_form_slug(exclude_attr)
+    # Conflict against existing Pages / CustomForms.
+    if Page.query.filter_by(slug=cleaned).first():
+        flash(f"'{cleaned}' is taken by a Page — slug unchanged.", "danger")
+        return _peek_existing_module_form_slug(exclude_attr)
+    if CustomForm.query.filter_by(slug=cleaned).first():
+        flash(f"'{cleaned}' is taken by a custom form — slug unchanged.", "danger")
+        return _peek_existing_module_form_slug(exclude_attr)
+    # Conflict against the OTHER module-form slugs. (Skipping the
+    # one we're about to overwrite ourselves via ``exclude_attr``.)
+    s = _get_site_setting()
+    for attr in ("submission_form_slug", "story_form_slug", "contact_form_slug"):
+        if attr == exclude_attr:
+            continue
+        if (getattr(s, attr, None) or "").strip().lower() == cleaned:
+            flash(f"'{cleaned}' is taken by another module form — slug unchanged.", "danger")
+            return _peek_existing_module_form_slug(exclude_attr)
+    return cleaned
+
+
+def _peek_existing_module_form_slug(attr):
+    """Return the previously-stored value of a module-form slug
+    column so the conflict-guard helper can restore it when the new
+    value is rejected."""
+    if not attr:
+        return None
+    try:
+        s = _get_site_setting()
+        return getattr(s, attr, None) or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _default_submission_form_blocks():
+    """Default field set for the Announcements/Events submission form
+    — mirrors the hardcoded fields the public template currently
+    renders so admins land on the existing layout in the builder
+    and customize from there."""
+    return [
+        {"id": "f-0", "type": "text", "name": "title", "label": "Title", "required": True,
+         "placeholder": "e.g. Spring serenity workshop"},
+        {"id": "f-1", "type": "textarea", "name": "summary", "label": "Summary",
+         "required": False, "placeholder": "Short blurb shown in link previews"},
+        {"id": "f-2", "type": "textarea", "name": "body", "label": "Description",
+         "required": False, "placeholder": "Full details — Markdown supported"},
+        {"id": "f-3", "type": "text", "name": "event_starts_at", "label": "Event starts",
+         "required": False, "placeholder": "YYYY-MM-DDTHH:MM"},
+        {"id": "f-4", "type": "text", "name": "event_ends_at", "label": "Event ends",
+         "required": False, "placeholder": "YYYY-MM-DDTHH:MM"},
+        {"id": "f-5", "type": "text", "name": "location_name", "label": "Location name",
+         "required": False, "placeholder": "Community Center · Hall B"},
+        {"id": "f-6", "type": "text", "name": "location_address", "label": "Address",
+         "required": False},
+        {"id": "f-7", "type": "text", "name": "website_url", "label": "Event website URL",
+         "required": False, "placeholder": "https://example.org"},
+        {"id": "f-8", "type": "file", "name": "featured_image", "label": "Featured image",
+         "required": False, "help": "PNG, JPG, or WebP — optional."},
+        {"id": "f-9", "type": "text", "name": "submitter_name", "label": "Your name",
+         "required": True},
+        {"id": "f-10", "type": "email", "name": "submitter_email", "label": "Your email",
+         "required": True},
+        {"id": "f-11", "type": "phone", "name": "submitter_phone", "label": "Your phone",
+         "required": False},
+        {"id": "f-12", "type": "textarea", "name": "submitter_notes",
+         "label": "Notes for the admin", "required": False},
+    ]
+
+
+def _default_story_form_blocks():
+    """Default field set for the Story Submission Form — matches
+    the original "Story Submission Form" custom form layout
+    (Name + Email + Story + File Upload + Accept Terms)."""
+    return [
+        {"id": "f-0", "type": "text", "name": "submitter_name", "label": "Name",
+         "required": True, "placeholder": "Name"},
+        {"id": "f-1", "type": "email", "name": "submitter_email", "label": "Email",
+         "required": False},
+        {"id": "f-2", "type": "textarea", "name": "body", "label": "Story",
+         "required": True, "placeholder": "Type/Paste your story here"},
+        {"id": "f-3", "type": "file", "name": "attachment", "label": "File Upload",
+         "required": False, "placeholder": "Upload a file (PDF, DOC)",
+         "help": "If your story is in a file, optionally upload it here instead of pasting it"},
+        {"id": "f-4", "type": "checkboxes", "name": "accept_terms",
+         "label": "Accept Terms", "required": True,
+         "placeholder": "Please read and accept the terms below:",
+         "help": "",
+         "options": ["I accept the terms below"]},
+    ]
+
+
+def _default_contact_form_blocks():
+    """Default field set for the Contact Form — mirrors the existing
+    hardcoded fields on /contact (name, email, optional subject /
+    phone, and message)."""
+    return [
+        {"id": "f-0", "type": "text", "name": "name", "label": "Your name",
+         "required": True},
+        {"id": "f-1", "type": "email", "name": "email", "label": "Email",
+         "required": True},
+        {"id": "f-2", "type": "text", "name": "subject", "label": "Subject",
+         "required": False},
+        {"id": "f-3", "type": "phone", "name": "phone", "label": "Phone",
+         "required": False},
+        {"id": "f-4", "type": "textarea", "name": "message", "label": "Message",
+         "required": True, "placeholder": "How can we help?"},
+    ]
+
+
+def _resolve_module_form_fields(saved_raw, default_factory):
+    """Return the field list to feed the builder on a module form's
+    settings page. Saved overrides win when present; otherwise the
+    module's default blocks load so the admin sees the form's
+    current shape in the editor and can tweak from there."""
+    saved = _decode_blocks_json(saved_raw)
+    return saved if saved else default_factory()
 
 
 def _slugify_form_title(title):
@@ -7466,6 +7671,184 @@ def frontend_form_submission_delete(sub_id):
     return redirect(url_for("main.frontend_form_submissions", form=form_id))
 
 
+@bp.route("/frontend/forms/submissions/<int:sub_id>/import-to-stories", methods=["POST"])
+@admin_required
+def frontend_form_submission_import_to_story(sub_id):
+    """Promote a legacy ``FormSubmission`` row into a pending-review
+    ``Story`` row so it lands in the Stories admin's Pending tab.
+
+    Used to migrate existing story submissions that came in through
+    the old CustomForm → FormSubmission pipeline before the dedicated
+    /storyform route shipped. Walks the parent CustomForm's
+    ``blocks_json`` to pick out title / summary / body / author /
+    submitter contact fields by name+type heuristics (same logic
+    ``_summarise_form_submission`` uses for list previews), copies
+    them onto a new Story row with ``is_pending_review=True``, and
+    deletes the FormSubmission so it doesn't double-track.
+
+    Any file uploads attached to the submission ride along: the first
+    image-typed file becomes the story's featured image, the first
+    non-image file becomes the submission attachment for download.
+    The on-disk files themselves aren't copied — both Story and
+    FormSubmission storage live under the same ``UPLOAD_FOLDER``,
+    so we just hand off the stored filename to the Story row.
+    """
+    import json as _json
+    sub = db.session.get(FormSubmission, sub_id) or abort(404)
+    try:
+        payload = _json.loads(sub.payload_json or "{}")
+    except (ValueError, TypeError):
+        payload = {}
+    fvals = payload.get("fields") or {}
+    files = payload.get("files") or {}
+
+    cf = sub.form
+    blocks = []
+    if cf and cf.blocks_json:
+        try:
+            blocks = _json.loads(cf.blocks_json)
+        except (ValueError, TypeError):
+            blocks = []
+    if not isinstance(blocks, list):
+        blocks = []
+
+    # Field name heuristics — mirrors _summarise_form_submission's hint
+    # lists so the import picks the same "obvious" fields the list
+    # preview already calls out.
+    TITLE_HINTS = ("title", "subject", "headline", "story_title")
+    SUMMARY_HINTS = ("summary", "blurb", "excerpt", "headline")
+    BODY_HINTS = ("body", "story", "message", "content", "details", "narrative")
+    NAME_HINTS = ("full_name", "your_name", "submitter_name", "name")
+    AUTHOR_HINTS = ("author", "byline", "pen_name", "display_name")
+    PHONE_HINTS = ("phone", "tel", "mobile")
+    NOTES_HINTS = ("notes", "comments", "for_editor")
+
+    def _first(types=None, name_hints=()):
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            bn = (block.get("name") or "").lower()
+            if not bn:
+                continue
+            if types and block.get("type") not in types:
+                continue
+            if name_hints and not any(h in bn for h in name_hints):
+                continue
+            val = fvals.get(bn)
+            if val:
+                return val
+        return None
+
+    def _coerce(val):
+        if val is None:
+            return None
+        if isinstance(val, (list, tuple)):
+            return ", ".join(str(x) for x in val if x)
+        return str(val).strip() or None
+
+    title = _coerce(_first(name_hints=TITLE_HINTS)) or "Imported story submission"
+    # Body falls back to the longest text-area value in the payload
+    # so submissions whose form named its main field "your_story" or
+    # "tell_us_more" still get something useful. The same fallback
+    # logic is used by the list-preview headline picker, but here we
+    # take the whole value instead of a truncated snippet.
+    body = _coerce(_first(types={"textarea"}, name_hints=BODY_HINTS))
+    if not body:
+        # Pick the longest textarea answer across the whole payload as
+        # a last resort. Sorted by length descending so the most
+        # substantial answer wins.
+        ta_vals = []
+        for block in blocks:
+            if not isinstance(block, dict) or block.get("type") != "textarea":
+                continue
+            bn = (block.get("name") or "").lower()
+            v = fvals.get(bn)
+            if v and isinstance(v, str):
+                ta_vals.append(v)
+        if ta_vals:
+            body = max(ta_vals, key=len).strip() or None
+
+    summary = _coerce(_first(name_hints=SUMMARY_HINTS))
+    author_name = _coerce(_first(name_hints=AUTHOR_HINTS))
+    submitter_name = _coerce(_first(types={"text"}, name_hints=NAME_HINTS)) \
+        or author_name
+    submitter_email = _coerce(_first(types={"email"}))
+    submitter_phone = _coerce(_first(name_hints=PHONE_HINTS))
+    submitter_notes = _coerce(_first(name_hints=NOTES_HINTS))
+
+    # Walk the uploaded files block by block so the first image-typed
+    # file becomes the featured image and the first non-image file
+    # becomes the downloadable attachment. The stored file lives on
+    # disk under UPLOAD_FOLDER; we hand its stored name to the Story
+    # row directly so admin downloads stay a straight send_from_dir.
+    IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+    featured = None
+    attachment = None
+    for block in blocks:
+        if not isinstance(block, dict) or block.get("type") != "file":
+            continue
+        bn = (block.get("name") or "").lower()
+        info = files.get(bn) or {}
+        stored = (info.get("stored") or "").strip()
+        original = (info.get("original") or "").strip()
+        if not stored:
+            continue
+        ext = ("." + stored.rsplit(".", 1)[-1].lower()) if "." in stored else ""
+        if ext in IMAGE_EXTS and featured is None:
+            featured = stored
+        elif attachment is None:
+            attachment = (stored, original)
+    # Also consider any extra files (block-less) in payload.files.
+    for bn, info in files.items():
+        if not isinstance(info, dict):
+            continue
+        stored = (info.get("stored") or "").strip()
+        original = (info.get("original") or "").strip()
+        if not stored:
+            continue
+        ext = ("." + stored.rsplit(".", 1)[-1].lower()) if "." in stored else ""
+        if ext in IMAGE_EXTS and featured is None:
+            featured = stored
+        elif attachment is None:
+            attachment = (stored, original)
+
+    s = Story()
+    s.title = title[:255]
+    s.summary = (summary or "")[:2000] or None
+    s.body = body or None
+    s.author_name = (author_name or "")[:120] or None
+    s.is_draft = False
+    s.is_archived = False
+    s.is_pending_review = True
+    s.submitter_name = (submitter_name or "")[:120] or None
+    s.submitter_email = (submitter_email or "")[:255] or None
+    s.submitter_phone = (submitter_phone or "")[:64] or None
+    s.submitter_notes = (submitter_notes or "")[:4000] or None
+    # Preserve the original submission timestamp so the admin sees
+    # *when* this came in, not when it was imported.
+    s.submitted_at = sub.created_at
+    if featured:
+        s.featured_image_filename = featured
+    if attachment:
+        stored, original = attachment
+        s.submission_attachment_filename = stored
+        s.submission_attachment_original = original[:500] if original else stored
+
+    db.session.add(s)
+    # Drop the FormSubmission so it doesn't double-track. The on-disk
+    # files survive because they're now referenced by the Story row.
+    form_id = sub.form_id
+    db.session.delete(sub)
+    db.session.commit()
+
+    from . import activity
+    activity.log("story.import_from_form_submission",
+                 entity_type="story", entity_id=s.id,
+                 summary=f"Imported story submission “{s.title}” from form #{form_id}")
+    flash("Submission imported to the Stories holding tank. Review and edit before publishing.", "success")
+    return redirect(url_for("main.stories", show="pending"))
+
+
 @bp.route("/frontend/forms/custom/<int:form_id>/delete", methods=["POST"])
 @admin_required
 def frontend_custom_form_delete(form_id):
@@ -7518,10 +7901,65 @@ def frontend_form_submission():
             allowed = "both"
         s.submission_form_allowed_types = allowed
         s.submission_form_submit_label = (request.form.get("submission_form_submit_label") or "").strip()[:100] or None
+        s.submission_form_slug = _normalise_module_form_slug(
+            request.form.get("submission_form_slug"), exclude_attr="submission_form_slug")
+        # Field builder — same shape CustomForm uses. When the
+        # admin hasn't touched the builder we leave the column NULL
+        # so the public form falls back to its built-in defaults.
+        import json as _json
+        fields = _parse_form_fields(request.form)
+        s.submission_form_blocks_json = _json.dumps(fields) if fields else None
         db.session.commit()
-        flash("Submission form settings saved", "success")
+        flash("Announcements/Events form settings saved", "success")
         return redirect(url_for("main.frontend_form_submission"))
-    return render_template("frontend_form_submission.html", site=s)
+    return render_template("frontend_form_submission.html", site=s,
+                           form_fields=_resolve_module_form_fields(
+                               s.submission_form_blocks_json,
+                               _default_submission_form_blocks),
+                           field_types=sorted(_FORM_FIELD_TYPES))
+
+
+@bp.route("/frontend/forms/story", methods=["GET", "POST"])
+@admin_required
+def frontend_form_story():
+    """Settings page for the public Story Submission Form. Mirrors
+    the Submission Form settings page — toggle, recipient list, copy
+    overrides, submit button label."""
+    s = _get_site_setting()
+    if request.method == "POST":
+        s.story_form_enabled = request.form.get("story_form_enabled") == "1"
+        s.story_form_to = (request.form.get("story_form_to") or "").strip()[:500] or None
+        s.story_form_heading = (request.form.get("story_form_heading") or "").strip()[:200] or None
+        s.story_form_subheading = (request.form.get("story_form_subheading") or "").strip()[:500] or None
+        s.story_form_intro = (request.form.get("story_form_intro") or "").strip() or None
+        s.story_form_success_message = (request.form.get("story_form_success_message") or "").strip()[:500] or None
+        s.story_form_submit_label = (request.form.get("story_form_submit_label") or "").strip()[:100] or None
+        # Per-field label / placeholder / help overrides — admins can
+        # tweak the wording of each field without touching templates.
+        s.story_form_name_label = (request.form.get("story_form_name_label") or "").strip()[:120] or None
+        s.story_form_email_label = (request.form.get("story_form_email_label") or "").strip()[:120] or None
+        s.story_form_email_required = request.form.get("story_form_email_required") == "1"
+        s.story_form_story_label = (request.form.get("story_form_story_label") or "").strip()[:120] or None
+        s.story_form_story_placeholder = (request.form.get("story_form_story_placeholder") or "").strip()[:200] or None
+        s.story_form_file_label = (request.form.get("story_form_file_label") or "").strip()[:120] or None
+        s.story_form_file_help = (request.form.get("story_form_file_help") or "").strip() or None
+        s.story_form_terms_label = (request.form.get("story_form_terms_label") or "").strip()[:120] or None
+        s.story_form_terms_intro = (request.form.get("story_form_terms_intro") or "").strip()[:200] or None
+        s.story_form_terms_text = (request.form.get("story_form_terms_text") or "").strip() or None
+        s.story_form_terms_checkbox_label = (request.form.get("story_form_terms_checkbox_label") or "").strip()[:200] or None
+        s.story_form_slug = _normalise_module_form_slug(
+            request.form.get("story_form_slug"), exclude_attr="story_form_slug")
+        import json as _json
+        fields = _parse_form_fields(request.form)
+        s.story_form_blocks_json = _json.dumps(fields) if fields else None
+        db.session.commit()
+        flash("Story form settings saved", "success")
+        return redirect(url_for("main.frontend_form_story"))
+    return render_template("frontend_form_story.html", site=s,
+                           form_fields=_resolve_module_form_fields(
+                               s.story_form_blocks_json,
+                               _default_story_form_blocks),
+                           field_types=sorted(_FORM_FIELD_TYPES))
 
 
 @bp.route("/frontend/forms/contact", methods=["GET", "POST"])
@@ -7541,10 +7979,19 @@ def frontend_form_contact():
         s.contact_form_submit_label = (request.form.get("contact_form_submit_label") or "").strip()[:100] or None
         s.contact_form_subject_required = request.form.get("contact_form_subject_required") == "1"
         s.contact_form_show_phone = request.form.get("contact_form_show_phone") == "1"
+        s.contact_form_slug = _normalise_module_form_slug(
+            request.form.get("contact_form_slug"), exclude_attr="contact_form_slug")
+        import json as _json
+        fields = _parse_form_fields(request.form)
+        s.contact_form_blocks_json = _json.dumps(fields) if fields else None
         db.session.commit()
         flash("Contact form settings saved", "success")
         return redirect(url_for("main.frontend_form_contact"))
-    return render_template("frontend_form_contact.html", site=s)
+    return render_template("frontend_form_contact.html", site=s,
+                           form_fields=_resolve_module_form_fields(
+                               s.contact_form_blocks_json,
+                               _default_contact_form_blocks),
+                           field_types=sorted(_FORM_FIELD_TYPES))
 
 
 @bp.route("/frontend/contact-template/save", methods=["POST"])
@@ -14085,12 +14532,21 @@ def stories():
     sort = (request.args.get("sort") or "posted_desc").strip()
     q = Story.query
     if show == "archived":
-        q = q.filter(Story.is_archived.is_(True))
+        q = q.filter(Story.is_archived.is_(True),
+                     Story.is_pending_review.is_(False))
     elif show == "drafts":
-        q = q.filter(Story.is_draft.is_(True), Story.is_archived.is_(False))
+        q = q.filter(Story.is_draft.is_(True),
+                     Story.is_archived.is_(False),
+                     Story.is_pending_review.is_(False))
+    elif show == "pending":
+        # Holding tank for visitor submissions awaiting admin review.
+        q = q.filter(Story.is_pending_review.is_(True),
+                     Story.is_archived.is_(False))
     else:
         show = "active"
-        q = q.filter(Story.is_archived.is_(False), Story.is_draft.is_(False))
+        q = q.filter(Story.is_archived.is_(False),
+                     Story.is_draft.is_(False),
+                     Story.is_pending_review.is_(False))
     if sort == "posted_asc":
         q = q.order_by(db.func.coalesce(Story.published_at, Story.created_at).asc())
     elif sort == "title_asc":
@@ -14109,7 +14565,11 @@ def stories():
         sort = "posted_desc"
         q = q.order_by(db.func.coalesce(Story.published_at, Story.created_at).desc())
     items = q.all()
-    return render_template("stories.html", stories=items, show=show, sort=sort)
+    pending_count = (Story.query
+                     .filter(Story.is_pending_review.is_(True),
+                             Story.is_archived.is_(False)).count())
+    return render_template("stories.html", stories=items, show=show, sort=sort,
+                           pending_count=pending_count)
 
 
 def _story_embed():
@@ -14207,6 +14667,13 @@ def story_save():
     elif creating:
         story.is_draft = False
 
+    # Saving a pending-review submission always clears that flag —
+    # the admin is taking action on it (draft or publish). The
+    # ``submission_*`` fields are preserved so the audit trail of who
+    # submitted it survives the approval.
+    if story.is_pending_review:
+        story.is_pending_review = False
+
     if creating and story.published_at is None:
         # Site-local naive — same convention as Post.published_at and
         # the form's `_parse_post_dt`, so the auto-stamp shows at the
@@ -14300,10 +14767,25 @@ def story_delete(sid):
     activity.log("story.delete", entity_type="story", entity_id=story.id,
                  summary=f"Deleted story “{story.title}”")
     old_image = story.featured_image_filename
+    old_attachment = story.submission_attachment_filename
     body_inline_stored = _collect_body_inline_stored(story.body)
     story.featured_image_filename = None
+    story.submission_attachment_filename = None
     if old_image:
         _cleanup_retired_asset(old_image)
+    if old_attachment:
+        # Submission attachments are admin-only artifacts — they
+        # never get referenced elsewhere, so a straight unlink is
+        # enough. _cleanup_retired_asset's reference check would also
+        # work, but the path isn't indexed in MediaItem, so we skip
+        # the round-trip.
+        try:
+            import os
+            target = os.path.join(current_app.config["UPLOAD_FOLDER"], old_attachment)
+            if os.path.isfile(target):
+                os.remove(target)
+        except OSError:
+            pass
     db.session.delete(story)
     db.session.commit()
     for s in body_inline_stored:
@@ -14316,6 +14798,54 @@ def story_delete(sid):
     if _story_embed():
         return render_template("story_modal_close.html", message="Story deleted")
     return redirect(url_for("main.stories"))
+
+
+@bp.route("/stories/<int:sid>/approve-pending", methods=["POST"])
+@login_required
+def story_approve_pending(sid):
+    """Flip a pending-review story into a regular draft so the admin
+    can edit it normally. Same pattern Post uses for its own holding
+    tank — the submission's ``submitter_*`` fields are preserved on
+    the row as the audit trail. The admin lands on the story-edit
+    page so they can pick up where the submitter left off."""
+    _require_stories_enabled()
+    story = db.session.get(Story, sid) or abort(404)
+    if not story.is_pending_review:
+        return redirect(_safe_referrer() or url_for("main.stories"))
+    story.is_pending_review = False
+    story.is_draft = True
+    db.session.commit()
+    from . import activity
+    activity.log("story.approve_pending", entity_type="story", entity_id=story.id,
+                 summary=f"Approved submission “{story.title}” to draft")
+    flash("Submission moved to drafts. Edit the story below before publishing.", "success")
+    return redirect(url_for("main.story_edit", sid=story.id))
+
+
+@bp.route("/stories/<int:sid>/attachment")
+@login_required
+def story_submission_attachment(sid):
+    """Stream the submitter's uploaded attachment back to the admin.
+    Lives under the gated ``/stories/...`` namespace so only signed-in
+    users with the stories module can pull these files — the public
+    ``/pub/...`` route doesn't index them. Filename in the
+    Content-Disposition header is the submitter's original filename
+    (sanitised on save) so the download arrives with a recognisable
+    name even though the on-disk file is UUID-prefixed."""
+    _require_stories_enabled()
+    story = db.session.get(Story, sid) or abort(404)
+    stored = story.submission_attachment_filename
+    if not stored:
+        abort(404)
+    import os
+    target = os.path.join(current_app.config["UPLOAD_FOLDER"], stored)
+    if not os.path.isfile(target):
+        abort(404)
+    return send_from_directory(
+        current_app.config["UPLOAD_FOLDER"], stored,
+        as_attachment=True,
+        download_name=story.submission_attachment_original or stored,
+    )
 
 
 @bp.route("/stories/bulk", methods=["POST"])

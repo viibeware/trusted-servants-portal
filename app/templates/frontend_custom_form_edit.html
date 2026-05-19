@@ -13,6 +13,28 @@
           action="{{ url_for('main.frontend_custom_form_edit', form_id=form.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+      {# Visibility block — same shape the module forms use. Lives
+         above Settings so the on/off toggle is the first thing the
+         operator sees on the edit page. Settings + builder below
+         stay reachable while disabled; nothing on the public site
+         renders until the toggle flips on. #}
+      <section class="card">
+        <div class="card-head">
+          <h2>Visibility</h2>
+          <span class="muted smaller">Off-switch for this form site-wide. When off, the public URL <code>/{{ form.slug }}</code> 404s and any CTA pointing at it hides itself.</span>
+        </div>
+        <li class="special-page-row" style="list-style:none; padding: 1rem;">
+          <div class="special-page-info">
+            <div class="u-name">Form enabled</div>
+            <p class="muted small">Hard off-switch. Settings, fields, and recipient list below are preserved when off.</p>
+          </div>
+          <label class="mode-toggle">
+            <input type="checkbox" name="enabled" value="1" {% if form.enabled %}checked{% endif %}>
+            <span class="mode-track"><span class="mode-thumb"></span></span>
+          </label>
+        </li>
+      </section>
+
       <section class="card">
         <div class="card-head">
           <h2>Settings</h2>
@@ -76,12 +98,6 @@
                       placeholder="Thanks for your submission — we'll be in touch.">{{ form.thank_you_message or '' }}</textarea>
           </label>
         </fieldset>
-
-        <label class="mode-toggle">
-          <input type="checkbox" name="enabled" value="1" {% if form.enabled %}checked{% endif %}>
-          <span class="mode-track"><span class="mode-thumb"></span></span>
-          <span>Enabled — visitors can submit to <code>/{{ form.slug }}</code></span>
-        </label>
 
         <div class="form-actions">
           <button type="submit" class="btn btn-primary">Save settings</button>

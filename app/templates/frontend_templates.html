@@ -1936,15 +1936,15 @@
   </form>
 </section>
 
-{# ── Submission form (/submissionform) ───────────────────────────── #}
+{# ── Forms Template (shared by every public form) ───────────────── #}
 {%- set _sfmode = (site.frontend_submission_form_width_mode if site else 'boxed') -%}
 {%- set _sfpad  = (site.frontend_submission_form_padding_pct if site else 5) -%}
 {%- set _sfmax  = (site.frontend_submission_form_max_width   if site else 720) -%}
 {%- set _sfenabled = (site.submission_form_enabled if site else True) -%}
 <section class="card fe-tplgrid-section">
   <div class="card-head">
-    <h2>Submission form (/submissionform)</h2>
-    <span class="muted smaller">Public form visitors use to submit an event or announcement for admin review. This card controls the public-page layout, container width, and per-template appearance overrides. Heading, subheading, intro copy, and form behaviour (allowed types, success message, submit label) are managed on the Forms admin.</span>
+    <h2>Forms Template</h2>
+    <span class="muted smaller">Controls the appearance of the Announcements/Events form (<code>/submissionform</code>), the Story Submission Form (<code>/storyform</code>), and every custom form — they all render through this shared template chrome (layout, container width, dynamic background, per-template appearance overrides). Heading, subheading, intro copy, and per-form behaviour are managed on each form's settings page under <a href="{{ url_for('main.frontend_forms') }}">Web Frontend → Forms</a>.</span>
   </div>
   <form class="form fe-tplgrid-form" method="post"
         action="{{ url_for('main.frontend_submission_form_template_save') }}">
@@ -1989,7 +1989,7 @@
     </div>
   </form>
 
-  {{ tpl_customize_panel('submission_form', submission_form_active_key, submission_form_active_settings, ((submission_form_templates | selectattr('key', 'equalto', submission_form_active_key) | list | first).name if (submission_form_templates | selectattr('key', 'equalto', submission_form_active_key) | list | first) else ''), scope_label='submission form') }}
+  {{ tpl_customize_panel('submission_form', submission_form_active_key, submission_form_active_settings, ((submission_form_templates | selectattr('key', 'equalto', submission_form_active_key) | list | first).name if (submission_form_templates | selectattr('key', 'equalto', submission_form_active_key) | list | first) else ''), scope_label='forms') }}
 
   <form class="form" method="post"
         action="{{ url_for('main.frontend_submission_form_template_save') }}">
@@ -2026,7 +2026,7 @@
       {% if _sfenabled %}
       <a class="btn" href="{{ url_for('frontend.submission_form') }}" target="_blank" rel="noopener">Preview /submissionform ↗</a>
       {% endif %}
-      <button class="btn btn-primary">Save Submission form</button>
+      <button class="btn btn-primary">Save Forms Template</button>
     </div>
   </form>
 </section>
