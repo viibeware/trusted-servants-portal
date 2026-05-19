@@ -2411,6 +2411,8 @@ def events_list():
     Upcoming Events block via the "See all events" CTA. Uses the same
     Post query the homepage block does, but with a high cap so visitors
     can browse the full upcoming queue."""
+    from .routes import _auto_archive_events
+    _auto_archive_events()
     site = _site()
     gate = _frontend_gate(site)
     if gate is not None:
@@ -2732,6 +2734,8 @@ def announcements_list():
     ANNOUNCEMENTS_LIST_TEMPLATES via the admin Templates panel — currently
     a single omni layout (Cards + GSR Summary) with a separate Archive
     pill linking to /announcements/archive."""
+    from .routes import _auto_archive_events
+    _auto_archive_events()
     site = _site()
     gate = _frontend_gate(site)
     if gate is not None:
@@ -3367,6 +3371,8 @@ def announcement_detail(slug):
     announcements simply have no event_starts_at / location / Zoom —
     the detail templates already gate those panels behind `{% if %}`
     checks so they collapse gracefully."""
+    from .routes import _auto_archive_events
+    _auto_archive_events()
     site = _site()
     gate = _frontend_gate(site)
     if gate is not None:

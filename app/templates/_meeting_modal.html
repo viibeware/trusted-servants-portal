@@ -746,6 +746,71 @@
       });
     });
 
+    // "Queue schedule change" submit — intercepted so the modal stays
+    // open and the save bar handles the success animation (same UX as
+    // the main edit form's inline save). The form lives outside the
+    // main edit form (it's the hidden host form rendered after the
+    // main </form>); its inputs are scattered up under the schedule
+    // grid and tied to it via the HTML5 ``form="…"`` attribute, which
+    // FormData() automatically follows. On success we mark the modal
+    // to reload its host page when closed, so the pending change row
+    // is visible the next time the operator opens this meeting.
+    var schedChgForm = modal.querySelector('form[id^="meeting-sched-chg-new-"]');
+    if (schedChgForm) {
+      schedChgForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (msg) msg.textContent = 'Saving…';
+        if (saveBtn) saveBtn.disabled = true;
+        bar.hidden = false;
+        bar.classList.remove('is-leaving');
+        var fd = new FormData(schedChgForm);
+        fetch(schedChgForm.action, {
+          method: 'POST',
+          credentials: 'same-origin',
+          body: fd,
+        }).then(function (r) {
+          if (!r.ok) throw new Error('save failed: ' + r.status);
+          if (msg) msg.textContent = 'Saved';
+          modal.dataset.reloadOnClose = '1';
+          // Animate the bar out using the same is-leaving keyframe the
+          // main form uses, then reset state so a follow-up edit on
+          // the main form re-shows the bar fresh.
+          var done = false;
+          var finish = function () {
+            if (done) return;
+            done = true;
+            hide();
+          };
+          bar.addEventListener('animationend', finish, { once: true });
+          bar.classList.add('is-leaving');
+          setTimeout(finish, 400);
+          // Clear the queue-change form fields + collapse the
+          // details so the next interaction starts fresh. Bound
+          // inputs live outside the form DOM, so reset() doesn't
+          // touch them — walk them manually via the form attribute.
+          modal.querySelectorAll('[form="' + schedChgForm.id + '"]').forEach(function (inp) {
+            if (inp.tagName !== 'INPUT' && inp.tagName !== 'SELECT' && inp.tagName !== 'TEXTAREA') return;
+            if (inp.type === 'checkbox' || inp.type === 'radio') {
+              inp.checked = false;
+            } else if (inp.type !== 'submit' && inp.type !== 'button' && inp.type !== 'hidden') {
+              inp.value = '';
+            }
+          });
+          modal.querySelectorAll('.day-list-change .day-toggle').forEach(function (t) {
+            if (t.checked) {
+              t.checked = false;
+              t.dispatchEvent(new Event('change'));
+            }
+          });
+          var details = modal.querySelector('details.schedule-change-add');
+          if (details) details.open = false;
+        }).catch(function () {
+          if (msg) msg.textContent = 'Save failed — try again';
+          if (saveBtn) saveBtn.disabled = false;
+        });
+      });
+    }
+
     // When the modal is closed after a successful save, reload the page
     // so the host view reflects the saved edits. The global close
     // handler in app.js flips `aria-hidden` to "true" — observe that

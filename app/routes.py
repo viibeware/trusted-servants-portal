@@ -13434,24 +13434,46 @@ def _fmt_post_dt(dt):
 
 def _auto_archive_events():
     """Archive any active event whose end (or start, if no end) is
-    before today. Drafts are skipped — admins can sit on a draft
-    indefinitely without it disappearing into the archive. Idempotent
-    — safe to call on every list view."""
+    before today AND any active announcement whose admin-set
+    ``announcement_auto_archive_at`` has passed. Drafts are skipped —
+    admins can sit on a draft indefinitely without it disappearing
+    into the archive. Idempotent — safe to call on every list view.
+
+    Two separate cutoffs:
+      • Events compare to *midnight today* in the host clock — events
+        ending yesterday or earlier disappear at the start of today.
+      • Announcements compare to *now in site-local time* — admins
+        type the auto-archive deadline into a datetime-local input
+        (naive, site-local), so the value goes live the moment that
+        wall-clock arrives in the fellowship's timezone.
+    """
+    from .timezone import now_local_naive
+    site = _get_site_setting()
     today = datetime.utcnow().date()
-    cutoff = datetime.combine(today, datetime.min.time())  # midnight today
+    event_cutoff = datetime.combine(today, datetime.min.time())  # midnight today
+    announce_cutoff = now_local_naive(site)
     q = Post.query.filter(
         Post.is_archived.is_(False), Post.is_draft.is_(False),
-        Post.is_event.is_(True),
     )
     changed = False
     for p in q.all():
-        # Cutoff = the start of today; an event whose end was BEFORE
-        # midnight today (i.e. the event ended yesterday or earlier)
+        # Event arm — keep the legacy behaviour: an event whose end
+        # was before midnight today (i.e. ended yesterday or earlier)
         # auto-archives. An event with no end falls back to start.
-        ref = p.event_ends_at or p.event_starts_at
-        if ref and ref < cutoff:
-            p.is_archived = True
-            changed = True
+        if p.is_event:
+            ref = p.event_ends_at or p.event_starts_at
+            if ref and ref < event_cutoff:
+                p.is_archived = True
+                changed = True
+                continue
+        # Announcement arm — only applies when the admin opted in by
+        # setting ``announcement_auto_archive_at``. Compared against
+        # the site-local wall clock so the cutoff matches what the
+        # admin typed into the form input.
+        if p.is_announcement and p.announcement_auto_archive_at:
+            if p.announcement_auto_archive_at <= announce_cutoff:
+                p.is_archived = True
+                changed = True
     if changed:
         db.session.commit()
 
@@ -13640,6 +13662,16 @@ def post_save():
 
     post.event_starts_at = _parse_post_dt(request.form.get("event_starts_at"))
     post.event_ends_at = _parse_post_dt(request.form.get("event_ends_at"))
+    # Announcement-only auto-archive deadline. Only honored when the
+    # post is tagged as an announcement AND the admin enabled the
+    # toggle. Otherwise the column is wiped so a post that loses its
+    # announcement tag doesn't keep ticking toward a stale deadline.
+    if (post.is_announcement
+            and request.form.get("announcement_auto_archive_enabled") == "1"):
+        post.announcement_auto_archive_at = _parse_post_dt(
+            request.form.get("announcement_auto_archive_at"))
+    else:
+        post.announcement_auto_archive_at = None
     # Posted-on timestamp — admin-controllable so a post can be back-
     # or forward-dated. Only overwrite when the form submitted a value;
     # blank input keeps whatever's already on the row (or NULL on a

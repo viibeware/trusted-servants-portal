@@ -1436,6 +1436,36 @@ html[data-theme="dark"] .post-chip-private      { background: rgba(168, 85, 247,
   .schedule-change-form-row { grid-template-columns: 1fr; }
 }
 
+/* Announcement auto-archive toggle + datetime picker on the
+   announcement / event edit page. Hidden entirely until the
+   Announcement type is selected; the inner datetime input is
+   hidden until the toggle inside is flipped on. Visual treatment
+   mirrors .public-alert-expiry on the meeting modal so the two
+   "auto-clear after a date" controls read as siblings. */
+.post-announcement-expiry { margin-top: 1rem; }
+.post-announcement-expiry-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  margin: .25rem 0 .5rem;
+}
+.post-announcement-expiry-field {
+  padding: .55rem .75rem;
+  border-left: 3px solid var(--border);
+  margin-left: .35rem;
+}
+.post-announcement-expiry-input {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  max-width: 280px;
+}
+.post-announcement-expiry-input input { font: inherit; }
+.post-announcement-expiry-help {
+  margin: .35rem 0 0;
+  line-height: 1.4;
+}
+
 /* Branding & SEO: two-panel grid inside the Site Identity card —
    Site name + Favicon | Open Graph. Mirrors .fe-header-grid. */
 .fe-branding-grid {

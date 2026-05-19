@@ -1629,7 +1629,8 @@ def _migrate_sqlite(app):
                          ("submitter_phone", "VARCHAR(64)"),
                          ("submitter_notes", "TEXT"),
                          ("submitted_at", "DATETIME"),
-                         ("published_at", "DATETIME")):
+                         ("published_at", "DATETIME"),
+                         ("announcement_auto_archive_at", "DATETIME")):
             add("post", col, ddl)
         for col, ddl in (("published_at", "DATETIME"),):
             add("story", col, ddl)

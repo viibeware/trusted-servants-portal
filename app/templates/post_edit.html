@@ -182,10 +182,88 @@
                 placeholder="The full body of the post. Markdown supported.">{{ (_p.body if _p else '') or '' }}</textarea>
     </label>
     <label>Posted on <span class="muted small">(timestamp shown wherever the post surfaces; defaults to now on a new post and is preserved as-is on WordPress imports)</span>
+      {# Fall back to ``display_posted`` so legacy rows whose
+         ``published_at`` is NULL still surface a value here — same
+         logic the list table uses to render the "Posted on" column.
+         Saving keeps writing to ``published_at`` so an explicit edit
+         (or a brand-new post) still stores the admin's chosen value. #}
       <input type="datetime-local" name="published_at"
-             value="{% if _p and _p.published_at %}{{ _p.published_at.strftime('%Y-%m-%dT%H:%M') }}{% endif %}">
+             value="{% if _p and _p.display_posted %}{{ _p.display_posted.strftime('%Y-%m-%dT%H:%M') }}{% endif %}">
     </label>
+
+    {# Announcement-only auto-archive deadline. Hidden whenever the
+       Announcement checkbox is off — events already auto-archive via
+       ``event_ends_at`` so the toggle would be redundant for them.
+       The expiry block reveals only when the inner toggle is on; the
+       outer wrapper itself hides when no announcement is selected. JS
+       below this <section> drives both visibility rules. #}
+    {%- set _aa = _p.announcement_auto_archive_at if _p else none -%}
+    <div class="post-announcement-expiry" data-announcement-expiry hidden>
+      <label class="mode-toggle post-announcement-expiry-toggle">
+        <input type="checkbox"
+               name="announcement_auto_archive_enabled"
+               value="1"
+               {% if _aa %}checked{% endif %}
+               data-announcement-expiry-toggle>
+        <span class="mode-track"><span class="mode-thumb"></span></span>
+        <span>Auto-archive this announcement after a date &amp; time</span>
+      </label>
+      <div class="post-announcement-expiry-field"
+           data-announcement-expiry-field
+           {% if not _aa %}hidden{% endif %}>
+        <label class="post-announcement-expiry-input">
+          <span class="muted smaller">Archive on</span>
+          <input type="datetime-local"
+                 name="announcement_auto_archive_at"
+                 value="{% if _aa %}{{ _aa.strftime('%Y-%m-%dT%H:%M') }}{% endif %}"
+                 data-announcement-expiry-input>
+        </label>
+        <p class="muted smaller post-announcement-expiry-help">
+          Times are in the site timezone{% if site and site.timezone %} ({{ site.timezone }}){% endif %}.
+          After this moment the announcement is hidden from the public
+          site and moved to the archive automatically — same place an
+          admin-archived post lands.
+        </p>
+      </div>
+    </div>
   </section>
+
+  {# Show/hide the announcement-auto-archive section based on the
+     Announcement checkbox state. Mirrors how the Event details section
+     stays present but inert when Event isn't checked; the auto-archive
+     section actually disappears because it has zero meaning without
+     the Announcement tag. #}
+  <script>
+  (function () {
+    var annCheck = document.querySelector('input[type="checkbox"][name="is_announcement"]');
+    var expiryWrap = document.querySelector('[data-announcement-expiry]');
+    if (!annCheck || !expiryWrap) return;
+    var expiryToggle = expiryWrap.querySelector('[data-announcement-expiry-toggle]');
+    var expiryField = expiryWrap.querySelector('[data-announcement-expiry-field]');
+    var expiryInput = expiryWrap.querySelector('[data-announcement-expiry-input]');
+    function syncWrap() {
+      expiryWrap.hidden = !annCheck.checked;
+    }
+    function syncField() {
+      if (!expiryField || !expiryToggle) return;
+      expiryField.hidden = !expiryToggle.checked;
+      if (expiryToggle.checked && expiryInput && !expiryInput.value) {
+        // Sensible default: 14 days out — typical "leave the
+        // announcement up for two weeks" cadence. Admin can change
+        // before saving.
+        var d = new Date();
+        d.setDate(d.getDate() + 14);
+        var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+        expiryInput.value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' +
+                            pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+      }
+    }
+    annCheck.addEventListener('change', syncWrap);
+    if (expiryToggle) expiryToggle.addEventListener('change', syncField);
+    syncWrap();
+    syncField();
+  })();
+  </script>
 
   {# ── Featured image ─────────────────────────────────────────── #}
   <section class="card" data-post-featured-image>
@@ -285,14 +363,11 @@
                placeholder="https://zoom.us/j/...">
       </label>
     </div>
-  </section>
 
-  {# ── Event website / external link ──────────────────────── #}
-  <section class="card">
-    <div class="card-head">
-      <h2>Event website</h2>
-      <span class="muted smaller">A link the public site renders with your chosen label.</span>
-    </div>
+    {# Event website / external link — folded into the Event details
+       card so all event-only fields live in one place. Same field
+       names as before, so the save handler doesn't need to change. #}
+    <h3 class="post-subhead">Event website <span class="muted smaller">(optional)</span></h3>
     <div class="form-row">
       <label>URL <span class="muted small">(absolute or relative)</span>
         {# `type="text"` + `inputmode="url"` instead of `type="url"`
@@ -310,14 +385,11 @@
                placeholder="Register on Eventbrite">
       </label>
     </div>
-  </section>
 
-  {# ── Contact ─────────────────────────────────────────────── #}
-  <section class="card">
-    <div class="card-head">
-      <h2>Event contact</h2>
-      <span class="muted smaller">Optional — shown publicly when set.</span>
-    </div>
+    {# Event contact — also folded in. Shown publicly when set; admins
+       can leave all three fields blank when an event has no host
+       contact info to surface. #}
+    <h3 class="post-subhead">Event contact <span class="muted smaller">(optional)</span></h3>
     <label>Name
       <input type="text" name="contact_name" maxlength="120"
              value="{{ (_p.contact_name if _p else '') or '' }}">

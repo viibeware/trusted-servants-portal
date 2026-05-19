@@ -1647,6 +1647,16 @@ class Post(db.Model):
     event_starts_at = db.Column(db.DateTime)
     event_ends_at = db.Column(db.DateTime)
 
+    # Optional auto-archive deadline for *announcements*. When set on a
+    # post tagged is_announcement (events ignore this — they already
+    # auto-archive past their event_ends_at), the auto-archive sweep
+    # flips ``is_archived`` to True once this timestamp passes in the
+    # site's local timezone. NULL = no auto-archive (admin clears the
+    # post by hand). The edit UI hides this field whenever
+    # is_announcement is unchecked so the operator only sees it in the
+    # context it applies.
+    announcement_auto_archive_at = db.Column(db.DateTime)
+
     # Event location.
     is_online = db.Column(db.Boolean, nullable=False, default=False)
     location_name = db.Column(db.String(255))
