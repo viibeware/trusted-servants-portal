@@ -6,6 +6,168 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.1.30] — 2026-05-20
+
+### Fixed — Frontend → Templates per-template modal layout
+
+Per-template modals on the Frontend → Templates page now reflow cleanly. The customize-panel fieldset grid (Background / Fonts / Sidebar widgets / Sizes) used to inherit ``grid-template-columns: repeat(auto-fit, minmax(240px, 1fr))`` from the standalone page; inside the narrower modal width that squeezed all four fieldsets into a single row, and their heavy ``.fieldset { padding: 2rem; gap: 2rem }`` chrome overflowed into neighbours. Inside ``.modal.tpl-modal`` the grid is now capped at two columns (single column under 720px), fieldset padding is trimmed to ``1rem 1.25rem`` with ``gap: .75rem``, and the picker thumbnail grid is tightened to ``minmax(180px, 1fr)`` so wide thumbs don't push the modal body past its parent panel.
+
+Section content inside each modal also reflows as a vertical flex stack with a 1.25rem gap so the picker form, the customize ``<details>``, and any follow-up settings form don't sit flush or appear to overlap.
+
+## [2.1.29] — 2026-05-20
+
+### Added — Announcement / event post galleries
+
+Posts grow an image gallery (up to 6 images) that renders in a 3-column grid alongside the featured image on the public detail page with a click-to-zoom lightbox.
+
+- **Model**: new ``Post.gallery_json`` (JSON list of stored filenames); ``Post.gallery_filenames`` property decodes, validates, and tail-truncates to 6. ``_cleanup_retired_asset`` reference-counts the new column via a JSON-content scan so an image referenced by another post's gallery survives a delete.
+- **Admin** (``post_edit.html``): new Gallery card after the Featured image card with a thumbnail grid (auto-fill 120px min, ``object-fit: cover``), per-tile remove, multi-select upload, and File Browser picker. The picker opens in a new multi-select mode (``?multi=1``) — sticky bottom bar tallies selected items and posts them in one batch. Server save handler rebuilds the gallery list from three parallel streams (kept-existing, new uploads, picked media-ids) and routes removed files through ``_cleanup_retired_asset``.
+- **Public route**: ``GET /post-gallery-image/<pid>/<idx>`` (public blueprint) with ``?thumb=<size>`` (120/240/400/720/1080) via the existing ``thumbnails.ensure_thumb`` helper. Cached thumbs ship with ``Cache-Control: public, max-age=86400`` and clean up automatically when the source retires.
+- **Frontend**: shared ``frontend/events/_gallery.html`` partial included by all four event detail templates (classic, minimal, poster, timeline). 3-column grid with responsive ``srcset`` (240w / 400w / 720w). Width matches the featured image per template — inside ``.fe-event-detail-cover-col`` and ``.fe-event-time-main`` for the templates with an inline featured image; capped at ``max-width: 480px`` centred for poster + minimal. Uses the existing ``_lightbox.html`` partial via the ``data-lightbox-scope`` convention.
+
+### Added — File Browser multi-select picker mode
+
+The File Browser modal grows a ``?multi=1`` opt-in for batch selection — used by the post gallery picker, available to any future caller that wants to grab several files in one trip.
+
+- New ``picker_multi`` flag on the route + a ``data-media-multi-bar`` sticky bottom action bar inside ``media.html`` with running count, Clear, and Add N items.
+- Per-item Select clicks toggle into a running ``selected`` Set instead of immediately posting; the host card / row flips into a brand-tinted ``is-selected`` state with the button label flipping to "Selected ✓".
+- ``Add N items`` button posts a single ``media-selected-batch`` ``postMessage`` back with the full items array.
+
+### Fixed — File Browser list-view Select did nothing
+
+The picker iframe's ``.media-select`` click handler walked up the DOM via ``closest('.media-card')`` to fetch the data attributes — that selector only matched grid cards. List-view rows are ``<tr>`` with the same ``data-media-id`` / ``data-stored`` / ``data-original`` attributes but no ``.media-card`` ancestor, so ``closest`` returned null and the click no-op'd. Switched to ``closest('[data-media-id]')`` so both views hit the same code path.
+
+### Changed — Frontend → Templates page is now a sortable index of modals
+
+The Templates page used to render every template-type configurator (Meetings list, Events list, Story detail, etc.) as a long stack of cards. Refactored into a sortable index of rows with per-template modals:
+
+- All 16+ ``<section class="card fe-tplgrid-section">`` blocks are auto-discovered by JS and lifted into modal shells; an Edit button per row opens the matching modal.
+- An A→Z / Z→A sort toggle above the list (default A→Z) persists per browser via localStorage.
+- Forms inside each modal use the yellow save-bar pattern: dirty triggers the bar, the bar's Save button POSTs every dirty form via fetch, animates "Saved" with the existing ``fe-save-leave`` keyframe, then resets — the modal stays open until the operator clicks the X.
+- Inline primary Save buttons inside each section are hidden in the modal so the save bar is the canonical commit affordance.
+
+## [2.1.28] — 2026-05-19
+
+### Added — Trailing-slash tolerance app-wide
+
+Flipped ``app.url_map.strict_slashes = False`` in ``create_app`` so any route resolves with or without a trailing slash. External links / typos like ``/contact/`` now reach the same handler as ``/contact``; previously Werkzeug 404'd on the mismatched form depending on how the route was declared.
+
+### Changed — Form-builder field cards expand on whole-card click + 200ms animation
+
+The custom-form (and per-module form) field builder used to require clicking a dedicated Edit button to expand a field card. Replaced with a whole-card click target: ``data-field-edit`` button removed; clicking anywhere on a card (except the drag handle, delete button, or a raw input/select/textarea/button/link) toggles the body. Each card gets a chevron indicator on the right that rotates 180° on open. The body now animates open/close over 200ms via ``max-height`` + ``opacity`` + ``padding`` + ``border-top-width`` transitions on the ``is-open`` class.
+
+### Changed — Module form list pages get a Manage form button
+
+Stories, Announcements & Events, and Contact Form admin list pages now carry a **Manage form** button (settings icon) in the top action area linking to the matching form's settings page.
+
+### Changed — Templates page section cards remember collapsed state
+
+Every ``<section class="card">`` on ``/tspro/frontend/templates`` starts collapsed by default and persists per-card expansion state in localStorage. Heading is the clickable toggle; chevron indicator rotates on open. *(Superseded by the 2.1.29 index-of-modals refactor.)*
+
+### Changed — Posts admin defaults to Posted newest-first; sort persisted
+
+``/tspro/announcementsevents`` default sort is now ``posted_desc`` (newest at top by Posted date) for the active / drafts / archived tabs (pending keeps its ``submitted_desc`` default). The chosen sort persists per browser via the ``view-posts-sort`` cookie.
+
+### Changed — Forms widget pending counts replace lifetime totals
+
+Dashboard Forms widget rows used to show ``{subtitle} · {total} submissions · last {date}``. The total is redundant with the attention badge on the right; subhead now reads just the unreviewed count ("3 pending review") and falls back to "all caught up" when nothing's waiting on the admin.
+
+### Changed — "Form Submissions" sidebar → "Custom Form Submissions"
+
+Sidebar entry renamed to match the page heading; the page itself gains a **Manage forms** button up top linking back to ``/tspro/frontend/forms``.
+
+## [2.1.27] — 2026-05-19
+
+### Added — File-type restrictions on form file uploads
+
+File-type form fields in the form builder grow an **Accepted file types** input — comma-separated extensions or MIME types (``.pdf,.docx`` or ``image/*``). The HTML5 ``accept`` attribute drives the picker; a new server-side ``_accept_matches`` helper enforces the same rule on submit so a tampered POST can't smuggle a disallowed type through. The accept input auto-hides on non-file cards and toggles when the type changes.
+
+## [2.1.26] — 2026-05-19
+
+### Changed — Module form URLs
+
+- Each module form's Preview button on the settings page now points to the form's current public URL — the admin-set custom slug when one is configured, the canonical path otherwise.
+- The canonical paths (``/submissionform``, ``/storyform``, ``/contact``) 302-redirect to the custom slug when set so only one URL serves the form at a time.
+
+## [2.1.25] — 2026-05-19
+
+### Added — Story submission pipeline
+
+Story submissions land in the Stories admin pending-review tab instead of Form Submissions. New public ``/storyform`` route (renders through the shared Submission Form template chrome — Classic / Minimal / Split) with optional file attachment + an Accept Terms checkbox. Admins approve to drafts, reject, or download the attached file for offline review. A one-shot importer on the Form Submission detail page migrates legacy custom-form story submissions into the new flow.
+
+### Added — Form builder integrated into all three module forms
+
+The custom-form field builder is now embedded in all three module-form settings pages (Announcements/Events, Story, Contact). Admins drag/edit/add/remove fields with the same UI custom forms use; each form ships with a default block set matching its built-in layout. Per-field labels, placeholders, help text, and options are editable inline inside the builder.
+
+### Added — Configurable public URL per module form
+
+Each module form gains a configurable public URL slug — the built-in path keeps working and the catch-all dispatcher serves the form at the admin-picked slug as well. Settings page shows the canonical URL pre-populated so it's always visible.
+
+### Changed — Forms admin polish
+
+Custom forms get a Visibility card with an on/off toggle matching the module-form pattern. "Submission Form" is renamed to "Announcements/Events Form" throughout the UI. Submission Form template card is renamed "Forms Template" since it now drives the chrome of every public form.
+
+## [2.1.24] — 2026-05-19
+
+### Changed — Post edit page polish
+
+- Top **Save post** / **Save draft** primary buttons replaced by the yellow save bar pattern. State transitions (Publish, Move to Drafts) stay in the top action area as explicit lifecycle actions.
+- Summary field renamed to **GSR Summary** with an updated subhead.
+- Headline card gets 1rem of breathing room between groupings.
+- Event checkbox subhead changed to "Shows up in event feeds."
+- Event details card hides entirely when the Event checkbox is off and toggles live without a save.
+- Links card sits above Event details in the layout order.
+
+## [2.1.23] — 2026-05-19
+
+### Added — Multi-row Links section on posts
+
+The Event website field becomes a top-level **Links** section that applies to announcements and events alike. Each row carries a URL, a label, a Primary (solid) / Secondary (outline) button style dropdown, and an "open in new tab" checkbox. **+ Add another link** stacks as many call-to-action buttons as needed; rows with a blank URL are silently dropped at save time. Frontend event detail templates (classic, poster) honour the per-link button style; minimal + timeline keep their inline text-link rendering.
+
+## [2.1.22] — 2026-05-19
+
+### Added — Announcement auto-archive
+
+Post edit gains an announcement-only "auto-archive after date/time" toggle (hidden when Event is checked — events already auto-archive via ``event_ends_at``). The auto-archive sweep handles announcements past their deadline and runs on the public list + detail routes so the public side stays in sync without an admin visit.
+
+### Fixed — Posted on field
+
+Edit form now populates from ``display_posted`` so legacy rows show their stored timestamp.
+
+### Changed — Event details consolidated
+
+Event website + Event contact fold into the main Event details card as subheaded sections.
+
+### Changed — Meeting modal Queue-schedule-change submit is inline
+
+Fetch-driven save with the existing yellow save bar flipping to **Saved** and animating out instead of closing the modal.
+
+## [2.1.21] — 2026-05-19
+
+### Added — Public alert expiry + future schedule swaps
+
+The meeting edit modal grows two scheduling helpers:
+
+- **Public Alert Message** gets a toggle + datetime-local picker that auto-hides the alert after the chosen moment and wipes it from the field on the next page load.
+- New **Scheduled changes** fieldset under Day & Times — queue a full future schedule swap with an effective date; the next page load past that date replaces the current days + times with the queued set and deletes the queued row.
+
+### Changed — Public meeting alert presentation
+
+The public meeting alert background is solid amber (no more transparent wash) and the alert now also renders on the meetings list cards above the description across all three layouts.
+
+## [2.1.20] — 2026-05-19
+
+### Added — Featured-image File Browser picker on post edit
+
+Announcements & Events edit page gains a **Choose from File Browser** button next to the featured-image upload input. Opens the existing media picker modal; selecting an item swaps the inline preview, stashes the MediaItem id in a hidden input, and clears any pending file upload so the browser pick is what saves. Upload, picker, and the existing "Remove current image" checkbox are processed in priority order on the server.
+
+## [2.1.19] — 2026-05-18
+
+### Added — Pending-submissions chip + unified Forms dashboard widget
+
+- **Sidebar chip** on the Announcements & Events entry shows the number of visitor-submitted posts awaiting review.
+- **Dashboard Forms widget** replaces the old standalone Contact Form widget, rolling up every form on the system (Submission Form, Contact Form, plus every CustomForm row) with submission counts, last activity, and warn-tinted attention badges. New custom forms surface automatically.
+
 ## [2.1.18] — 2026-05-18
 
 ### Changed — Form Submissions list: card layout with per-row submitter preview

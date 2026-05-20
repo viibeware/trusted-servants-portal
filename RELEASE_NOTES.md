@@ -7,7 +7,133 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.1.18 — 2026-05-18 (latest) — Form Submissions redesign, 12-hour Zoom calendar, small UX polish
+## 2.1.30 — 2026-05-20 (latest) — Templates page modal layout fixes
+
+Per-template modals on the **Frontend → Templates** page now reflow cleanly. Customize-panel cards (Background, Fonts, Sidebar widgets, Sizes) used to squeeze into one row inside the modal width and the content overflowed into adjacent neighbours; the grid is now capped at two columns inside modals (single column under 720px) so every card has full breathing room.
+
+## 2.1.29 — 2026-05-20 — Post galleries, multi-select file picker, refactored Templates page
+
+### Announcement / event posts get an image gallery (up to 6)
+
+Edit any post to attach up to 6 images via upload or the File Browser. On the public detail page the gallery renders as a 3-column grid alongside the featured image with a click-to-zoom lightbox (keyboard navigation, swipe on mobile, ESC to close). Thumbnails are lazily generated so the page stays light.
+
+### File Browser opens in multi-select mode when picking gallery images
+
+When the gallery picker opens the File Browser, the modal switches into multi-select mode — checkboxes-style selection on every card / row, a sticky bottom action bar that counts your selection and adds them all in one click. The list-view Select button used to silently do nothing; that bug is also fixed.
+
+### Frontend → Templates page is now a sortable list of modals
+
+The Templates page used to render every template configurator (Meetings list, Story detail, Blog detail, etc.) as a long stack of cards. It's now a sortable list — A→Z / Z→A toggle persists per browser — with an **Edit** button per row that opens a centred modal. Forms inside each modal use the yellow save bar; the modal stays open after Save so you can keep iterating, and only the X (or Esc / backdrop click) dismisses.
+
+## 2.1.28 — 2026-05-19 — Trailing-slash tolerance + form builder UX polish
+
+### URLs with or without a trailing slash both work now
+
+Visiting ``/contact/`` or ``/storyform/`` no longer 404s — every route resolves with or without the trailing slash. Fixes a class of "I copied the URL wrong" bug.
+
+### Form-builder field cards expand on whole-card click
+
+The **Edit** button on each field card in the form builder is gone. Click anywhere on a card (heading, type pill, chevron, dead space) to expand its editor; click any control inside an open card to interact with it normally. The card animates open/close over 200ms with a chevron indicator that rotates.
+
+### Posts admin defaults to Posted newest-first; remembers your sort
+
+The Announcements & Events list now defaults to **Posted** descending. Click any column header to override; your choice persists across visits via a cookie. The Pending tab keeps its own freshest-first default.
+
+### Smaller polish
+
+- **Custom Forms** sidebar entry renamed to **Custom Form Submissions** with a **Manage forms** button up top.
+- Dashboard Forms widget rows now show just the pending count (e.g. "3 pending review") instead of the lifetime total — quieter and more actionable.
+- Stories / Announcements & Events / Contact Form list pages gain a **Manage form** button up top linking to the matching form's settings page.
+
+## 2.1.27 — 2026-05-19 — File-type restrictions on form uploads
+
+Every file-type field in the form builder gains an **Accepted file types** input — comma-separated extensions or MIME types (``.pdf,.docx`` or ``image/*``). The picker on the public form filters accordingly; the server enforces the same rule on submit so a tampered POST can't sneak a disallowed file through.
+
+## 2.1.26 — 2026-05-19 — Module form URLs & active-URL switch
+
+The **Preview** button on each form's settings page (Announcements/Events, Story, Contact) now reflects the form's current public URL — the custom slug when one is configured, the canonical path otherwise. When you set a custom slug, the canonical path (``/submissionform``, ``/storyform``, ``/contact``) auto-redirects to the new URL so only one URL serves the form at a time.
+
+## 2.1.25 — 2026-05-19 — Story submission pipeline + module-form builder
+
+### Story submissions now have their own holding tank
+
+Recovery story submissions used to land in the generic Form Submissions inbox. They now go to a dedicated **Pending review** tab on the Stories admin page — same flow announcement / event submissions already use. Each pending row shows the submitter's contact info, a download link for any attached file, and an **Approve to drafts** button that lands you on the story edit page. A new public ``/storyform`` page renders the form through the shared Submission Form chrome (Classic / Minimal / Split layouts).
+
+### Form builder is now embedded in every module form's settings page
+
+The same drag-and-drop field builder you use for custom forms is now layered onto all three module forms — Announcements/Events, Story, Contact. Each one ships with a default block set matching its built-in layout, so you can drag/edit/add/remove fields without losing the existing fields. Per-field labels, placeholders, help text, and options are editable inline inside the builder.
+
+### Configurable public URL per module form
+
+Each module form now has a customizable public URL slug. Type your preferred URL into the **Public URL** card on the form's settings page and visitors reach the form at ``/<your-slug>`` instead of the canonical path. The settings page pre-populates the input with the current URL so it's always visible.
+
+### Other polish
+
+- Custom forms get a **Visibility** toggle matching the module-form pattern.
+- "Submission Form" is renamed **Announcements/Events Form** throughout the admin.
+- The "Submission Form" template card on the Templates page is renamed **Forms Template** since it now drives the chrome of every public form.
+
+## 2.1.24 — 2026-05-19 — Post edit page polish
+
+The top **Save post** / **Save draft** primary buttons are replaced by a yellow save bar at the bottom of the page that only appears when you've made changes — same pattern the meeting modal uses. Lifecycle actions (Publish, Move to Drafts) stay in the top action area as explicit choices.
+
+Other smaller tweaks:
+- **Summary** field renamed to **GSR Summary**.
+- The Event details card hides entirely when the Event checkbox is off — toggles live without a save.
+- Links card now sits above Event details in the layout order.
+- Headline card has 1rem of breathing room between each grouping.
+
+## 2.1.23 — 2026-05-19 — Multi-row Links on posts
+
+The single Event website field on posts grows into a **Links** section that applies to announcements and events alike. Each row carries a URL, a label, a button-style picker (**Primary** solid or **Secondary** outline), and an "open in new tab" checkbox. Add as many call-to-action buttons as you need — the public detail page renders each one in your chosen style.
+
+## 2.1.22 — 2026-05-19 — Announcement auto-archive + other polish
+
+### Auto-archive announcements on a schedule
+
+The post edit page grows an **Auto-archive after date/time** toggle — visible only when the Announcement checkbox is checked (events already auto-archive via their event end date). Once the deadline passes, the announcement quietly moves to the archive without an admin visit.
+
+### Posted on field now populates from any source
+
+The Posted on field used to render blank for legacy posts even though the list table showed a date. It now falls back to the same value the list uses, so it's always populated.
+
+### Event website + Event contact folded into Event details
+
+Two cards on the post edit page collapsed into the main Event details card as subheaded sections.
+
+### Meeting "Queue schedule change" submit is now inline
+
+Clicking Queue schedule change inside the meeting edit modal no longer closes the modal — the yellow save bar flips to **Saved** and animates out instead, the same way the main meeting save works.
+
+## 2.1.21 — 2026-05-19 — Public alert expiry + future schedule swaps
+
+### Auto-hide public alerts on a schedule
+
+The meeting edit modal's **Public Alert Message** gets a toggle + datetime picker. Flip it on, pick a moment, and the alert hides from the public site at that time and clears itself from the field — so admins don't have to remember to remove a one-off announcement.
+
+### Queue a future schedule swap for a meeting
+
+Directly under Day & Times, a new **Scheduled changes** fieldset lets you build the meeting's *next* schedule (full week's worth of days + times) and pick the date it goes live. Until then the meeting keeps its current schedule; on the effective date the queued set replaces it automatically.
+
+### Better-looking public meeting alerts
+
+The public meeting alert had a transparent amber wash that washed out on busy backgrounds. It's now a solid amber tile (light + dark themes), and the alert also surfaces on the meetings list cards above the description so visitors see it earlier in their journey.
+
+## 2.1.20 — 2026-05-19 — Featured-image File Browser picker
+
+The announcements / events edit page gains a **Choose from File Browser** button next to the featured-image upload input. Click it to pick from existing uploads instead of re-uploading; the preview swaps live and the existing upload + "Remove current image" affordances keep working unchanged.
+
+## 2.1.19 — 2026-05-18 — Pending-submission chip + unified Forms dashboard widget
+
+### Sidebar shows submissions awaiting review
+
+The **Announcements & Events** sidebar entry carries a number chip when there are visitor-submitted posts in the holding tank — same shape the Watchtower / Contact Form chips already use.
+
+### Dashboard Forms widget
+
+The old Contact Form dashboard widget is replaced by a single **Forms** widget that lists every form on the system (Submission Form, Contact Form, plus every custom form you've built) with submission counts, last-activity dates, and warn-tinted attention badges. New custom forms appear automatically as they're created.
+
+## 2.1.18 — 2026-05-18 — Form Submissions redesign, 12-hour Zoom calendar, small UX polish
 
 A grab-bag release focused on making admin pages scan faster.
 
