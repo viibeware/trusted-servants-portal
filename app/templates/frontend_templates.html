@@ -11,6 +11,23 @@
 <a class="btn" href="{{ url_for('frontend.index') }}" target="_blank" rel="noopener">View frontend ↗</a>
 {% endblock %}
 {% block content %}
+{# Critical hide rule — declared BEFORE any card renders so the
+   browser knows to keep the template cards invisible from the
+   first paint. The JS lifts each card into a modal and tags the
+   body ``fe-tpl-index-ready`` once done; until then everything
+   stays hidden, preventing the brief flash of the stacked-cards
+   layout (and a stray modal section) on load / refresh. The
+   matching styles block lower down handles the rest of the
+   layout — only the hide rule needs to come this early. #}
+<style>
+  body:not(.fe-tpl-index-ready) .fe-admin-main section.card { visibility: hidden; }
+  /* Modals are appended to <body> by the JS; keep them invisible
+     until they're explicitly opened so a freshly-built (not-yet-
+     opened) modal can't flash during the lift. The global .modal
+     rule already does this, but declaring it here too guards
+     against any specificity race during the initial build. */
+  body:not(.fe-tpl-index-ready) .tpl-modal { visibility: hidden; }
+</style>
 <div class="fe-admin-layout">
   {% include "_frontend_subnav.html" %}
   <div class="fe-admin-main">
@@ -2231,12 +2248,10 @@
    to use the yellow save bar pattern — modal stays open until
    the operator clicks the X. #}
 <style>
-  /* Hide every original section.card on initial render — the JS
-     immediately moves them into modals so a brief flash of the
-     stacked-cards layout would be visually noisy. Removed once the
-     JS has run and tagged the host. */
-  body:not(.fe-tpl-index-ready) main section.card { visibility: hidden; }
-
+  /* (The first-paint hide rule lives in a <style> at the very top
+     of the content block so it applies before any card renders —
+     see the comment up there. The rest of the index / modal
+     layout styles follow.) */
   .fe-tpl-index-toolbar {
     display: flex;
     align-items: center;
