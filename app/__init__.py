@@ -1619,6 +1619,7 @@ def _migrate_sqlite(app):
                          ("dash_show_visitor_metrics", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("dash_show_backups", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("dash_show_trusted_servants", "BOOLEAN NOT NULL DEFAULT 1"),
+                         ("dash_show_release_notes", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("fe_admin_autohide_sidebar", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("dash_order_json", "TEXT"),
                          # Web Frontend overview widget toggles + order.

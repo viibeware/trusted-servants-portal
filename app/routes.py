@@ -316,7 +316,7 @@ def inject_globals():
             "pending_stories_count": pending_stories_count, "otp": otp}
 
 
-DASHBOARD_WIDGET_KEYS = ("server-metrics", "visitor-metrics", "currently-online", "backups", "trusted-servants", "meetings", "libraries", "files", "access-requests", "forms", "deletions")
+DASHBOARD_WIDGET_KEYS = ("server-metrics", "visitor-metrics", "currently-online", "backups", "trusted-servants", "release-notes", "meetings", "libraries", "files", "access-requests", "forms", "deletions")
 
 # Legacy widget keys that have been merged into newer widgets. The
 # dashboard order loader maps these forward so a user who has the old
@@ -812,6 +812,7 @@ def dashboard_customize():
     current_user.dash_show_files = request.form.get("dash_show_files") == "1"
     current_user.dash_show_server_metrics = request.form.get("dash_show_server_metrics") == "1"
     current_user.dash_show_trusted_servants = request.form.get("dash_show_trusted_servants") == "1"
+    current_user.dash_show_release_notes = request.form.get("dash_show_release_notes") == "1"
     if current_user.is_admin():
         current_user.dash_show_access_requests = request.form.get("dash_show_access_requests") == "1"
         current_user.dash_show_forms = request.form.get("dash_show_forms") == "1"

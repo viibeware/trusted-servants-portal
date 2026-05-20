@@ -98,6 +98,7 @@ class User(UserMixin, db.Model):
     dash_show_visitor_metrics = db.Column(db.Boolean, nullable=False, default=True)
     dash_show_backups = db.Column(db.Boolean, nullable=False, default=True)
     dash_show_trusted_servants = db.Column(db.Boolean, nullable=False, default=True)
+    dash_show_release_notes = db.Column(db.Boolean, nullable=False, default=True)
     # When True, the main app sidebar auto-collapses to a hamburger
     # menu while the user is inside the Web Frontend admin (/frontend/…).
     # The Web Frontend has its own sub-nav (fe-admin-subnav) so the

@@ -6,6 +6,18 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.1.32] — 2026-05-20
+
+### Added — "What's New" release-notes dashboard widget
+
+A new dashboard widget (key ``release-notes``) renders the latest release note plus a compact history of the previous three versions, with a CTA into Settings → About.
+
+- **Data source:** reuses ``app/about_docs.py::load_release_notes`` (exposed as the ``app_release_notes()`` Jinja global) — the same parsed ``RELEASE_NOTES.md`` the About tab reads, so the widget adds no new data plumbing.
+- **Template:** rendered in ``templates/index.html`` via the existing ``dash_widget`` macro (``sparkles`` head icon, title "What's New"). Leads with a brand-tinted hero panel for the latest entry (version + ``Latest`` pill + date + headline + rendered Markdown body, clamped with a soft ``mask-image`` fade), followed by an "Earlier releases" list and a right-aligned **View all release notes** CTA.
+- **Deep link:** the CTA is an ``<a data-open-modal="settings-modal" data-settings-tab="about">`` — it reuses the existing ``app.js`` handler that opens the Settings modal and activates a named tab, so it lands on Settings → About with the release-notes list expanded.
+- **Per-user toggle + ordering:** new ``User.dash_show_release_notes`` column (default ``True``, all roles) with a matching ``_migrate_sqlite`` entry; ``release-notes`` registered in ``DASHBOARD_WIDGET_KEYS`` (after ``trusted-servants``) so it joins drag-reorder and the Customize modal. Persisted in ``/dashboard/customize``.
+- **Styling:** new ``.dash-relnotes-*`` rules in ``app.css`` — theme-aware via ``color-mix`` against ``--brand``; the CTA sits ``align-self: flex-end`` (content-width, right-aligned).
+
 ## [2.1.31] — 2026-05-20
 
 ### Changed — Frontend → Templates page index polish

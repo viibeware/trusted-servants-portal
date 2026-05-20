@@ -7,7 +7,16 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.1.31 — 2026-05-20 (latest) — Templates page index polish
+## 2.1.32 — 2026-05-20 (latest) — "What's New" release-notes dashboard widget
+
+A new **What's New** widget on the main dashboard surfaces the latest release at a glance:
+
+- The dashboard now leads with the newest version — its number, a **Latest** badge, the date, the headline, and the release note itself (rendered from the same notes you're reading right now).
+- Below that, an **Earlier releases** list shows the previous few versions so you can catch up on recent changes without leaving the dashboard.
+- A **View all release notes** button (bottom-right of the card) jumps straight to **Settings → About**, where the full version history lives.
+- Like every other dashboard card you can drag it to reorder or hide it under **Customize**. It's on by default for everyone.
+
+## 2.1.31 — 2026-05-20 — Templates page index polish
 
 More refinement to the **Frontend → Templates** page now that each template configurator opens as a modal:
 

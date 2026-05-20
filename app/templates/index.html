@@ -282,6 +282,52 @@
     {% endcall %}
   {% endif %}
 
+  {# What's New — leads with the latest release note (rendered from the
+     same RELEASE_NOTES.md the About tab uses) plus a compact history of
+     the previous few versions. The CTA deep-links into Settings → About
+     via the data-settings-tab handler in app.js so the user lands on the
+     full release-notes list. Shown to every role. #}
+  {% if widget_key == 'release-notes' and current_user.dash_show_release_notes %}
+    {%- set _rn = app_release_notes() -%}
+    {% call dash_widget(key='release-notes', title="What's New",
+                         head_icon='sparkles') %}
+      {% if _rn %}
+      {%- set _latest = _rn[0] -%}
+      <div class="dash-relnotes">
+        <div class="dash-relnotes-latest">
+          <div class="dash-relnotes-latest-top">
+            <span class="dash-relnotes-ver">{{ _latest.version }}</span>
+            {% if _latest.is_latest %}<span class="dash-relnotes-pill">Latest</span>{% endif %}
+            {% if _latest.date_label %}<span class="dash-relnotes-date">{{ _latest.date_label }}</span>{% endif %}
+          </div>
+          {% if _latest.title %}<div class="dash-relnotes-headline">{{ _latest.title }}</div>{% endif %}
+          {% if _latest.body_html %}<div class="dash-relnotes-body">{{ _latest.body_html|safe }}</div>{% endif %}
+        </div>
+        {% if _rn|length > 1 %}
+        <div class="dash-relnotes-history">
+          <div class="dash-relnotes-history-label">Earlier releases</div>
+          <ul class="dash-relnotes-history-list">
+            {% for e in _rn[1:4] %}
+            <li class="dash-relnotes-history-row">
+              <span class="dash-relnotes-history-ver">{{ e.version }}</span>
+              <span class="dash-relnotes-history-title">{{ e.title or 'Update' }}</span>
+              {% if e.date_label %}<span class="dash-relnotes-history-date">{{ e.date_label }}</span>{% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        <a href="#" class="btn btn-primary btn-sm dash-relnotes-cta"
+           data-open-modal="settings-modal" data-settings-tab="about">
+          {{ icon('book-open') }} View all release notes {{ icon('arrow-right') }}
+        </a>
+      </div>
+      {% else %}
+      <p class="muted">No release notes yet.</p>
+      {% endif %}
+    {% endcall %}
+  {% endif %}
+
   {% if widget_key == 'backups' and current_user.is_admin() and current_user.dash_show_backups %}
     {% set _has_failed = backup_summary and backup_summary.failed > 0 %}
     {% call dash_widget(key='backups', title='Off-site Backups',
@@ -479,6 +525,8 @@
               'Your account role and capabilities' + (' alongside CPU, memory, load average, uptime, and host OS.' if _has_server else '.')),
             ('dash_show_trusted_servants', 'Trusted Servants sign-up',
               'Sign-up form for the trusted-servants contact list. Hides itself automatically once you have joined the list — uncheck here to hide it earlier.'),
+            ('dash_show_release_notes', "What's New",
+              'The latest release note plus a button to open the full release-notes history under Settings → About.'),
           ] %}
           <li class="special-page-row">
             <div class="special-page-info">
