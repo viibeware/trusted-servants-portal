@@ -1506,6 +1506,21 @@ class NotificationDismissal(db.Model):
     )
 
 
+class WpFieldMapping(db.Model):
+    """Reusable WordPress-importer custom-field → post-type mapping,
+    keyed by source so re-importing the same site auto-loads the last
+    mapping. ``site_key`` is ``rest:<host>`` for a REST connection or the
+    sentinel ``csv`` for CSV uploads. ``mapping_json`` is the wizard's
+    ``{target: {dest_field: wp_field_key}}`` dict. Editable every run —
+    this is just the remembered default."""
+    __tablename__ = "wp_field_mapping"
+    id = db.Column(db.Integer, primary_key=True)
+    site_key = db.Column(db.String(255), nullable=False, unique=True, index=True)
+    mapping_json = db.Column(db.Text)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
+                           onupdate=datetime.utcnow)
+
+
 class LibraryItem(db.Model):
     """A single file / link / pasted-body entry inside a Library.
 

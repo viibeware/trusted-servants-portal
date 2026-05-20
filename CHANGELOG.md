@@ -6,6 +6,30 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.1.35] — 2026-05-20
+
+### Added — WordPress importer: universal custom-field mapping
+
+A new **Map fields** wizard step (step 3 of 5) discovers the custom fields present on the connected site and maps them, per post type, onto destination columns.
+
+- **Discovery:** ``wp_importer.discover_fields`` aggregates every scalar custom field across the fetched posts (from the already-captured flattened ``acf`` payload) with sample values + post counts.
+- **Registry:** ``TARGET_FIELDS`` is the single extension point — per-target destination fields (key, label, type, aliases). Adding a future post type is one entry here plus a row-construction branch.
+- **Suggestion:** ``suggest_mapping`` pre-fills smart defaults from field-name detection (reusing the legacy alias table + date-field aliases); the admin overrides any of them.
+- **Apply:** ``_extract_target_fields`` resolves each target's mapping with type coercion (text/url/datetime/date/bool — incl. an ``YYYYMMDD`` date→datetime fix), applied to **all** post types (events/announcements, stories, blog) — previously only events/announcements got custom-field mapping. Falls back to the legacy alias auto-detect when no mapping exists.
+- **Saved per site:** new ``WpFieldMapping`` table (keyed by host, sentinel ``csv`` for uploads) remembers the last mapping so re-imports auto-load it. New route ``wp_import_fields`` + ``wp_import_fields.html``.
+
+### Added — Chunked import for large WordPress sites
+
+The 500-post fetch cap is removed and the commit runs in batches so large sites can't hit the request timeout.
+
+- ``MAX_FETCH_POSTS`` (3,000) ceilings the single connect fetch; the connect step warns when the ceiling is hit.
+- ``COMMIT_CHUNK_SIZE`` (200) bounds each commit request. The dry-run commit now processes one chunk per request, accumulating counts/warnings in the stash and rendering an auto-advancing ``wp_import_progress.html`` (progress bar, running counts, pause/stop) until done. Slug uniqueness stays correct across chunks (each batch re-reads existing rows). Small sites (≤ chunk size) commit in one pass as before.
+- ``apply_plan`` gains ``count_inline``; the dry-run preview skips per-post inline-image counting on large sets (> 400 posts) to stay responsive.
+
+### Changed — dry-run "Ready to import" is a sticky footer
+
+The confirm block is no longer a ``.card``/``.data-card`` — it's a full-bleed sticky footer bar (``.wp-confirm-bar``) anchored to the bottom of the wizard modal, so the IMPORT field + Run-import button stay reachable while scrolling the preview. Shows the batch count for chunked imports.
+
 ## [2.1.34] — 2026-05-20
 
 ### Added — Notifications Center

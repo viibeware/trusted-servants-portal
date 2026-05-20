@@ -48,6 +48,15 @@ from werkzeug.utils import secure_filename
 
 DEFAULT_TIMEOUT = 25
 USER_AGENT = "tspro-wp-importer/1.0"
+# Connect fetches up to this many posts (newest first) into one stash —
+# comfortably importable within the 120s request timeout. The COMMIT is
+# what's chunked across requests (image downloads dominate the cost);
+# see COMMIT_CHUNK_SIZE.
+MAX_FETCH_POSTS = 3000
+# Posts committed per request when importing. Bounds each commit so a
+# large site's image downloads can't blow the request timeout — the
+# wizard auto-advances through the chunks behind a progress bar.
+COMMIT_CHUNK_SIZE = 200
 TARGETS = ("stories", "announcements", "events", "blog", "skip")
 TARGET_LABELS = {
     "stories":       "Story",
@@ -199,6 +208,75 @@ ACF_TIME_ALIASES = {
 # against ``col.strip().lower()``.
 _ACF_ALIAS_SET = {alias.lower() for aliases in ACF_FIELD_ALIASES.values()
                   for alias in aliases}
+
+
+# ---------------------------------------------------------------------------
+# Destination-field registry — the single extension point for the
+# user-defined custom-field mapping (and for future post types).
+#
+# For each target post type, list the "extra" destination fields a
+# discovered WordPress custom field can be mapped onto. Built-in WP
+# fields (title, body, featured image, author byline, publish date) are
+# auto-mapped elsewhere and are intentionally NOT listed here — only the
+# extended, type-specific fields. ``summary`` is the one near-built-in we
+# expose so a dedicated ACF excerpt field can override the WP excerpt.
+#
+#   key      → the destination column on the target model.
+#   label    → human label shown in the mapping UI.
+#   type     → drives commit-time coercion: text | url | datetime | date | bool.
+#   aliases  → seed the auto-suggested default mapping; the admin can
+#              override every one. (Reused from ACF_FIELD_ALIASES where a
+#              match exists so the two stay in sync.)
+#
+# Adding a new post type later is just a new entry here plus a branch in
+# apply_plan that constructs the row — discovery, suggestion, the mapping
+# UI, and value coercion all flow from this table automatically.
+# ---------------------------------------------------------------------------
+_POST_TARGET_FIELDS = [
+    {"key": "summary",          "label": "Summary / excerpt",  "type": "text",     "aliases": ACF_FIELD_ALIASES["summary"]},
+    {"key": "event_starts_at",  "label": "Start date & time",  "type": "datetime", "aliases": ACF_FIELD_ALIASES["event_starts_at"] + ACF_DATE_ALIASES["start"]},
+    {"key": "event_ends_at",    "label": "End date & time",     "type": "datetime", "aliases": ACF_FIELD_ALIASES["event_ends_at"] + ACF_DATE_ALIASES["end"]},
+    {"key": "is_online",        "label": "Online event?",       "type": "bool",     "aliases": ACF_FIELD_ALIASES["is_online"]},
+    {"key": "location_name",    "label": "Location name",       "type": "text",     "aliases": ACF_FIELD_ALIASES["location_name"]},
+    {"key": "location_address", "label": "Location address",    "type": "text",     "aliases": ACF_FIELD_ALIASES["location_address"]},
+    {"key": "google_maps_url",  "label": "Google Maps URL",     "type": "url",      "aliases": ACF_FIELD_ALIASES["google_maps_url"]},
+    {"key": "website_url",      "label": "Website / link URL",  "type": "url",      "aliases": ACF_FIELD_ALIASES["website_url"]},
+    {"key": "website_label",    "label": "Website link label",  "type": "text",     "aliases": ACF_FIELD_ALIASES["website_label"]},
+    {"key": "zoom_meeting_id",  "label": "Zoom meeting ID",      "type": "text",     "aliases": ACF_FIELD_ALIASES["zoom_meeting_id"]},
+    {"key": "zoom_passcode",    "label": "Zoom passcode",        "type": "text",     "aliases": ACF_FIELD_ALIASES["zoom_passcode"]},
+    {"key": "zoom_url",         "label": "Zoom join URL",        "type": "url",      "aliases": ACF_FIELD_ALIASES["zoom_url"]},
+    {"key": "contact_name",     "label": "Contact name",         "type": "text",     "aliases": ACF_FIELD_ALIASES["contact_name"]},
+    {"key": "contact_phone",    "label": "Contact phone",        "type": "text",     "aliases": ACF_FIELD_ALIASES["contact_phone"]},
+    {"key": "contact_email",    "label": "Contact email",        "type": "text",     "aliases": ACF_FIELD_ALIASES["contact_email"]},
+]
+_STORY_AUTHOR_ALIASES = ["author", "author_name", "byline", "writer", "by", "submitted_by"]
+_AUTHOR_BIO_ALIASES = ["author_bio", "bio", "about_author", "author_about", "about_the_author"]
+TARGET_FIELDS = {
+    "announcements": _POST_TARGET_FIELDS,
+    "events":        _POST_TARGET_FIELDS,
+    "stories": [
+        {"key": "summary",       "label": "Summary",              "type": "text", "aliases": ACF_FIELD_ALIASES["summary"]},
+        {"key": "author_name",   "label": "Author byline",        "type": "text", "aliases": _STORY_AUTHOR_ALIASES},
+        {"key": "author_bio",    "label": "Author bio",           "type": "text", "aliases": _AUTHOR_BIO_ALIASES},
+        {"key": "story_date",    "label": "Story date",           "type": "date", "aliases": ["story_date", "date", "story_day"]},
+        {"key": "sobriety_date", "label": "Clean / sobriety date", "type": "date", "aliases": ["sobriety_date", "clean_date", "clean_time", "sober_date", "recovery_date", "anniversary", "clean_anniversary"]},
+    ],
+    "blog": [
+        {"key": "summary",     "label": "Summary",       "type": "text", "aliases": ACF_FIELD_ALIASES["summary"]},
+        {"key": "author_name", "label": "Author byline", "type": "text", "aliases": _STORY_AUTHOR_ALIASES},
+        {"key": "author_bio",  "label": "Author bio",    "type": "text", "aliases": _AUTHOR_BIO_ALIASES},
+    ],
+}
+
+# Length caps applied to mapped string/url values at commit, matching the
+# destination columns' DB widths.
+_FIELD_CAPS = {
+    "summary": 500, "location_name": 255, "location_address": 8000,
+    "google_maps_url": 500, "website_url": 500, "website_label": 120,
+    "zoom_meeting_id": 64, "zoom_passcode": 128, "zoom_url": 500,
+    "contact_name": 120, "contact_phone": 64, "contact_email": 255,
+    "author_name": 120, "author_bio": 8000,
+}
 
 # CSV column headers that are NEVER ACF — they're built-in WP fields
 # the parser already maps to other slots. Stops a Title column from
@@ -554,6 +632,171 @@ def _extract_acf_post_fields(acf, target):
     return out, applied
 
 
+def _humanize_field(key):
+    """Pretty label for a discovered field key — leaf segment, spaced,
+    title-cased. ``event_details.start_date`` → ``Start Date``."""
+    leaf = (key or "").split(".")[-1]
+    return leaf.replace("_", " ").replace("-", " ").strip().title() or key
+
+
+def discover_fields(posts):
+    """Aggregate every scalar custom field present across ``posts`` into a
+    sorted list of ``{key, label, sample, count}`` for the mapping UI.
+
+    Group / repeater parents (dict / list values) are skipped — only
+    directly-mappable scalar leaves surface. ``count`` is how many posts
+    carry the field; ``sample`` is a short preview of the first value
+    seen, so the admin can recognise the field by its data."""
+    agg = {}
+    for p in posts or []:
+        acf = p.get("acf") or {}
+        if not isinstance(acf, dict):
+            continue
+        for k, v in acf.items():
+            if isinstance(v, (dict, list)):
+                continue
+            if v in (None, "", False):
+                continue
+            entry = agg.get(k)
+            if entry is None:
+                entry = {"key": k, "label": _humanize_field(k),
+                         "sample": _acf_preview_value(v), "count": 0}
+                agg[k] = entry
+            entry["count"] += 1
+    return sorted(agg.values(), key=lambda e: e["key"].lower())
+
+
+def _key_index(keys):
+    """Index discovered field keys for alias matching, mirroring
+    ``_build_acf_index``'s normalisation (lowercase, space/hyphen →
+    underscore, common prefix strips, dotted-leaf). Maps each normalised
+    variant → the ORIGINAL discovered key so a matched alias resolves to
+    a real, selectable field key."""
+    by_key, by_leaf = {}, {}
+    for k in keys:
+        lk = (k or "").strip().lower()
+        if not lk:
+            continue
+        variants = {lk, lk.replace(" ", "_"), lk.replace("-", "_")}
+        stripped = set()
+        for v_ in variants:
+            for pfx in _ACF_PREFIX_STRIPS:
+                if v_.startswith(pfx) and len(v_) > len(pfx):
+                    stripped.add(v_[len(pfx):])
+        variants |= stripped
+        for kk in variants:
+            by_key.setdefault(kk, k)
+            by_leaf.setdefault(kk.split(".")[-1], k)
+    return by_key, by_leaf
+
+
+def _match_discovered_key(by_key, by_leaf, alias):
+    la = (alias or "").strip().lower()
+    if la in by_key:
+        return by_key[la]
+    if "." not in la and la in by_leaf:
+        return by_leaf[la]
+    return None
+
+
+def suggest_mapping(posts, targets):
+    """Auto-suggested default mapping for each target in ``targets``:
+    ``{target: {dest_field: discovered_key}}``. Walks each registry
+    field's aliases and picks the first discovered field that matches —
+    the same generous matching the legacy auto-mapper used, now surfaced
+    as an editable default."""
+    keys = set()
+    for p in posts or []:
+        acf = p.get("acf") or {}
+        if not isinstance(acf, dict):
+            continue
+        for k, v in acf.items():
+            if isinstance(v, (dict, list)) or v in (None, "", False):
+                continue
+            keys.add(k)
+    by_key, by_leaf = _key_index(keys)
+    out = {}
+    for t in targets:
+        m = {}
+        for f in TARGET_FIELDS.get(t) or []:
+            for alias in f.get("aliases", ()):
+                hit = _match_discovered_key(by_key, by_leaf, alias)
+                if hit:
+                    m[f["key"]] = hit
+                    break
+        out[t] = m
+    return out
+
+
+def _coerce_field(raw, ftype, dest):
+    """Coerce a raw ACF value to the destination column's shape."""
+    if raw is None:
+        return None
+    if ftype == "datetime":
+        # Prefer a full datetime; fall back to a date at midnight. A pure
+        # 8-digit YYYYMMDD is parsed as a date first — the datetime
+        # parser's epoch fallback would otherwise misread it as a Unix
+        # timestamp.
+        s = str(raw).strip()
+        if s.isdigit() and len(s) == 8:
+            dd = _parse_acf_date(raw)
+            return datetime.combine(dd, datetime.min.time()) if dd else None
+        dt = _parse_acf_datetime(raw)
+        if dt is not None:
+            return dt
+        dd = _parse_acf_date(raw)
+        return datetime.combine(dd, datetime.min.time()) if dd else None
+    if ftype == "date":
+        return _parse_acf_date(raw)
+    if ftype == "bool":
+        return _coerce_bool(raw)
+    s = str(raw).strip()
+    if not s:
+        return None
+    cap = _FIELD_CAPS.get(dest)
+    if cap and len(s) > cap:
+        s = s[:cap]
+    return s
+
+
+def _extract_target_fields(acf, target, field_mapping):
+    """Resolve the destination fields for ``target`` from ``acf`` using
+    the user's ``field_mapping`` (``{target: {dest: wp_key}}``).
+
+    Returns ``(values, applied)`` where ``values`` is ``{dest: coerced}``
+    ready to stamp onto the row and ``applied`` is the list of dest cols
+    that received a value (for the preview).
+
+    Backward-compatible fallback: when no user mapping exists for the
+    target (old stash, or the field step was skipped), Post targets fall
+    back to the legacy alias auto-detection so existing imports keep
+    landing event/contact data; story/blog get nothing (they had no
+    auto-mapping before)."""
+    fields = TARGET_FIELDS.get(target)
+    if not fields:
+        return {}, []
+    acf = acf or {}
+    tmap = (field_mapping or {}).get(target)
+    if not tmap:
+        if target in ("events", "announcements"):
+            return _extract_acf_post_fields(acf, target)
+        return {}, []
+    type_by_dest = {f["key"]: f["type"] for f in fields}
+    out, applied = {}, []
+    for dest, wp_key in tmap.items():
+        if not wp_key or dest not in type_by_dest:
+            continue
+        raw = acf.get(wp_key)
+        if raw is None or raw == "":
+            continue
+        val = _coerce_field(raw, type_by_dest[dest], dest)
+        if val is None or val == "":
+            continue
+        out[dest] = val
+        applied.append(dest)
+    return out, applied
+
+
 def _classify_wp_status(raw):
     """Resolve a WP post-status string into a draft flag.
 
@@ -654,7 +897,7 @@ def _valid_token(token):
 # WordPress REST fetcher
 # ---------------------------------------------------------------------------
 
-def fetch_wp(site_url, user, app_password, *, max_posts=500):
+def fetch_wp(site_url, user, app_password, *, max_posts=MAX_FETCH_POSTS):
     """Fetch posts + categories + tags via WP REST API.
 
     Returns ``(posts, categories, tags, error_msg)`` — on failure
@@ -1146,7 +1389,8 @@ def _unique_slug(base, used):
 
 
 def apply_plan(actions, *, dry_run=True, image_cb=None, created_by=None,
-               category_meta=None, tag_meta=None, archive_keys=None):
+               category_meta=None, tag_meta=None, archive_keys=None,
+               field_mapping=None, count_inline=True):
     """Walk a compiled plan and either render a preview (dry_run=True)
     or commit it (dry_run=False).
 
@@ -1258,7 +1502,7 @@ def apply_plan(actions, *, dry_run=True, image_cb=None, created_by=None,
         # commit the rewriter mutates the body HTML in place.
         body_html = p.get("body_html") or ""
         if body_html and "<img" in body_html.lower():
-            if dry_run:
+            if dry_run and count_inline:
                 # Heuristic count of <img src=…>/srcset URLs that
                 # would be downloaded — exercise the same skip-prefix
                 # rules and srcset-splitting logic the real rewriter
@@ -1316,6 +1560,21 @@ def apply_plan(actions, *, dry_run=True, image_cb=None, created_by=None,
                     continue
             if published_at:
                 break
+        # Resolve the user-defined (or legacy-auto) custom-field mapping
+        # for this target up front so EVERY post type — not just events /
+        # announcements — can pick up extra fields. ``mapped`` is
+        # {dest_col: coerced_value}; ``mapped_cols`` is the applied list
+        # for the preview. ``resolved_summary`` lets a dedicated summary
+        # field override the WP excerpt.
+        mapped, mapped_cols = _extract_target_fields(
+            p.get("acf") or {}, t, field_mapping)
+        acf_applied = [{"col": c, "value": _acf_preview_value(mapped.get(c))}
+                       for c in mapped_cols]
+        resolved_summary = (
+            mapped.get("summary")
+            or ((p.get("summary") or None) and p["summary"][:500] or None)
+        )
+
         if t == "stories":
             row = Story(
                 title=p["title"][:255],
@@ -1323,7 +1582,7 @@ def apply_plan(actions, *, dry_run=True, image_cb=None, created_by=None,
                 # the title-derived default — keeps Story.public_slug
                 # tracking the title on subsequent renames.
                 slug=(final_slug if final_slug != _slugify(p["title"]) else None),
-                summary=(p.get("summary") or None) and p["summary"][:500] or None,
+                summary=resolved_summary,
                 body=(body_html or None),
                 author_name=p.get("author_name"),
                 story_date=d,
@@ -1337,7 +1596,7 @@ def apply_plan(actions, *, dry_run=True, image_cb=None, created_by=None,
             row = BlogPost(
                 title=p["title"][:255],
                 slug=(final_slug if final_slug != _slugify(p["title"]) else None),
-                summary=(p.get("summary") or None) and p["summary"][:500] or None,
+                summary=resolved_summary,
                 body=(body_html or None),
                 author_name=p.get("author_name"),
                 published_at=(published_at or
@@ -1348,28 +1607,6 @@ def apply_plan(actions, *, dry_run=True, image_cb=None, created_by=None,
                 created_by=created_by,
             )
         else:
-            # ACF auto-mapping. The resolver returns a dict of extra
-            # column → value pairs plus an "applied" list of (col,
-            # value) tuples so the dry-run preview can surface exactly
-            # what landed where. ACF values take precedence over the
-            # date-only ``event_starts_at`` fallback below AND over
-            # the WP excerpt — if the site has a dedicated
-            # ``announcement_summary`` / ``event_summary`` ACF field,
-            # that's strictly richer than the WP-rendered excerpt.
-            acf_fields, acf_applied_cols = _extract_acf_post_fields(
-                p.get("acf") or {}, t)
-            # Pair each applied column with its resolved value as a
-            # short string preview the UI can render (datetimes get a
-            # readable format; long strings truncate). Resilient to
-            # additional non-applied keys ending up in acf_fields.
-            acf_applied = []
-            for col in acf_applied_cols:
-                val = acf_fields.get(col)
-                acf_applied.append({"col": col, "value": _acf_preview_value(val)})
-            resolved_summary = (
-                acf_fields.get("summary")
-                or ((p.get("summary") or None) and p["summary"][:500] or None)
-            )
             row = Post(
                 title=p["title"][:255],
                 slug=(final_slug if final_slug != _slugify(p["title"]) else None),
@@ -1378,7 +1615,7 @@ def apply_plan(actions, *, dry_run=True, image_cb=None, created_by=None,
                 featured_image_filename=img_filename,
                 is_announcement=(t == "announcements"),
                 is_event=(t == "events"),
-                event_starts_at=(acf_fields.get("event_starts_at") or
+                event_starts_at=(mapped.get("event_starts_at") or
                                  (datetime.combine(d, datetime.min.time())
                                   if (t == "events" and d) else None)),
                 published_at=published_at,
@@ -1386,18 +1623,18 @@ def apply_plan(actions, *, dry_run=True, image_cb=None, created_by=None,
                 is_archived=is_archived,
                 created_by=created_by,
             )
-            # Stamp every remaining ACF-resolved column onto the row.
-            # We skip event_starts_at + summary (already merged above)
-            # and only touch columns that exist on the Post model so
-            # a stray alias can't blow up with an AttributeError.
-            for col, val in acf_fields.items():
-                if col in ("event_starts_at", "summary"):
-                    continue
-                if hasattr(row, col):
-                    setattr(row, col, val)
-            if acf_applied:
-                counts["acf_fields_applied"] += len(acf_applied)
-                counts["acf_rows_enriched"] += 1
+        # Stamp every remaining mapped column onto the row. summary +
+        # event_starts_at are already merged into the constructor above;
+        # only touch columns that exist on the target model so a mapping
+        # to an unknown column can't blow up with an AttributeError.
+        for col, val in mapped.items():
+            if col in ("event_starts_at", "summary"):
+                continue
+            if hasattr(row, col):
+                setattr(row, col, val)
+        if acf_applied:
+            counts["acf_fields_applied"] += len(acf_applied)
+            counts["acf_rows_enriched"] += 1
 
         if not dry_run:
             db.session.add(row)

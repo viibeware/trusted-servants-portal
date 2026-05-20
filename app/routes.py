@@ -906,6 +906,7 @@ _ENDPOINT_LABELS = {
     "main.story_edit":         "Editing a story",
     "main.wp_import_start":    "WordPress importer",
     "main.wp_import_map":      "WordPress importer · Map",
+    "main.wp_import_fields":   "WordPress importer · Fields",
     "main.wp_import_dry_run":  "WordPress importer · Preview",
     "main.media":              "File browser",
     "main.locations":          "Meeting locations",
@@ -5120,6 +5121,13 @@ def wp_import_connect():
         "created_at": datetime.utcnow().isoformat() + "Z",
     })
     flash(f"Connected — fetched {len(posts)} post{'s' if len(posts) != 1 else ''}.", "success")
+    # The import commits in chunks, so post count is no longer the limit —
+    # but the single fetch is ceilinged so the connect request can't run
+    # forever. Warn only when we actually hit that ceiling.
+    if len(posts) >= wp_importer.MAX_FETCH_POSTS:
+        flash(f"This site has at least {wp_importer.MAX_FETCH_POSTS:,} posts — fetched the "
+              f"newest {len(posts):,}. To bring in older posts beyond that, narrow the set "
+              "on the WordPress side (e.g. by date) and run the wizard again.", "warning")
     return redirect(url_for("main.wp_import_map", token=token, **_wp_embed_kwargs()))
 
 
@@ -5209,7 +5217,7 @@ def wp_import_map(token):
         stash["category_mapping"] = cat_map
         stash["post_mapping"] = post_map
         wp_importer.stash_save(token, stash)
-        return redirect(url_for("main.wp_import_dry_run", token=token, **_wp_embed_kwargs()))
+        return redirect(url_for("main.wp_import_fields", token=token, **_wp_embed_kwargs()))
 
     # GET — render the mapping table. Precompute per-category post
     # counts here (Jinja doesn't have list comprehensions, so doing
@@ -5248,6 +5256,109 @@ def wp_import_map(token):
                            embed=_wp_embed())
 
 
+def _wp_site_key(stash):
+    """Stable key for the reusable field-mapping profile. REST imports key
+    by host; CSV uploads share one ``csv`` profile."""
+    if (stash or {}).get("source") == "rest":
+        from urllib.parse import urlparse
+        url = (stash.get("site_url") or "").strip()
+        host = (urlparse(url).netloc or url).lower().strip()
+        return ("rest:" + host) if host else None
+    return "csv"
+
+
+def _wp_load_field_profile(stash):
+    """Last saved ``{target: {dest: wp_key}}`` mapping for this site, or
+    None."""
+    key = _wp_site_key(stash)
+    if not key:
+        return None
+    from .models import WpFieldMapping
+    row = WpFieldMapping.query.filter_by(site_key=key).first()
+    if not row or not row.mapping_json:
+        return None
+    import json
+    try:
+        data = json.loads(row.mapping_json)
+        return data if isinstance(data, dict) else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _wp_save_field_profile(stash, field_mapping):
+    """Persist the field mapping as the site's reusable profile."""
+    key = _wp_site_key(stash)
+    if not key:
+        return
+    import json
+    from .models import db, WpFieldMapping
+    row = WpFieldMapping.query.filter_by(site_key=key).first()
+    if not row:
+        row = WpFieldMapping(site_key=key)
+        db.session.add(row)
+    row.mapping_json = json.dumps(field_mapping or {})
+    db.session.commit()
+
+
+@bp.route("/settings/wp-import/<token>/fields", methods=["GET", "POST"])
+@admin_required
+def wp_import_fields(token):
+    """Step 3 — map the WordPress custom fields discovered on the source
+    onto each target post type's destination fields. Auto-fills smart
+    defaults (saved per-site profile, else field-name detection); the
+    admin can override every one. Skipped automatically when the source
+    exposes no custom fields or nothing is routed anywhere mappable."""
+    from . import wp_importer
+    stash = wp_importer.stash_load(token)
+    if not stash:
+        flash("That import wizard session has expired. Start over.", "warning")
+        return redirect(url_for("main.wp_import_start", **_wp_embed_kwargs()))
+
+    mapping = stash.get("mapping") or {}
+    in_use = set(mapping.values())
+    targets = [t for t in wp_importer.TARGETS
+               if t != "skip" and t in in_use and wp_importer.TARGET_FIELDS.get(t)]
+    discovered = wp_importer.discover_fields(stash.get("posts") or [])
+
+    if request.method == "POST":
+        fm = {}
+        valid_keys = {f["key"] for f in discovered}
+        for t in targets:
+            tm = {}
+            for f in wp_importer.TARGET_FIELDS.get(t) or []:
+                val = (request.form.get(f"map:{t}:{f['key']}") or "").strip()
+                # Only accept a real discovered field; "" = leave unmapped.
+                if val and val in valid_keys:
+                    tm[f["key"]] = val
+            fm[t] = tm
+        stash["field_mapping"] = fm
+        wp_importer.stash_save(token, stash)
+        _wp_save_field_profile(stash, fm)
+        return redirect(url_for("main.wp_import_dry_run", token=token, **_wp_embed_kwargs()))
+
+    # GET — nothing to map ⇒ skip straight to the dry run.
+    if not discovered or not targets:
+        return redirect(url_for("main.wp_import_dry_run", token=token, **_wp_embed_kwargs()))
+
+    # Current mapping precedence: this wizard's saved choice → the site's
+    # saved profile → auto-suggested defaults from field-name detection.
+    current = stash.get("field_mapping")
+    profile_used = False
+    if not current:
+        current = _wp_load_field_profile(stash)
+        profile_used = bool(current)
+    if not current:
+        current = wp_importer.suggest_mapping(stash.get("posts") or [], targets)
+    return render_template("wp_import_fields.html", token=token, stash=stash,
+                           targets=targets,
+                           target_labels=wp_importer.TARGET_LABELS,
+                           target_fields=wp_importer.TARGET_FIELDS,
+                           discovered=discovered,
+                           current=current,
+                           profile_used=profile_used,
+                           embed=_wp_embed())
+
+
 @bp.route("/settings/wp-import/<token>/dry-run", methods=["GET", "POST"])
 @admin_required
 def wp_import_dry_run(token):
@@ -5262,28 +5373,39 @@ def wp_import_dry_run(token):
     actions = wp_importer.compile_plan(stash.get("posts") or [],
                                        stash.get("mapping") or {})
 
-    if request.method == "POST":
-        # Per-row archive overrides ride along on the dry-run form. The
-        # checkboxes are named ``archive:<post_key>`` and admins can flip
-        # any subset (or use the bulk select-all to flag every row).
-        # Validated against the actual post keys so a tampered form can't
-        # smuggle archive flags onto skipped rows.
-        valid_keys = {a["post"]["key"] for a in actions if a["target"] != "skip"}
-        archive_keys = set()
-        for raw in request.form.keys():
-            if raw.startswith("archive:"):
-                k = raw[len("archive:"):]
-                if k in valid_keys:
-                    archive_keys.add(k)
-        # Persist the choice to the stash so a re-render after a flash
-        # message keeps the admin's selections (e.g. when they forget
-        # to type IMPORT and bounce back).
-        stash["archive_keys"] = sorted(archive_keys)
-        wp_importer.stash_save(token, stash)
+    chunk_size = wp_importer.COMMIT_CHUNK_SIZE
+    total_actions = len(actions)
 
-        if request.form.get("confirm") != "IMPORT":
-            flash("Type IMPORT in the confirmation field to proceed.", "warning")
-            return redirect(url_for("main.wp_import_dry_run", token=token, **_wp_embed_kwargs()))
+    if request.method == "POST":
+        # Two POST shapes:
+        #   • First commit — carries the IMPORT confirmation + per-row
+        #     archive checkboxes from the dry-run form.
+        #   • Continue chunk — carries ``continue_chunk=1`` from the
+        #     auto-advancing progress page (no confirm / checkboxes).
+        is_continue = request.form.get("continue_chunk") == "1"
+        if not is_continue:
+            # Per-row archive overrides ride along on the dry-run form,
+            # named ``archive:<post_key>`` and validated against real,
+            # non-skip post keys so a tampered form can't smuggle flags.
+            valid_keys = {a["post"]["key"] for a in actions if a["target"] != "skip"}
+            sel = set()
+            for raw in request.form.keys():
+                if raw.startswith("archive:"):
+                    k = raw[len("archive:"):]
+                    if k in valid_keys:
+                        sel.add(k)
+            stash["archive_keys"] = sorted(sel)
+            # Reset the commit cursor + accumulators for a fresh run.
+            stash["commit_cursor"] = 0
+            stash["commit_counts"] = {}
+            stash["commit_warnings"] = []
+            stash["commit_rows"] = []
+            wp_importer.stash_save(token, stash)
+            if request.form.get("confirm") != "IMPORT":
+                flash("Type IMPORT in the confirmation field to proceed.", "warning")
+                return redirect(url_for("main.wp_import_dry_run", token=token, **_wp_embed_kwargs()))
+
+        archive_keys = set(stash.get("archive_keys") or [])
 
         def _img_cb(url):
             # Returns ``(stored_filename, original_filename)`` so both
@@ -5293,44 +5415,86 @@ def wp_import_dry_run(token):
             return wp_importer._download_image_full(
                 url, uploaded_by=getattr(current_user, "id", None))
 
+        # Commit ONE chunk of the plan this request, so large sites can't
+        # blow the request timeout on image downloads. Slug uniqueness
+        # stays correct across chunks because apply_plan re-reads existing
+        # rows (incl. ones committed by earlier chunks) each call.
+        cursor = int(stash.get("commit_cursor") or 0)
+        chunk = actions[cursor:cursor + chunk_size]
         result = wp_importer.apply_plan(
-            actions, dry_run=False, image_cb=_img_cb,
+            chunk, dry_run=False, image_cb=_img_cb,
             created_by=getattr(current_user, "id", None),
             category_meta=stash.get("category_meta") or {},
             tag_meta=stash.get("tag_meta") or {},
             archive_keys=archive_keys,
+            field_mapping=stash.get("field_mapping"),
         )
+        # Accumulate running totals across chunks.
+        acc = stash.get("commit_counts") or {}
+        for k, v in result["counts"].items():
+            acc[k] = acc.get(k, 0) + v
+        stash["commit_counts"] = acc
+        warns = (stash.get("commit_warnings") or []) + result.get("warnings", [])
+        stash["commit_warnings"] = warns[:200]
+        # Keep up to 400 row details for the done-page table (single-chunk
+        # imports show every row; large ones show the first 400).
+        acc_rows = stash.get("commit_rows") or []
+        if len(acc_rows) < 400:
+            acc_rows = acc_rows + result.get("rows", [])
+        stash["commit_rows"] = acc_rows[:400]
+        cursor += len(chunk)
+        stash["commit_cursor"] = cursor
+
+        if cursor < total_actions:
+            wp_importer.stash_save(token, stash)
+            return render_template("wp_import_progress.html",
+                                   token=token, done=cursor, total=total_actions,
+                                   counts=acc, embed=_wp_embed())
+
+        # All chunks done — log, clean up, show the summary.
         from . import activity
         activity.log("wp_import.commit", entity_type="wp_import",
-                     summary=(f"Imported {result['counts']['stories']} stor{'y' if result['counts']['stories']==1 else 'ies'}, "
-                              f"{result['counts']['announcements']} announcement(s), "
-                              f"{result['counts']['events']} event(s), "
-                              f"{result['counts']['blog']} blog post(s) from "
+                     summary=(f"Imported {acc.get('stories', 0)} stor{'y' if acc.get('stories', 0) == 1 else 'ies'}, "
+                              f"{acc.get('announcements', 0)} announcement(s), "
+                              f"{acc.get('events', 0)} event(s), "
+                              f"{acc.get('blog', 0)} blog post(s) from "
                               f"{stash.get('source','?')}"))
         wp_importer.stash_delete(token)
-        return render_template("wp_import_done.html", result=result,
+        result_final = {"counts": acc, "rows": acc_rows[:400], "warnings": warns}
+        return render_template("wp_import_done.html", result=result_final,
                                source=stash.get("source"),
                                embed=_wp_embed())
 
     archive_keys = set(stash.get("archive_keys") or [])
+    posts_for_check = stash.get("posts") or []
+    # Skip the per-post inline-image BeautifulSoup count on large previews
+    # — it's the slow part and the real total is reported during import.
+    big_preview = len(posts_for_check) > 400
     preview = wp_importer.apply_plan(
         actions, dry_run=True,
         category_meta=stash.get("category_meta") or {},
         tag_meta=stash.get("tag_meta") or {},
         archive_keys=archive_keys,
+        field_mapping=stash.get("field_mapping"),
+        count_inline=not big_preview,
     )
-    posts_for_check = stash.get("posts") or []
     stale_acf_stash = (
         (stash.get("source") == "rest")
         and bool(posts_for_check)
         and not any(p.get("acf") for p in posts_for_check)
     )
+    import math
+    will_chunk = total_actions > chunk_size
+    batches = max(1, math.ceil(total_actions / chunk_size)) if chunk_size else 1
     return render_template("wp_import_dry_run.html",
                            token=token, stash=stash,
                            actions=actions, preview=preview,
                            archive_keys=archive_keys,
                            target_labels=wp_importer.TARGET_LABELS,
                            stale_acf_stash=stale_acf_stash,
+                           will_chunk=will_chunk, batches=batches,
+                           import_total=total_actions, chunk_size=chunk_size,
+                           inline_count_skipped=big_preview,
                            embed=_wp_embed())
 
 

@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Map fields · WordPress Importer{% endblock %}
+{% block heading %}Map custom fields{% endblock %}
+{% block heading_help %}
+Found {{ discovered|length }} custom field{{ '' if discovered|length == 1 else 's' }} on the source. Map each one onto the matching field for every post type you're importing into.
+{% if profile_used %}Defaults are loaded from your last import of this site{% else %}Smart defaults are pre-filled from field-name detection{% endif %} — change anything below. Built-in fields (title, body, featured image, author, date) are mapped automatically and aren't listed here.
+{% endblock %}
+{% block content %}
+<div class="wp-wizard-header">
+  <div class="wp-actionbar">
+    <a class="btn" href="{{ url_for('main.wp_import_map', token=token, embed=1 if embed else None) }}">← Back to mapping</a>
+    <form method="post" action="{{ url_for('main.wp_import_cancel', token=token) }}" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+      <button type="submit" class="btn"
+              onclick="return confirm('Discard this import and start over?')">Cancel</button>
+    </form>
+    <button type="submit" form="wp-fields-form" class="btn btn-primary">Continue to dry run →</button>
+  </div>
+
+  <div class="wp-wizard-stepper">
+    <ol>
+      <li class="is-done"><span class="wp-step-num">✓</span><span class="wp-step-label">Source</span></li>
+      <li class="is-done"><span class="wp-step-num">✓</span><span class="wp-step-label">Review &amp; map</span></li>
+      <li class="is-active"><span class="wp-step-num">3</span><span class="wp-step-label">Map fields</span></li>
+      <li><span class="wp-step-num">4</span><span class="wp-step-label">Dry run</span></li>
+      <li><span class="wp-step-num">5</span><span class="wp-step-label">Import</span></li>
+    </ol>
+  </div>
+</div>
+
+<form id="wp-fields-form" method="post"
+      action="{{ url_for('main.wp_import_fields', token=token) }}" class="form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+
+  {% for t in targets %}
+  <section class="card wpf-card">
+    <div class="card-head">
+      <h2><span class="wp-target-pill wp-target-pill--{{ t }} is-active">{{ target_labels[t] }}</span> fields</h2>
+      <span class="muted smaller">Pick the WordPress custom field that fills each one — or leave it as “Don't import”.</span>
+    </div>
+    <ul class="wpf-list">
+      {% for f in target_fields[t] %}
+      {% set sel = (current.get(t) or {}).get(f.key) or '' %}
+      <li class="wpf-row">
+        <div class="wpf-dest">
+          <span class="wpf-dest-label">{{ f.label }}</span>
+          <span class="wpf-type-chip wpf-type-{{ f.type }}">{{ f.type }}</span>
+        </div>
+        <span class="wpf-arrow" aria-hidden="true">{{ icon('arrow-left') }}</span>
+        <div class="wpf-src">
+          <select name="map:{{ t }}:{{ f.key }}" class="wpf-select"
+                  {% if sel %}data-mapped="1"{% endif %}>
+            <option value="">— Don't import —</option>
+            {% for d in discovered %}
+            <option value="{{ d.key }}" {% if d.key == sel %}selected{% endif %}
+                    title="example: {{ d.sample }}">{{ d.label }} · {{ d.key }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+
+  {# Reference list so admins can see what's actually on the source. #}
+  <section class="card wpf-discovered">
+    <div class="card-head">
+      <h2>{{ icon('database') }} Custom fields on the source</h2>
+      <span class="muted smaller">{{ discovered|length }} field{{ '' if discovered|length == 1 else 's' }} discovered</span>
+    </div>
+    <ul class="wpf-discovered-list">
+      {% for d in discovered %}
+      <li>
+        <code class="wpf-key">{{ d.key }}</code>
+        <span class="muted smaller wpf-sample">e.g. {{ d.sample }}</span>
+        <span class="muted smaller wpf-count">{{ d.count }} post{{ '' if d.count == 1 else 's' }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+</form>
+
+<style>
+  .wpf-card .wpf-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+  .wpf-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.2fr);
+    gap: .85rem; align-items: center;
+    padding: .6rem .75rem;
+    border: 1px solid var(--border, rgba(0,0,0,.08));
+    border-radius: 10px;
+    background: var(--panel, #fff);
+  }
+  @media (max-width: 720px) {
+    .wpf-row { grid-template-columns: 1fr; gap: .4rem; }
+    .wpf-arrow { display: none; }
+  }
+  .wpf-dest { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+  .wpf-dest-label { font-weight: 600; }
+  .wpf-type-chip {
+    font-size: .68rem; padding: 1px 7px; border-radius: 999px;
+    background: var(--panel-2, rgba(0,0,0,.05)); color: var(--muted, #64748b);
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace; flex: 0 0 auto;
+  }
+  .wpf-type-datetime, .wpf-type-date { background: #dcfce7; color: #166534; }
+  .wpf-type-bool { background: #fef3c7; color: #78350f; }
+  .wpf-type-url { background: #dbeafe; color: #1e3a8a; }
+  [data-theme="dark"] .wpf-type-datetime, [data-theme="dark"] .wpf-type-date { background: #14391f; color: #bbf7d0; }
+  [data-theme="dark"] .wpf-type-bool { background: #4a3008; color: #fde68a; }
+  [data-theme="dark"] .wpf-type-url { background: #14264e; color: #bfdbfe; }
+  .wpf-arrow { color: var(--muted, #94a3b8); display: inline-flex; }
+  .wpf-arrow .icon { width: 18px; height: 18px; }
+  .wpf-src { min-width: 0; }
+  .wpf-select { width: 100%; }
+  /* A mapped select reads as "active" with a brand-tinted border. */
+  .wpf-select[data-mapped="1"] {
+    border-color: color-mix(in srgb, var(--brand, #0b5cff) 45%, var(--border));
+  }
+  .wpf-discovered { background: var(--panel-2, rgba(0,0,0,.03)); }
+  .wpf-discovered-list { list-style: none; margin: 0; padding: 0;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: .4rem; }
+  .wpf-discovered-list li { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+  .wpf-key {
+    background: var(--panel, #fff); border: 1px solid var(--border, rgba(0,0,0,.1));
+    border-radius: 6px; padding: 1px 7px; font-size: .78rem;
+  }
+  .wpf-sample { max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wpf-count { margin-left: auto; }
+</style>
+
+<script>
+(function () {
+  // Toggle the "mapped" highlight as the admin changes a select.
+  document.addEventListener('change', function (e) {
+    if (e.target.classList && e.target.classList.contains('wpf-select')) {
+      if (e.target.value) e.target.setAttribute('data-mapped', '1');
+      else e.target.removeAttribute('data-mapped');
+    }
+  });
+})();
+</script>
+{% endblock %}

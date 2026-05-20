@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Importing · WordPress Importer{% endblock %}
+{% block heading %}Importing…{% endblock %}
+{% block heading_help %}This site has more posts than fit in one pass, so it's importing in chunks — that way it can't time out. Keep this tab open; it advances automatically.{% endblock %}
+{% block content %}
+<div class="wp-wizard-header">
+  <div class="wp-wizard-stepper">
+    <ol>
+      <li class="is-done"><span class="wp-step-num">✓</span><span class="wp-step-label">Source</span></li>
+      <li class="is-done"><span class="wp-step-num">✓</span><span class="wp-step-label">Review &amp; map</span></li>
+      <li class="is-done"><span class="wp-step-num">✓</span><span class="wp-step-label">Map fields</span></li>
+      <li class="is-done"><span class="wp-step-num">✓</span><span class="wp-step-label">Dry run</span></li>
+      <li class="is-active"><span class="wp-step-num">5</span><span class="wp-step-label">Import</span></li>
+    </ol>
+  </div>
+</div>
+
+{% set pct = ((done / total) * 100) | round(0, 'floor') if total else 100 %}
+<section class="card wp-progress-card">
+  <div class="wp-progress-head">
+    <span class="wp-progress-spinner" aria-hidden="true"></span>
+    <div>
+      <h2 class="wp-progress-title" data-progress-title>Importing… {{ "{:,}".format(done) }} of {{ "{:,}".format(total) }} posts</h2>
+      <p class="muted small" style="margin:.25rem 0 0">Each batch is committed as it finishes — already-imported posts are safe even if you close this tab.</p>
+    </div>
+  </div>
+
+  <div class="wp-progress-bar" role="progressbar"
+       aria-valuenow="{{ pct }}" aria-valuemin="0" aria-valuemax="100">
+    <span class="wp-progress-fill" style="width: {{ pct }}%"></span>
+  </div>
+  <div class="wp-progress-pct muted small">{{ pct }}% complete</div>
+
+  <div class="wp-progress-counts">
+    {% for key, label in [('stories','Stories'),('announcements','Announcements'),('events','Events'),('blog','Blog'),('skipped','Skipped')] %}
+    {% if counts.get(key) %}
+    <span class="wp-progress-chip wp-progress-chip--{{ key }}">{{ "{:,}".format(counts.get(key, 0)) }} {{ label }}</span>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <div class="wp-progress-actions">
+    <form id="wp-progress-form" method="post"
+          action="{{ url_for('main.wp_import_dry_run', token=token) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+      <input type="hidden" name="continue_chunk" value="1">
+      <button type="submit" class="btn btn-primary" data-continue-btn>Continue now</button>
+    </form>
+    <button type="button" class="btn" data-pause-btn>Pause auto-advance</button>
+    <form method="post" action="{{ url_for('main.wp_import_cancel', token=token) }}" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+      <button type="submit" class="btn"
+              onclick="return confirm('Stop importing? Posts imported so far are kept; the rest are skipped.')">Stop</button>
+    </form>
+  </div>
+</section>
+
+<style>
+  .wp-progress-card { max-width: 680px; }
+  .wp-progress-head { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem; }
+  .wp-progress-title { margin: 0; font-size: 1.15rem; }
+  .wp-progress-spinner {
+    width: 28px; height: 28px; flex: 0 0 auto; border-radius: 999px;
+    border: 3px solid var(--border, #e2e8f0);
+    border-top-color: var(--brand, #0b5cff);
+    animation: wp-spin .8s linear infinite;
+  }
+  @keyframes wp-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .wp-progress-spinner { animation: none; } }
+  .wp-progress-bar {
+    height: 14px; border-radius: 999px; overflow: hidden;
+    background: var(--panel-2, rgba(0,0,0,.06));
+    border: 1px solid var(--border, rgba(0,0,0,.08));
+  }
+  .wp-progress-fill {
+    display: block; height: 100%;
+    background: linear-gradient(90deg, var(--brand, #0b5cff), #4f86ff);
+    transition: width .3s ease;
+  }
+  .wp-progress-pct { margin-top: .4rem; }
+  .wp-progress-counts { display: flex; flex-wrap: wrap; gap: .4rem; margin: 1rem 0 1.25rem; }
+  .wp-progress-chip {
+    font-size: .8rem; padding: 3px 10px; border-radius: 999px;
+    background: var(--panel-2, rgba(0,0,0,.05)); color: var(--muted, #475569);
+  }
+  .wp-progress-chip--stories       { background: #fef3c7; color: #78350f; }
+  .wp-progress-chip--announcements { background: #dbeafe; color: #1e3a8a; }
+  .wp-progress-chip--events        { background: #dcfce7; color: #166534; }
+  .wp-progress-chip--blog          { background: #fce7f3; color: #9d174d; }
+  [data-theme="dark"] .wp-progress-chip--stories       { background: #4a3008; color: #fde68a; }
+  [data-theme="dark"] .wp-progress-chip--announcements { background: #14264e; color: #bfdbfe; }
+  [data-theme="dark"] .wp-progress-chip--events        { background: #14391f; color: #bbf7d0; }
+  [data-theme="dark"] .wp-progress-chip--blog          { background: #4a1e3a; color: #fbcfe8; }
+  .wp-progress-actions { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+  .wp-progress-card.is-working .wp-progress-actions [data-continue-btn] { opacity: .6; pointer-events: none; }
+</style>
+
+<script>
+(function () {
+  var form = document.getElementById('wp-progress-form');
+  var card = document.querySelector('.wp-progress-card');
+  var pauseBtn = document.querySelector('[data-pause-btn]');
+  var title = document.querySelector('[data-progress-title]');
+  if (!form) return;
+  var paused = false;
+  var timer = null;
+
+  function go() {
+    if (paused) return;
+    card.classList.add('is-working');
+    if (title) title.textContent = 'Importing the next batch…';
+    form.submit();
+  }
+  // Auto-advance shortly after the page paints so each batch commits
+  // without the admin clicking through. The server commits one chunk
+  // per request and re-renders this page until done.
+  timer = setTimeout(go, 600);
+
+  pauseBtn.addEventListener('click', function () {
+    paused = !paused;
+    if (paused) {
+      clearTimeout(timer);
+      pauseBtn.textContent = 'Resume';
+    } else {
+      pauseBtn.textContent = 'Pause auto-advance';
+      go();
+    }
+  });
+  // Manual "Continue now" submits immediately (cancel the pending timer).
+  form.addEventListener('submit', function () {
+    clearTimeout(timer);
+    card.classList.add('is-working');
+  });
+})();
+</script>
+{% endblock %}

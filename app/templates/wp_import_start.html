@@ -31,9 +31,10 @@
       don't have to expose your real admin password.
     </p>
     <p class="muted smaller">
-      Drafts and private posts only come back when authenticated. The fetch is
-      capped at <b>500 posts</b>; rerun the wizard or filter on the WordPress
-      side if you need more.
+      Drafts and private posts only come back when authenticated. Large sites
+      import in <b>chunks</b> automatically, so post count isn't a limit — the
+      initial fetch tops out at <b>3,000 posts</b>; for anything beyond that,
+      narrow the set on the WordPress side (e.g. by date) and run again.
     </p>
     <form class="form" method="post"
           action="{{ url_for('main.wp_import_connect') }}"

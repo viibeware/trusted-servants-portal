@@ -7,7 +7,15 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.1.34 — 2026-05-20 (latest) — Notifications Center
+## 2.1.35 — 2026-05-20 (latest) — WordPress importer: custom-field mapping + large-site chunked import
+
+Two big upgrades to the WordPress importer, plus a small polish:
+
+- **Map your custom fields to any post type.** A new **Map fields** step in the import wizard discovers the custom fields actually present on the WordPress site you connect to, then lets you map each one onto the matching field for every post type you're importing into — events/announcements (start & end times, location, contact, Zoom, website), stories (author, bio, story date, clean/sobriety date), and blog. Smart defaults are pre-filled from field-name detection, and your mapping is **saved per site** so re-imports remember it. Custom-field mapping now works for *every* post type, not just events.
+- **Import sites with more than 500 posts.** The old 500-post cap is gone. Large sites now import **in chunks** automatically — a progress bar advances through the batches so the import can't time out, and posts already imported are safe even if you close the tab. The initial fetch tops out at 3,000 posts; for more, narrow by date on the WordPress side and run again.
+- The dry-run **"Ready to import"** bar is now a sticky footer pinned to the bottom of the window, so the Run-import button stays in reach while you scroll the preview.
+
+## 2.1.34 — 2026-05-20 — Notifications Center
 
 A new **Notifications** button in the sidebar (just above Search) gathers everything that needs your attention into one place, with a live count chip:
 

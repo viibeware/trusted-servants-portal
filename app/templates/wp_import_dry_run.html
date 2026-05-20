@@ -18,8 +18,9 @@
     <ol>
       <li class="is-done"><span class="wp-step-num">✓</span><span class="wp-step-label">Source</span></li>
       <li class="is-done"><span class="wp-step-num">✓</span><span class="wp-step-label">Review &amp; map</span></li>
-      <li class="is-active"><span class="wp-step-num">3</span><span class="wp-step-label">Dry run</span></li>
-      <li><span class="wp-step-num">4</span><span class="wp-step-label">Import</span></li>
+      <li class="is-done"><span class="wp-step-num">✓</span><span class="wp-step-label">Map fields</span></li>
+      <li class="is-active"><span class="wp-step-num">4</span><span class="wp-step-label">Dry run</span></li>
+      <li><span class="wp-step-num">5</span><span class="wp-step-label">Import</span></li>
     </ol>
   </div>
 </div>
@@ -260,29 +261,24 @@
 </section>
 
 {% if _create_rows %}
-<section class="card data-card wp-confirm-card">
-  <div class="data-card-head">
-    {{ icon('alert-circle') }}
-    <span>Ready to import</span>
-  </div>
-  <p class="muted small data-card-lead">
-    Featured images <em>and inline body images</em> will be downloaded and deduplicated
-    by content hash; <code>&lt;img src&gt;</code>/<code>srcset</code> URLs in the body
-    are rewritten to point at the local copies so the imported posts no longer depend
-    on the source WordPress site. Duplicate slugs auto-suffix with <code>-2</code>,
-    <code>-3</code>, etc. The original WordPress posts won't be touched. Type
-    <code>IMPORT</code> below to commit.
-    <span data-archive-summary class="wp-archive-summary"></span>
-  </p>
-  <div class="wp-confirm-form">
-    <label>Type <code>IMPORT</code> to confirm
-      <input type="text" name="confirm" placeholder="IMPORT" autocomplete="off" required pattern="IMPORT">
-    </label>
-    <div class="data-card-actions">
+<div class="wp-confirm-bar">
+  <div class="wp-confirm-bar-inner">
+    <div class="wp-confirm-bar-text">
+      <div class="wp-confirm-bar-title">{{ icon('alert-circle') }} Ready to import</div>
+      <p class="muted smaller wp-confirm-bar-lead">
+        Images are downloaded &amp; deduplicated; duplicate slugs auto-suffix. The source site isn't touched.
+        {% if will_chunk %}<b>{{ "{:,}".format(import_total) }}</b> posts — imported automatically in <b>{{ batches }}</b> batches.{% endif %}
+        <span data-archive-summary class="wp-archive-summary"></span>
+      </p>
+    </div>
+    <div class="wp-confirm-form">
+      <label>Type <code>IMPORT</code>
+        <input type="text" name="confirm" placeholder="IMPORT" autocomplete="off" required pattern="IMPORT">
+      </label>
       <button type="submit" class="btn btn-primary">{{ icon('check') }} Run import</button>
     </div>
   </div>
-</section>
+</div>
 {% endif %}
 </form>
 
@@ -397,83 +393,59 @@
     line-height: 1.6;
   }
 
-  /* Confirm-card scoped overrides — the shared .data-card chrome
-     gives the brand-blue accent + header treatment; these tune the
-     IMPORT input's width + monospace font, plus pin the card to the
-     bottom of the iframe / page as a sticky footer so the Run-import
-     button stays in reach while the admin scrolls the preview table.
-     The card lives inside the normal block flow but `position: sticky`
-     keeps it visible against the bottom of the scrolling ancestor. */
-  .wp-confirm-card {
+  /* Ready-to-import — a sticky FOOTER BAR anchored to the bottom of the
+     modal, not a card. It sticks to the bottom of the scrolling wizard
+     content and full-bleeds past the content padding so it spans the
+     whole modal width as a single bar. */
+  .wp-confirm-bar {
     position: sticky;
     bottom: 0;
     z-index: 15;
-    margin-bottom: 0;
-    box-shadow: 0 -8px 20px -12px rgba(0, 0, 0, .25),
-                0 1px 0 rgba(0, 0, 0, .04);
+    margin: 1.5rem -28px 0;          /* bleed past .content's 28px side padding */
+    padding: .85rem 28px 1rem;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -10px 24px -16px rgba(0, 0, 0, .35);
   }
-  /* Pull the sticky footer to the iframe edge so its background covers
-     the full bottom strip rather than leaving a gap on each side from
-     embed-content's padding. */
-  body.embed .wp-confirm-card {
-    margin: 0 -20px;
-    border-radius: 0;
-    border-left-width: 0;
-    border-right-width: 0;
-    border-bottom-width: 0;
-    padding-left: calc(20px + 1.75rem);
-    padding-right: calc(20px + 1.75rem);
+  /* Bleed past .embed-content's 20px padding when run inside the modal
+     iframe, and use a brand top-edge so the bar reads as the action rail. */
+  body.embed .wp-confirm-bar {
+    margin: 1.5rem -20px 0;
+    padding-left: 20px;
+    padding-right: 20px;
+    border-top: 2px solid var(--brand);
   }
-  /* Restore the brand accent bar as a top border in the embed sticky
-     mode (the data-card's left-border accent isn't visible once we
-     drop left/right borders). */
-  body.embed .wp-confirm-card {
-    border-top: 4px solid var(--brand);
-  }
-  .wp-confirm-card .data-card-head { color: #b45309; }
-  .wp-confirm-card .data-card-head .icon { color: #b45309; }
-  .wp-confirm-form { max-width: 440px; }
-  .wp-confirm-form input { font-family: 'JetBrains Mono', ui-monospace, monospace; }
-  /* Compact the sticky footer a bit so it doesn't dominate the modal,
-     and give it a bit more breathing room on the top edge. The
-     extra bottom padding keeps the IMPORT input from kissing the
-     iframe's bottom edge in embed mode. */
-  .wp-confirm-card { padding-top: 2rem; padding-bottom: 2.25rem; }
-  body.embed .wp-confirm-card { padding-bottom: 2.5rem; }
-  .wp-confirm-card .data-card-head { margin-top: 2rem; margin-bottom: .5rem; }
-  .wp-confirm-card .data-card-lead { margin-bottom: .75rem; font-size: .88rem; }
-  /* On the dry-run page, place the IMPORT input + Run-import button
-     side-by-side so the sticky footer stays a single row tall. The
-     label inside column 1 also lays out horizontally so the prompt
-     "Type IMPORT to confirm" sits flush left of its input field. */
-  .wp-confirm-form {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 1rem;
-    align-items: center;
-    max-width: none;
-  }
-  .wp-confirm-form > label {
-    margin: 0;
+  .wp-confirm-bar-inner {
     display: flex;
-    flex-direction: row;
     align-items: center;
-    gap: .75rem;
-    font-weight: 600;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .wp-confirm-bar-text { flex: 1 1 300px; min-width: 0; }
+  .wp-confirm-bar-title {
+    font-weight: 700;
+    display: flex; align-items: center; gap: .4rem;
     color: var(--text);
   }
-  .wp-confirm-form > label > input {
-    flex: 1 1 auto;
-    min-width: 0;
-    width: auto;
-    margin: 0;
+  .wp-confirm-bar-title .icon { color: #b45309; width: 18px; height: 18px; }
+  .wp-confirm-bar-lead { margin: .2rem 0 0; line-height: 1.45; }
+  .wp-confirm-form {
+    display: flex; align-items: center; gap: .75rem; flex: 0 0 auto;
   }
-  .wp-confirm-form .data-card-actions { margin-top: 0; }
-  @media (max-width: 640px) {
-    .wp-confirm-form { grid-template-columns: 1fr; }
-    .wp-confirm-form > label { flex-direction: column; align-items: stretch; gap: .35rem; }
-    .wp-confirm-form .data-card-actions { justify-content: stretch; }
-    .wp-confirm-form .data-card-actions .btn { width: 100%; justify-content: center; }
+  .wp-confirm-form > label {
+    display: flex; align-items: center; gap: .5rem; margin: 0;
+    font-weight: 600; white-space: nowrap; color: var(--text);
+  }
+  .wp-confirm-form input[name="confirm"] {
+    width: 150px; margin: 0;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  @media (max-width: 720px) {
+    .wp-confirm-bar-inner { flex-direction: column; align-items: stretch; }
+    .wp-confirm-form { flex-wrap: wrap; }
+    .wp-confirm-form > label { flex: 1 1 auto; }
+    .wp-confirm-form input[name="confirm"] { flex: 1 1 auto; width: auto; }
+    .wp-confirm-form .btn { width: 100%; justify-content: center; }
   }
 
   /* Re-use the pillgroup styles from wp_import_map.html for the preview
