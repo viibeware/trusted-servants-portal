@@ -879,6 +879,198 @@ def footer_content(site):
     return _normalize_footer(stored)
 
 
+# ---------------------------------------------------------------------------
+# Footer ⇄ blocks-list converters.
+#
+# The footer is migrating from a fixed content dict (one slot per block
+# type) + a separate CustomLayout for the block order, to a single
+# ordered ``blocks_json`` list edited with the same builder pages use.
+# These two functions are the lossless bridge:
+#   • ``footer_blocks_from_content`` turns the canonical content dict into
+#     the page-style sections/blocks list (one section, footer blocks in a
+#     sensible default order) — used by the one-time migration.
+#   • ``footer_content_from_blocks`` collapses an edited blocks list back
+#     into the canonical content dict — used by the public render (which
+#     reuses the existing footer templates/partials) and as a legacy
+#     fallback. Multiple blocks of the same type collapse last-wins; the
+#     dict only has one slot per type, so single-slot legacy footers
+#     round-trip exactly.
+# Footer-level background (`bg`) is page-chrome styling, not a block, so it
+# rides on the content dict / SiteSetting and is untouched here.
+# ---------------------------------------------------------------------------
+
+# Default order footer blocks land in when migrating a legacy footer.
+FOOTER_BLOCK_ORDER = ("brand", "link_columns", "social_row", "secondary_nav",
+                      "meeting_locations", "contact_section", "copyright")
+
+
+def _footer_uid():
+    import uuid as _uuid
+    return _uuid.uuid4().hex[:8]
+
+
+def _footer_block_data_from_content(block_type, content):
+    """The per-block ``data`` dict for one footer block type, pulled from
+    the canonical content dict."""
+    if block_type == "brand":
+        return dict(content["brand"])
+    if block_type == "link_columns":
+        return {"columns": [dict(c, links=list(c.get("links") or []))
+                            for c in content["columns"]]}
+    if block_type == "social_row":
+        return {"items": [dict(s) for s in content["social"]]}
+    if block_type == "secondary_nav":
+        return {"links": [dict(l) for l in content["secondary_nav"]]}
+    if block_type == "copyright":
+        return {"text": content["copyright"]}
+    if block_type == "meeting_locations":
+        ml = content["meeting_locations"]
+        return {"heading": ml["heading"],
+                "predefined_ids": list(ml.get("predefined_ids") or []),
+                "items": [dict(i) for i in ml.get("items") or []]}
+    if block_type == "contact_section":
+        return {"panes": [dict(p) for p in content["contact_section"].get("panes") or []]}
+    # Static / chrome-only blocks carry no editable content.
+    return {}
+
+
+def footer_blocks_from_content(content, *, order=FOOTER_BLOCK_ORDER):
+    """Canonical footer content dict → page-style sections list.
+    Returns ``[{id, title, blocks:[{id, type, data}]}]`` with one section
+    holding the footer blocks in ``order``."""
+    content = _normalize_footer(content if isinstance(content, dict) else {})
+    blocks = []
+    for t in order:
+        blocks.append({"id": _footer_uid(), "type": t,
+                       "data": _footer_block_data_from_content(t, content)})
+    return [{"id": _footer_uid(), "title": "", "blocks": blocks}]
+
+
+def _iter_footer_blocks(sections):
+    """Yield every leaf block dict across a footer sections list,
+    descending into multi-column ``container`` blocks (which carry their
+    columns as ``data.columns`` = list of block-lists)."""
+    for sec in (sections or []):
+        if not isinstance(sec, dict):
+            continue
+        for b in (sec.get("blocks") or []):
+            if not isinstance(b, dict):
+                continue
+            if b.get("type") == "container":
+                d = b.get("data") or {}
+                for col in (d.get("columns") or []):
+                    for inner in (col or []):
+                        if isinstance(inner, dict):
+                            yield inner
+                for inner in (d.get("blocks") or []):  # legacy flat form
+                    if isinstance(inner, dict):
+                        yield inner
+            else:
+                yield b
+
+
+def _footer_block(block_type, content):
+    """One footer block dict ({id, type, data})."""
+    return {"id": _footer_uid(), "type": block_type,
+            "data": _footer_block_data_from_content(block_type, content)}
+
+
+def footer_layout_to_blocks(layout_rows, content):
+    """Combine a footer LAYOUT (``CustomLayout.blocks_json`` rows, or a
+    prebuilt's preview rows — each ``{type:'row', cols, columns:[[{type}]]}``)
+    with the content dict into an editable page-style blocks list.
+
+    Multi-column rows become a ``container`` block carrying explicit
+    ``data.columns``; single-block rows stay top-level. Result is one
+    section: ``[{id, title:'', blocks:[…]}]``."""
+    content = _normalize_footer(content if isinstance(content, dict) else {})
+    out_blocks = []
+    for row in (layout_rows or []):
+        if not isinstance(row, dict):
+            continue
+        cols = row.get("columns") or []
+        # Normalise a flat single-column row (no explicit columns) too.
+        if not cols and row.get("blocks"):
+            cols = [row.get("blocks")]
+        # 1 column with exactly 1 block → emit it top-level (cleanest tree).
+        flat = [b for col in cols for b in (col or []) if isinstance(b, dict)]
+        if len(cols) <= 1 and len(flat) == 1:
+            out_blocks.append(_footer_block(flat[0].get("type"), content))
+            continue
+        if len(cols) <= 1:
+            # Single column, multiple blocks → still top-level stack.
+            for b in flat:
+                out_blocks.append(_footer_block(b.get("type"), content))
+            continue
+        # Multi-column row → a container with explicit columns.
+        col_blocks = [[_footer_block(b.get("type"), content)
+                       for b in (col or []) if isinstance(b, dict)]
+                      for col in cols]
+        out_blocks.append({"id": _footer_uid(), "type": "container",
+                           "data": {"cols": len(cols), "columns": col_blocks}})
+    return [{"id": _footer_uid(), "title": "", "blocks": out_blocks}]
+
+
+def footer_blocks_to_layout_rows(sections):
+    """Reverse of ``footer_layout_to_blocks`` — collapse an edited footer
+    blocks list into ``CustomLayout``-style rows of block *types*
+    (content lives in the dict, produced by ``footer_content_from_blocks``).
+    Each top-level non-container block → a 1-column row; each container →
+    a multi-column row preserving its columns."""
+    rows = []
+    for sec in (sections or []):
+        if not isinstance(sec, dict):
+            continue
+        for b in (sec.get("blocks") or []):
+            if not isinstance(b, dict):
+                continue
+            if b.get("type") == "container":
+                d = b.get("data") or {}
+                cols = d.get("columns")
+                if not cols and d.get("blocks"):
+                    cols = [d.get("blocks")]
+                columns = [[{"type": inner.get("type")}
+                            for inner in (col or []) if isinstance(inner, dict)]
+                           for col in (cols or [])]
+                rows.append({"type": "row", "cols": max(1, len(columns)),
+                             "columns": columns})
+            else:
+                rows.append({"type": "row", "cols": 1,
+                             "columns": [[{"type": b.get("type")}]]})
+    return rows
+
+
+def footer_content_from_blocks(sections, *, base=None):
+    """Collapse an edited footer blocks list back into the canonical
+    content dict, starting from ``base`` (defaults preserved for any type
+    not present as a block). Multiples collapse last-wins. ``bg`` is
+    carried through from ``base`` untouched."""
+    content = _normalize_footer(base if isinstance(base, dict) else {})
+    for b in _iter_footer_blocks(sections):
+        t = b.get("type")
+        d = b.get("data") if isinstance(b.get("data"), dict) else {}
+        if t == "brand":
+            content["brand"] = dict(d)
+        elif t == "link_columns":
+            content["columns"] = list(d.get("columns") or [])
+        elif t == "social_row":
+            content["social"] = list(d.get("items") or [])
+        elif t == "secondary_nav":
+            content["secondary_nav"] = list(d.get("links") or [])
+        elif t == "copyright":
+            content["copyright"] = d.get("text") or content["copyright"]
+        elif t == "meeting_locations":
+            content["meeting_locations"] = {
+                "heading": d.get("heading") or content["meeting_locations"]["heading"],
+                "predefined_ids": list(d.get("predefined_ids") or []),
+                "items": list(d.get("items") or []),
+            }
+        elif t == "contact_section":
+            content["contact_section"] = {"panes": list(d.get("panes") or [])}
+    # Re-normalise so coercion/limits apply uniformly to the merged dict.
+    return _normalize_footer(content)
+
+
 FOOTER_MAX_COLUMNS  = 6
 FOOTER_MAX_LINKS    = 12
 FOOTER_MAX_SOCIAL   = 10

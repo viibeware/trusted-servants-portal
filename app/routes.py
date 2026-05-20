@@ -8729,6 +8729,15 @@ def frontend_footer():
             active_rows = []
     active_block_types = _footer_active_block_types(active_key, active_rows)
     active_block_order = _footer_active_block_order(active_key, active_rows)
+    # Rows for the inline structure builder. A custom layout supplies its
+    # own rows; a prebuilt is seeded as a vertical stack of its blocks so
+    # the footer is always editable inline (the admin re-columns as they
+    # like; saving turns a prebuilt into an editable custom layout).
+    if active_rows:
+        footer_rows = active_rows
+    else:
+        footer_rows = [{"type": "row", "cols": 1, "columns": [[{"type": t}]]}
+                       for t in (active_block_order or [])]
     # Pre-defined Meeting Locations from Settings — surfaced in the
     # meeting_locations modal as a checkbox list so the admin can pull
     # them in without retyping. Only in-person locations are shown
@@ -8743,6 +8752,7 @@ def frontend_footer():
                            active_layout_rows=active_rows,
                            active_block_types=active_block_types,
                            active_block_order=active_block_order,
+                           footer_rows=footer_rows,
                            all_locations=all_locations)
 
 
@@ -11612,6 +11622,29 @@ def frontend_footer_save():
         existing = footer_content(s)
         content = parse_footer(request.form, existing=existing)
         s.frontend_footer_blocks_json = _json.dumps(content)
+    # Footer arrangement from the inline structure builder → a footer
+    # CustomLayout (rows/columns of block types). The public render reads
+    # this layout + the content dict above, so the two stay decoupled.
+    raw_layout = request.form.get("footer_layout_json")
+    if raw_layout is not None:
+        try:
+            rows = _json.loads(raw_layout)
+        except (ValueError, TypeError):
+            rows = None
+        if isinstance(rows, list):
+            rows = _normalize_footer_blocks(rows)
+            active_key = (s.frontend_footer_template or "classic")
+            cl = CustomLayout.query.filter_by(key=active_key, kind="footer").first()
+            if cl is None:
+                # Active layout is a prebuilt — promote to an editable
+                # custom layout the inline builder owns going forward.
+                cl = CustomLayout.query.filter_by(key="footer-custom", kind="footer").first()
+                if cl is None:
+                    cl = CustomLayout(key="footer-custom", kind="footer",
+                                      name="Custom footer", is_prebuilt=False)
+                    db.session.add(cl)
+                s.frontend_footer_template = "footer-custom"
+            cl.blocks_json = _json.dumps(rows)
     # Legacy single-textarea field — still supported.
     if "frontend_footer_text" in request.form:
         s.frontend_footer_text = (request.form.get("frontend_footer_text") or "").strip() or None

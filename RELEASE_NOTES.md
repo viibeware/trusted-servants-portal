@@ -7,7 +7,15 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.2.0 — 2026-05-20 (latest) — Preview frontend pages before publishing
+## 2.2.1 — 2026-05-20 (latest) — Footer builder now matches the page builder
+
+The Footer admin has been rebuilt to work exactly like the content-page / homepage builder, instead of its own separate interface:
+
+- A **Footer structure** card lets you arrange footer blocks into rows and columns with **drag-and-drop**, **click any block to edit its content**, add blocks from a **palette**, and add rows (1–4 columns) — the same flow you already use for pages.
+- The bespoke "Save Footer" button is replaced by the familiar **sticky save bar** that appears when you have unsaved changes.
+- Everything you could put in the footer before is still here (brand, link columns, social icons, secondary nav, copyright, meeting locations, contact section, dividers, etc.) — just edited consistently with the rest of the site.
+
+## 2.2.0 — 2026-05-20 — Preview frontend pages before publishing
 
 You can now **preview content pages and the homepage before they go live**:
 

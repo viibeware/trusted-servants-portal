@@ -6,6 +6,17 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.2.1] — 2026-05-20
+
+### Changed — Footer builder converged onto the page block builder
+
+The Footer admin now uses the same inline structure-builder flow as content pages, replacing its bespoke form + separate layout-builder modal.
+
+- **Inline structure card** (`frontend_footer.html`): footer blocks arrange into drag-drop rows/columns (Sortable), click-to-edit pills opening the existing per-type content modals, an "Add block" palette + "Add row" (1–4 col) controls, and a **sticky save bar** in place of the "Save Footer" button. All block editors render unconditionally now (any block addable from the palette).
+- **Self-contained `footer_builder.js`** owns the drag/palette/remove/save-bar and serialises the arrangement into a hidden `footer_layout_json` (rows/columns of block types) — **no changes to the shared page-builder JS or macros**, so the page editor is untouched.
+- **Save** (`frontend_footer_save`): the posted arrangement upserts the active footer `CustomLayout` (promoting a prebuilt to an editable custom layout when needed); block **content** still saves via the unchanged `parse_footer`. **Public render is unchanged** — `_custom.html` + the 11 footer block partials already consume `CustomLayout` rows + the content dict, so live footers are byte-identical until edited.
+- **Converters** (`blocks.py`): added lossless `footer_blocks_from_content` / `footer_content_from_blocks` / `footer_layout_to_blocks` / `footer_blocks_to_layout_rows` (round-trip tested) bridging the content dict, the block-list, and layout rows.
+
 ## [2.2.0] — 2026-05-20
 
 ### Added — Preview frontend pages (and homepage) before publishing

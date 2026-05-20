@@ -52,25 +52,92 @@
 } %}
 {% set _editable_types = ['brand', 'link_columns', 'social_row', 'secondary_nav',
                            'copyright', 'meeting_locations', 'contact_section'] %}
+{# All block editors are always available now (any block can be added from
+   the palette), so render every modal regardless of the active layout. #}
+{% set active_block_types = _editable_types %}
 
-<form class="form" method="post" action="{{ url_for('main.frontend_footer_save') }}" enctype="multipart/form-data">
+{# One footer-block pill — matches the page builder's pill chrome, carries
+   data-type (for serialisation) + data-open-modal (click-to-edit) + a
+   remove ×, and is draggable. footer_builder.js clones the matching
+   <template> for palette adds. #}
+{% macro footer_pill(t) -%}
+  {%- set _meta = _block_labels.get(t, (t, 'square')) -%}
+  {%- set _editable = t in _editable_types -%}
+  <div class="fe-page-structure-block fe-page-structure-block--{{ t }} is-clickable is-draggable"
+       data-type="{{ t }}"{% if _editable %} data-open-modal="footer-{{ t }}-modal"{% endif %}
+       title="{{ _meta[0] }}">
+    <span class="fe-page-structure-block-icon">{{ icon(_meta[1]) }}</span>
+    <span class="fe-page-structure-block-name">{{ _meta[0] }}</span>
+    {% if _editable %}<span class="fe-page-structure-block-edit-hint" aria-hidden="true">Edit</span>{% endif %}
+    <button type="button" class="fe-page-structure-block-remove" data-footer-remove
+            aria-label="Remove block" title="Remove from layout">×</button>
+  </div>
+{%- endmacro %}
+
+<form class="form" method="post" action="{{ url_for('main.frontend_footer_save') }}"
+      id="footer-form" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="footer_blocks_present" value="1">
+  <input type="hidden" name="footer_layout_json" id="footer-layout-json">
 
-  {# ── Active layout structure ── always rendered first so the admin
-     sees the layout shape before anything else. Each pill opens its
-     content-edit modal further down the page. Custom layouts use the
-     rows × cols visualisation; prebuilts (like Recovery Blue) use the
-     flat pill row since their structure is fixed in the Jinja file. #}
-  {% call structure_card("Active layout structure", active_layout, "footer-builder-modal") %}
-    {% if active_layout_rows %}
-      {{ structure_rows(active_layout_rows, "footer", _block_labels, _editable_types) }}
-    {% elif active_block_order %}
-      {{ structure_flat(active_block_order, "footer", _block_labels, _editable_types) }}
-    {% else %}
-      <p class="muted small">This layout has no editable content blocks.</p>
-    {% endif %}
-  {% endcall %}
+  {# ── Inline footer structure builder ── drag blocks into rows/columns,
+     click a block to edit its content, add blocks from the palette. The
+     arrangement serialises into #footer-layout-json (the same rows/cols
+     shape the public footer render consumes). Replaces the old
+     separate layout-builder modal. #}
+  <section class="card fe-page-structure">
+    <div class="card-head">
+      <h2>Footer structure</h2>
+      <span class="muted smaller">Drag blocks to arrange them into rows and columns. Click any block to edit its content. Add blocks and rows below.</span>
+    </div>
+    <div class="fe-page-structure-rows" data-footer-rows>
+      <div class="fe-page-structure-root-empty muted small" data-footer-empty hidden>
+        No blocks yet — add one from the palette below.
+      </div>
+      {% for row in footer_rows %}
+      <div class="fe-page-structure-row fe-page-structure-row--split" data-footer-row data-cols="{{ row.cols }}">
+        <div class="fe-page-structure-row-label">
+          <span class="fe-page-structure-row-num">Row {{ loop.index }}</span>
+          <span class="muted smaller">{{ row.cols }} column{{ '' if row.cols == 1 else 's' }}</span>
+          <button type="button" class="btn btn-sm fe-page-structure-row-action fe-page-structure-row-remove"
+                  data-footer-row-remove>{{ icon('x') }} <span>Remove row</span></button>
+        </div>
+        <div class="fe-page-structure-cols fe-page-structure-cols--{{ row.cols if row.cols in [1,2,3,4] else 4 }}">
+          {% for col in row.columns %}
+          <div class="fe-page-structure-col">
+            <div class="fe-page-structure-block-list" data-footer-col>
+              {% for b in col %}{{ footer_pill(b.type) }}{% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="fe-footer-builder-bar">
+      <div class="fe-footer-builder-addrow">
+        <span class="muted smaller">Add row:</span>
+        {% for n in [1, 2, 3, 4] %}
+        <button type="button" class="btn btn-sm" data-footer-add-row data-cols="{{ n }}">{{ n }} col{{ '' if n == 1 else 's' }}</button>
+        {% endfor %}
+      </div>
+      <div class="fe-footer-builder-palette">
+        <span class="muted smaller">Add block:</span>
+        {% for entry in footer_block_catalog %}
+        <button type="button" class="fe-footer-palette-tile" data-footer-palette-tile
+                data-type="{{ entry.key }}" title="{{ entry.desc }}">
+          <span class="fe-page-structure-block-icon">{{ icon(entry.icon or 'square') }}</span>
+          <span>{{ entry.name }}</span>
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  {# Pill templates cloned by footer_builder.js when adding from the palette. #}
+  {% for entry in footer_block_catalog %}
+  <template data-footer-pill-tpl="{{ entry.key }}">{{ footer_pill(entry.key) }}</template>
+  {% endfor %}
 
   {# ── Footer settings ── width mode + max width / padding / min-height
      / font scale, plus the page-theme bg-mode toggle. The font-scale
@@ -918,7 +985,13 @@
   </div>
   {% endif %}
 
-  <div class="form-actions"><button class="btn btn-primary">Save Footer</button></div>
+  {# Sticky save bar — mirrors the page editor's flow (replaces the old
+     inline "Save Footer" button). footer_builder.js reveals it on the
+     first unsaved change. #}
+  <div class="fe-save-bar" id="footer-save-bar" hidden>
+    <span class="fe-save-bar-msg">Unsaved footer changes</span>
+    <button type="submit" class="btn btn-primary fe-save-bar-btn">Save footer</button>
+  </div>
 </form>
 
   </div>
@@ -1516,4 +1589,35 @@
   addBtn.addEventListener('click', (e) => { e.preventDefault(); add(); });
 })();
 </script>
+
+{# Inline footer structure builder — Sortable drag-drop + palette + sticky
+   save bar. Loaded after the content-modal JS above so its delegated
+   handlers coexist. #}
+<script src="{{ url_for('static', filename='js/vendor/Sortable.min.js', v=app_build_id) }}"></script>
+<script src="{{ url_for('static', filename='js/footer_builder.js', v=app_build_id) }}"></script>
+
+<style>
+  .fe-footer-builder-bar {
+    display: flex; flex-wrap: wrap; gap: 1rem 1.5rem; align-items: center;
+    margin-top: 1rem; padding-top: 1rem;
+    border-top: 1px solid var(--border, rgba(0,0,0,.08));
+  }
+  .fe-footer-builder-addrow, .fe-footer-builder-palette {
+    display: flex; flex-wrap: wrap; gap: .4rem; align-items: center;
+  }
+  .fe-footer-palette-tile {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: 5px 11px; border-radius: 8px;
+    border: 1px solid var(--border, rgba(0,0,0,.12));
+    background: var(--panel-2, rgba(0,0,0,.03)); color: var(--text);
+    cursor: pointer; font-size: .82rem;
+    transition: background .12s, border-color .12s;
+  }
+  .fe-footer-palette-tile:hover {
+    background: var(--panel, #fff);
+    border-color: color-mix(in srgb, var(--brand, #0b5cff) 45%, var(--border));
+  }
+  .fe-footer-palette-tile .fe-page-structure-block-icon .icon { width: 15px; height: 15px; }
+  .fe-page-structure-block.is-drag-ghost { opacity: .45; }
+</style>
 {% endblock %}
