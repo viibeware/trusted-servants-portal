@@ -6,6 +6,12 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.3.2] — 2026-05-21
+
+### Fixed — Redirects match with or without a trailing slash
+
+The redirect handler (`_url_redirect_handler`) matched the incoming path against `UrlRedirect.source_path` exactly, so a rule stored as `/donate` 404'd for visitors hitting `/donate/` (and vice versa). The lookup now checks both slash variants in a single indexed query (`source_path IN ('/donate', '/donate/')`), preferring an exact match when both a slashed and unslashed rule exist. Root `/` is matched as-is. Still one query per request, so no added per-request cost.
+
 ## [2.3.1] — 2026-05-21
 
 ### Fixed — Dark-mode form & contact-page text contrast

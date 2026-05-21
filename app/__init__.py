@@ -498,8 +498,18 @@ def create_app():
         # bulk of per-page request volume.
         if p.startswith("/static/") or p.startswith("/pub/"):
             return None
-        row = UrlRedirect.query.filter_by(source_path=p).first()
-        if row:
+        # Trailing-slash-insensitive match: a rule stored as "/donate"
+        # should also fire for "/donate/" and vice versa. Query both
+        # variants in one indexed lookup; when both happen to exist,
+        # prefer the exact match over the slash-variant. Root ("/") has
+        # no meaningful variant, so it's matched as-is.
+        candidates = [p]
+        if p != "/":
+            candidates.append(p[:-1] if p.endswith("/") else p + "/")
+        rows = UrlRedirect.query.filter(
+            UrlRedirect.source_path.in_(candidates)).all()
+        if rows:
+            row = next((r for r in rows if r.source_path == p), rows[0])
             return redirect(row.target_path, code=301)
         return None
 
