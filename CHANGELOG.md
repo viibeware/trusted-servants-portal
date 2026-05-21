@@ -6,6 +6,18 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.3.1] — 2026-05-21
+
+### Fixed — Dark-mode form & contact-page text contrast
+
+Several frontend form surfaces rendered text in near-black against a dark background in dark mode.
+
+- **Submission / story form labels + legends** (`.fe-submission-form label` / `fieldset legend`): these carry an explicit light-mode colour (`var(--fe-color-text)`) that overrode the card's inherited dark-mode text colour, so on the dark submission card (`/submissionform`, `/storyform`, submission modals) every field label and the fieldset legend were nearly invisible. Flipped to the dark-mode text tokens (`--fe-dm-text` / `--fe-dm-text-strong`).
+- **Contact card stayed white in dark mode**: its dark override referenced `var(--fe-color-surface, #111827)`, but the design token is defined (light) and never flipped, so the fallback never applied — leaving a white card (with dark inputs) on the dark page. Now uses the real dark surface tokens (`--fe-dm-surface` / `--fe-dm-border`) plus a light base text colour, mirroring `.fe-submission-card`. The contact form's own labels now follow the same dark-mode rule (the earlier `:not(.fe-contact-form)` carve-out was removed once the card itself went dark).
+- **Contact aside text** (`.fe-contact-title` "Get in touch", `.fe-contact-intro`, the public-information-chair name and other channel values, and channel labels) sits on the dark page rather than the card and had no dark override, so it rendered near-black. Lifted the heading to `--fe-dm-text-strong`, intro/values to `--fe-dm-text`, and labels to `--fe-dm-text-muted`.
+
+Verified with a headless browser in dark mode: `/submissionform` and `/contact` now render all labels, headings, and contact values at readable contrast against their dark surfaces.
+
 ## [2.3.0] — 2026-05-21
 
 ### Added — Frontend image & asset caching control panel

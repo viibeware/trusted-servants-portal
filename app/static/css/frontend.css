@@ -8702,6 +8702,19 @@ html[data-theme="dark"] .fe-submission-form fieldset,
 body.fe-frontend-force-dark .fe-submission-form fieldset {
   border-color: var(--fe-dm-border);
 }
+/* Field labels + fieldset legends carry an explicit light-mode text
+   colour (var(--fe-color-text)), which overrides the card's inherited
+   dark-mode colour and renders near-invisible against the dark card.
+   Flip them to the dark-mode text tokens. Applies to the contact form
+   too — its card is also dark in dark mode. */
+html[data-theme="dark"] .fe-submission-form label,
+body.fe-frontend-force-dark .fe-submission-form label {
+  color: var(--fe-dm-text);
+}
+html[data-theme="dark"] .fe-submission-form fieldset legend,
+body.fe-frontend-force-dark .fe-submission-form fieldset legend {
+  color: var(--fe-dm-text-strong);
+}
 html[data-theme="dark"] .fe-submission-modal-head h2,
 html[data-theme="dark"] .fe-submission-page-title,
 body.fe-frontend-force-dark .fe-submission-modal-head h2,
@@ -9794,8 +9807,13 @@ html[data-theme="dark"] [style*="--tpl-bg-dark"] {
    submission-section dark-mode treatment. */
 html[data-theme="dark"] .fe-contact-card,
 body.fe-frontend-force-dark .fe-contact-card {
-  background: var(--fe-color-surface, #111827);
-  border-color: var(--fe-color-border, rgba(255, 255, 255, 0.08));
+  /* Real dark surface tokens — the design tokens (var(--fe-color-surface))
+     aren't flipped in dark mode, so referencing them here kept the card
+     white. Mirror .fe-submission-card: dark surface + light base text so
+     inherited form text (helper notes, fineprint) stays readable. */
+  background: var(--fe-dm-surface);
+  border-color: var(--fe-dm-border);
+  color: var(--fe-dm-text);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
 }
 html[data-theme="dark"] .fe-contact-card:hover,
@@ -9805,6 +9823,24 @@ body.fe-frontend-force-dark .fe-contact-card:hover {
 html[data-theme="dark"] .fe-contact-blurb,
 body.fe-frontend-force-dark .fe-contact-blurb {
   color: var(--fe-color-text-muted, #94a3b8);
+}
+/* Aside text sits on the dark page background (not the card); its
+   light-mode tokens (var(--fe-color-text)) render near-black there.
+   Lift the heading, intro, and channel name/value to the dark-mode
+   text tokens, and the channel label to the muted token. */
+html[data-theme="dark"] .fe-contact-title,
+body.fe-frontend-force-dark .fe-contact-title {
+  color: var(--fe-dm-text-strong);
+}
+html[data-theme="dark"] .fe-contact-intro,
+body.fe-frontend-force-dark .fe-contact-intro,
+html[data-theme="dark"] .fe-contact-channel-value,
+body.fe-frontend-force-dark .fe-contact-channel-value {
+  color: var(--fe-dm-text);
+}
+html[data-theme="dark"] .fe-contact-channel-label,
+body.fe-frontend-force-dark .fe-contact-channel-label {
+  color: var(--fe-dm-text-muted);
 }
 html[data-theme="dark"] .fe-contact-channel-icon,
 body.fe-frontend-force-dark .fe-contact-channel-icon {
