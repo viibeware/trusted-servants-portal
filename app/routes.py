@@ -4048,7 +4048,8 @@ def _frontend_export_payload():
         feature blocks.
       * **pages** — admin-authored content pages (``Page`` rows). Their
         ``blocks_json`` plus background colour / image / dynbg config
-        plus typography overrides ride along; layout_key is preserved
+        plus typography overrides plus per-page Open Graph overrides
+        (title / description / image) ride along; layout_key is preserved
         so the picker shows the right preset on the destination.
       * **intergroup_officers** — roster surfaced by the ``intergroup_member``
         and ``officer_roster`` page blocks. Pages reference these by
@@ -4218,6 +4219,13 @@ def _frontend_export_payload():
             "pad_x": p.pad_x,
             "section_gap": p.section_gap,
             "block_margin_y": p.block_margin_y,
+            # Per-page Open Graph overrides (social-share card). Empty
+            # values fall back to the site-wide frontend_og_* defaults
+            # at render time. og_image_filename is also collected as an
+            # asset below so the image ships with the bundle.
+            "og_title": p.og_title,
+            "og_description": p.og_description,
+            "og_image_filename": p.og_image_filename,
         })
 
     # ---- intergroup_officers ----------------------------------------
@@ -4249,6 +4257,11 @@ def _frontend_export_payload():
             "is_featured": bool(st.is_featured),
             "is_draft": bool(st.is_draft),
             "is_archived": bool(st.is_archived),
+            # Editorial publication timestamp (drives the public
+            # "posted on" stamp via Story.display_posted). Preserved so
+            # imported stories keep their original date instead of
+            # resetting to the import time.
+            "published_at": st.published_at.isoformat() if st.published_at else None,
         })
 
     # ---- posts + slug_history intentionally OMITTED -------------------
@@ -4305,6 +4318,8 @@ def _frontend_export_payload():
     for p in pages:
         if p.get("bg_image_filename"):
             asset_refs.add(p["bg_image_filename"])
+        if p.get("og_image_filename"):
+            asset_refs.add(p["og_image_filename"])
         asset_refs |= _collect_asset_refs(p.get("blocks_json"))
         asset_refs |= _collect_asset_refs(p.get("bg_dynbg_config_json"))
     for st in stories:
@@ -4316,22 +4331,18 @@ def _frontend_export_payload():
     # per-post asset scan runs here. Story / page / settings / nav /
     # custom-layouts scans below remain.
 
-    # Cross-check matched filenames against the MediaItem catalog (for
-    # the regex-discovered ones — explicit columns and table-stored
-    # filenames are trusted as-is). Anything that doesn't match a real
-    # MediaItem row is dropped: it's almost certainly a false-positive
-    # 32-hex coincidence in a non-asset string.
+    # Every collected ref is kept here regardless of whether it matches
+    # a MediaItem row — the export-route zip step is the real filter: it
+    # only writes names that exist on disk (``if os.path.isfile``), so
+    # regex false-positives (a bare 32-hex coincidence inside a non-asset
+    # string, with no matching file) are silently skipped at write time
+    # and never ship. Keeping non-MediaItem refs here is deliberate so
+    # pre-MediaItem uploads (older installs whose files were never
+    # indexed) still ride along; the import-side backfill re-indexes them.
+    # Net effect: ``final_assets`` may list more names than the bundle
+    # actually contains, but it never omits a real referenced file.
     known_media = {m.stored_filename: m for m in MediaItem.query.all()}
-    final_assets = set()
-    for ref in asset_refs:
-        if ref in known_media:
-            final_assets.add(ref)
-            continue
-        # Files referenced via _filename columns or font/icon rows but
-        # absent from MediaItem still ship — pre-MediaItem uploads
-        # (older installs) aren't always indexed. The backfill scan on
-        # import will re-index them.
-        final_assets.add(ref)
+    final_assets = set(asset_refs)
 
     # ---- media_items catalog ------------------------------------------
     # Ride along with the bundle so the import side can re-populate
@@ -4351,7 +4362,7 @@ def _frontend_export_payload():
         })
 
     return {
-        "kind": "frontend", "format_version": 4,
+        "kind": "frontend", "format_version": 5,
         "settings": settings,
         "nav_items": nav_items,
         "hero_buttons": hero_buttons,
@@ -5519,11 +5530,11 @@ def data_frontend_export():
     manifest = {
         "app": "trusted-servants-pro",
         "kind": "frontend",
-        "format_version": 4,
+        "format_version": 5,
         "exported_at": datetime.utcnow().isoformat() + "Z",
         "content_filename": "frontend.json",
         "assets_dir": "assets/",
-        "note": ("Scoped frontend bundle (v4). Includes every "
+        "note": ("Scoped frontend bundle (v5). Includes every "
                  "look-and-feel SiteSetting column (frontend_, footer_, "
                  "utility_bar_, header_alert_, hero_, mega_, "
                  "submission_form_, contact_form_; recipient *_to "
@@ -5533,17 +5544,19 @@ def data_frontend_export():
                  "(homepage / footer / page), custom fonts, custom "
                  "icons, content pages (full schema including the "
                  "per-page spacing controls pad_top / pad_bottom / "
-                 "pad_x / section_gap / block_margin_y), intergroup "
-                 "officers, stories, posts (drafts and archives "
+                 "pad_x / section_gap / block_margin_y and the per-page "
+                 "Open Graph title / description / image overrides), "
+                 "intergroup officers, stories (with publication "
+                 "timestamp), posts (drafts and archives "
                  "included; pending submissions skipped), post slug "
                  "history, MediaItem catalog, plus every uploaded "
                  "file referenced from any of the above. Import via "
                  "the Data tab on another install to overlay the "
                  "public site without touching users, meetings, or "
-                 "libraries. v3 bundles still import — the new "
-                 "spacing columns fall back to Page defaults and the "
-                 "homepage stays whatever the destination's auto-seed "
-                 "wrote."),
+                 "libraries. Older bundles (v3 / v4) still import — the "
+                 "newer spacing / OG columns fall back to Page defaults "
+                 "and the homepage stays whatever the destination's "
+                 "auto-seed wrote."),
     }
 
     tmp_zip = tempfile.NamedTemporaryFile(prefix="tsp-fe-export-", suffix=".zip", delete=False)
@@ -5877,6 +5890,12 @@ def data_frontend_import():
                     pad_x=_opt_int("pad_x", 16),
                     section_gap=_opt_int("section_gap", 32),
                     block_margin_y=_opt_int("block_margin_y", 12),
+                    # Per-page Open Graph overrides (v5+ bundles). Absent
+                    # in older bundles → None, which falls back to the
+                    # site-wide frontend_og_* defaults at render time.
+                    og_title=(p.get("og_title") or None),
+                    og_description=(p.get("og_description") or None),
+                    og_image_filename=(p.get("og_image_filename") or None),
                 ))
             # Flush so the freshly-inserted pages have ids before we
             # look them up by slug for the homepage assignment below.
@@ -5923,10 +5942,14 @@ def data_frontend_import():
         # 11. Stories — replace by slug (preserving the source's
         # creator pointers is impossible cross-install, so created_by
         # is left null).
-        from datetime import date as _date
+        from datetime import date as _date, datetime as _dt
         def _parse_date(v):
             if not v: return None
             try: return _date.fromisoformat(v)
+            except (TypeError, ValueError): return None
+        def _parse_dt(v):
+            if not v: return None
+            try: return _dt.fromisoformat(v)
             except (TypeError, ValueError): return None
         story_payload = payload.get("stories") or []
         if story_payload:
@@ -5952,16 +5975,13 @@ def data_frontend_import():
                     is_featured=bool(st.get("is_featured")),
                     is_draft=bool(st.get("is_draft")),
                     is_archived=bool(st.get("is_archived")),
+                    published_at=_parse_dt(st.get("published_at")),
                 ))
 
         # 12. Posts — preserve source ids so the slug_history entries
         # ride along with the right entity_id. Pending submissions
-        # were already filtered out on the export side.
-        from datetime import datetime as _dt
-        def _parse_dt(v):
-            if not v: return None
-            try: return _dt.fromisoformat(v)
-            except (TypeError, ValueError): return None
+        # were already filtered out on the export side. (_parse_dt / _dt
+        # are defined in the Stories section above.)
         post_payload = payload.get("posts") or []
         if post_payload:
             for po in Post.query.filter(Post.is_pending_review.is_(False)).all():
