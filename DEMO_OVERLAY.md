@@ -59,7 +59,7 @@ markers and is a **no-op on a normal install**, so they're safe and easy to spot
 
 | File | Edit | Why it's harmless on `main` |
 |------|------|-----------------------------|
-| `app/__init__.py` | 4 blocks behind `if demo_mode` (engine config, install/register, seed call, skip backups) | All gated on `TSP_DEMO_MODE`; off by default |
+| `app/__init__.py` | 4 blocks behind `if demo_mode` (engine config, install/register, seed + analytics-refresh call, skip backups) | All gated on `TSP_DEMO_MODE`; off by default |
 | `app/templates/base.html` | `{% include 'product/_demo_banner.html' ignore missing %}` | `ignore missing` → renders nothing without the partial |
 | `app/templates/frontend/base.html` | same include | same |
 | `app/templates/frontend/headers/classic.html` | `href="{{ home_url or url_for('frontend.index') }}"` | `home_url` is unset off-demo → falls back to `url_for` |

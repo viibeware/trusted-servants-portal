@@ -868,3 +868,228 @@ def seed_demo_data(app):
     _seed_nav(s)
     db.session.commit()
     app.logger.info("Demo data seeded.")
+
+
+# ── analytics: realistic visitor traffic for Watchtower + FE metrics ─────────
+def refresh_demo_metrics(app):
+    """Regenerate now-anchored analytics so the admin backend looks like a real,
+    live site: Web-Frontend visitor metrics, the Watchtower overview / visitors /
+    404s / requests panels, failed-login analytics, recent activity, and pending
+    forms.
+
+    Runs on EVERY demo boot (not gated by the one-time content seed), wiping and
+    rebuilding the time-relative tables in the golden DB so "today / 7d / 30d"
+    always read as current. Per-session copies inherit this snapshot; nothing a
+    visitor changes inside their own session is touched (this only writes golden
+    at boot, with no request context)."""
+    import random
+    from .models import (VisitorEvent, NotFoundEvent, LoginFailure, ActivityLog,
+                         AccessRequest, ContactSubmission, LoginSession)
+
+    rng = random.Random(20260522)  # fixed seed → stable numbers across boots
+    now = datetime.utcnow()
+    today = now.date()
+
+    # Wipe the time-relative tables (golden only). Per-session DBs are copies
+    # taken at session start, so this never disturbs a visitor's edits.
+    for M in (VisitorEvent, NotFoundEvent, LoginFailure, ActivityLog,
+              AccessRequest, ContactSubmission, LoginSession):
+        M.query.delete(synchronize_session=False)
+    db.session.flush()
+
+    def wchoice(pairs):
+        """pairs: list of (value, weight) → one value."""
+        vals, wts = zip(*pairs)
+        return rng.choices(vals, weights=wts, k=1)[0]
+
+    # ── path catalog (weighted) — uses real seeded slugs for detail pages ──
+    pages = [("/", "frontend.index", 26), ("/meetings", "frontend.meetings_list", 17),
+             ("/library", "frontend.literature_library", 10), ("/events", "frontend.events_list", 7),
+             ("/about", "frontend.page_detail", 6), ("/newcomers", "frontend.page_detail", 7),
+             ("/blog", "frontend.blog_list", 6), ("/stories", "frontend.stories_list", 5),
+             ("/fellowships", "frontend.fellowships_list", 3), ("/contact", "frontend.contact", 4),
+             ("/service", "frontend.page_detail", 2), ("/printlist", "frontend.printlist", 2),
+             ("/siteindex", "frontend.site_index", 1)]
+    for m in Meeting.query.limit(12).all():
+        pages.append((f"/meetings/{m.public_slug}", "frontend.meeting_detail", 4))
+    for b in BlogPost.query.limit(8).all():
+        pages.append((f"/blog/{b.public_slug}", "frontend.blog_post", 3))
+    for st in Story.query.limit(6).all():
+        pages.append((f"/stories/{st.public_slug}", "frontend.story_detail", 3))
+    page_pairs = [((p, e), w) for p, e, w in pages]
+
+    referrers = [(None, 44), ("google.com", 25), ("bing.com", 4), ("duckduckgo.com", 3),
+                 ("search.yahoo.com", 1), ("ecosia.org", 1), ("facebook.com", 6),
+                 ("m.facebook.com", 3), ("reddit.com", 3), ("t.co", 3),
+                 ("instagram.com", 2), ("news.ycombinator.com", 1)]
+    # Hour-of-day weights (UTC-ish daytime curve with midday + evening peaks).
+    hour_w = [2,1,1,1,1,2,4,7,10,11,10,11,12,10,9,9,10,12,13,12,9,6,4,3]
+
+    def client():
+        """Coherent (device, browser, os) triple."""
+        r = rng.random()
+        if r < 0.46:        # mobile
+            if rng.random() < 0.55:
+                return "mobile", wchoice([("Safari", 7), ("Chrome", 3)]), "iOS"
+            return "mobile", wchoice([("Chrome", 8), ("Firefox", 1), ("Other", 1)]), "Android"
+        if r < 0.53:        # tablet
+            if rng.random() < 0.7:
+                return "tablet", "Safari", "iOS"
+            return "tablet", "Chrome", "Android"
+        # desktop
+        os_name = wchoice([("Windows", 46), ("macOS", 34), ("Linux", 20)])
+        if os_name == "Windows":
+            br = wchoice([("Chrome", 6), ("Edge", 3), ("Firefox", 2)])
+        elif os_name == "macOS":
+            br = wchoice([("Safari", 5), ("Chrome", 5), ("Firefox", 1)])
+        else:
+            br = wchoice([("Firefox", 4), ("Chrome", 5)])
+        return "desktop", br, os_name
+
+    def pick_hour(is_today):
+        hours = list(range(24))
+        weights = list(hour_w)
+        if is_today:
+            cap = now.hour
+            hours = [h for h in hours if h <= cap] or [0]
+            weights = weights[:len(hours)]
+        return rng.choices(hours, weights=weights, k=1)[0]
+
+    DAYS = 45
+    visit_rows, nf_rows = [], []
+    for i in range(DAYS):
+        d = today - timedelta(days=DAYS - 1 - i)
+        is_today = (d == today)
+        weekend = d.weekday() >= 5
+        trend = 0.62 + 0.38 * (i / (DAYS - 1))          # gentle growth
+        base = 64 * trend * (0.72 if weekend else 1.0)
+        uniques = max(8, int(rng.gauss(base, base * 0.16)))
+        if is_today:
+            frac = max(0.06, (now.hour * 60 + now.minute) / 1440.0)
+            uniques = max(3, int(uniques * frac))
+        ds = d.strftime("%Y-%m-%d")
+        for _ in range(uniques):
+            vh = uuid.uuid4().hex          # unique per (visitor, day): salt rotates daily IRL
+            device, browser, os_name = client()
+            ref = wchoice(referrers)
+            pageviews = 1 + int(rng.random() * rng.random() * 5)   # 1..~4, skewed low
+            for _ in range(pageviews):
+                (path, endpoint) = wchoice(page_pairs)
+                h = pick_hour(is_today)
+                ts = datetime(d.year, d.month, d.day, h, rng.randint(0, 59), rng.randint(0, 59))
+                visit_rows.append(dict(
+                    created_at=ts, day=ds, path=path, endpoint=endpoint,
+                    referrer_host=ref, device=device, browser=browser, os=os_name,
+                    visitor_hash=vh))
+        # 404s — a handful per day (probe paths + a couple of stale links)
+        dead = wchoice([(2, 5), (4, 7), (6, 5), (9, 2), (12, 1)])
+        for _ in range(dead):
+            p = wchoice([("/wp-login.php", 6), ("/wp-admin/", 4), ("/.env", 3),
+                         ("/xmlrpc.php", 2), ("/old-meetings", 3), ("/donate", 3),
+                         ("/zoom", 2), ("/calendar.ics", 2), ("/index.php", 2),
+                         ("/feed", 2), ("/meeting/sunrise-serenity", 2),
+                         ("/wp-content/uploads/", 2), ("/.git/config", 1),
+                         ("/sitemap.xml", 1), ("/2019/05/welcome", 1)])
+            device, browser, os_name = client()
+            ref_full = wchoice([(None, 70), ("https://www.google.com/", 14),
+                                ("https://meridianrecovery.example/old", 8),
+                                ("https://l.facebook.com/", 4),
+                                ("https://duckduckgo.com/", 4)])
+            h = pick_hour(is_today)
+            ts = datetime(d.year, d.month, d.day, h, rng.randint(0, 59), rng.randint(0, 59))
+            host = None
+            if ref_full:
+                from urllib.parse import urlparse as _up
+                host = _up(ref_full).netloc or None
+            nf_rows.append(dict(
+                created_at=ts, day=ds, path=p, referrer=ref_full, referrer_host=host,
+                device=device, browser=browser, os=os_name, visitor_hash=uuid.uuid4().hex))
+
+    db.session.bulk_insert_mappings(VisitorEvent, visit_rows)
+    db.session.bulk_insert_mappings(NotFoundEvent, nf_rows)
+
+    # ── failed logins (suspicious-IP table + chart + anomaly signal) ──
+    scanners = ["203.0.113.47", "198.51.100.23", "203.0.113.9", "198.51.100.88", "192.0.2.15"]
+    for ip in scanners:
+        for _ in range(rng.randint(3, 8)):
+            t = now - timedelta(days=rng.uniform(0, 6.5), hours=rng.uniform(0, 24))
+            db.session.add(LoginFailure(kind="ip", key=ip, failed_at=t))
+    concentrated = "203.0.113.66"   # >10 in 24h → Watchtower "concentrated attack" signal
+    for _ in range(12):
+        t = now - timedelta(hours=rng.uniform(0.5, 22))
+        db.session.add(LoginFailure(kind="ip", key=concentrated, failed_at=t))
+
+    # ── recent admin activity (overview "recent activity" + access tab) ──
+    admin = User.query.filter_by(username="admin").first()
+    editor = User.query.filter_by(username="editor").first()
+    acts = [
+        (admin, "login", "auth", "Signed in"),
+        (editor, "login", "auth", "Signed in"),
+        (editor, "meeting.update", "meeting", "Updated meeting “Midday Reset”"),
+        (admin, "settings.save", "settings", "Saved Web Frontend branding"),
+        (editor, "library.item.create", "library", "Added “Online meeting etiquette” to Newcomer Packet"),
+        (admin, "post.create", "post", "Published event “Regional Service Workshop”"),
+        (editor, "meeting.create", "meeting", "Created meeting “Young People in Recovery”"),
+        (admin, "page.update", "page", "Edited the Newcomers page"),
+        (editor, "blog.create", "blog", "Drafted “Why an online-first fellowship works”"),
+        (admin, "story.publish", "story", "Approved a submitted story"),
+        (admin, "user.create", "user", "Created editor account “Jamie Chen”"),
+        (editor, "meeting.schedule.update", "meeting", "Adjusted Friday Night Speaker time"),
+        (admin, "settings.save", "settings", "Enabled the Stories module"),
+        (editor, "library.create", "library", "Created “Daily Readings” library"),
+        (admin, "post.update", "post", "Updated announcement “Website refreshed”"),
+    ]
+    for i, (u, action, et, summary) in enumerate(acts):
+        if u is None:
+            continue
+        db.session.add(ActivityLog(
+            user_id=u.id, action=action, entity_type=et, summary=summary,
+            ip=wchoice([("198.51.100.5", 3), ("203.0.113.200", 2), ("192.0.2.42", 2)]),
+            created_at=now - timedelta(days=rng.uniform(0, 13), hours=rng.uniform(0, 24))))
+
+    # ── pending access requests (KPI + access tab + dashboard widget) ──
+    reqs = [
+        ("Pat Doyle", "+1 (555) 017-2210", "pat.doyle@example.com", ["Meeting Secretary"], "Sunrise Serenity", "pending"),
+        ("Lee Okafor", "+1 (555) 017-3391", "lee.okafor@example.com", ["Trusted Servant"], "Steps & Traditions Study", "pending"),
+        ("Robin Avila", "+1 (555) 017-4420", "r.avila@example.com", ["Webservant", "Editor"], None, "pending"),
+        ("Sky Bennett", "+1 (555) 017-5567", "sky.b@example.com", ["Meeting Chair"], "Women's Circle", "handled"),
+    ]
+    for name, phone, email, roles, mtg, status in reqs:
+        db.session.add(AccessRequest(
+            name=name, phone=phone, email=email, roles_json=json.dumps(roles),
+            meeting_name=mtg, status=status,
+            created_at=now - timedelta(days=rng.uniform(0, 9)),
+            handled_at=(now - timedelta(days=rng.uniform(0, 2))) if status == "handled" else None))
+
+    # ── contact-form submissions (dashboard forms widget) ──
+    msgs = [
+        ("Jordan Vee", "jordan.vee@example.com", "Is the 7am meeting open?", "Hi — is Sunrise Serenity open to newcomers? Thanks!", False),
+        ("Sam Iverson", "sam.iverson@example.com", "Speaker request", "Our group would love a speaker exchange. Who do I contact?", False),
+        ("Dana Brooks", "dana.brooks@example.com", "Website feedback", "Love the new site! The dark mode looks great.", True),
+        ("Chris Nardo", "chris.n@example.com", "Zoom passcode", "Could you send the passcode for Friday Night Speaker?", True),
+    ]
+    for name, email, subject, body, is_read in msgs:
+        db.session.add(ContactSubmission(
+            name=name, email=email, subject=subject, message=body, is_read=is_read,
+            ip_address=wchoice([("198.51.100.7", 1), ("203.0.113.31", 1)]),
+            created_at=now - timedelta(days=rng.uniform(0, 11), hours=rng.uniform(0, 24))))
+
+    # ── a few closed login sessions (user-log history) ──
+    uas = ["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) … Chrome/124 Safari/537.36",
+           "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) … Safari/604.1",
+           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) … Edg/124"]
+    for u in (admin, editor):
+        if u is None:
+            continue
+        for _ in range(rng.randint(2, 3)):
+            start = now - timedelta(days=rng.uniform(1, 12), hours=rng.uniform(0, 6))
+            db.session.add(LoginSession(
+                user_id=u.id, ip=wchoice([("198.51.100.5", 2), ("203.0.113.200", 1)]),
+                user_agent=rng.choice(uas), started_at=start,
+                last_activity_at=start + timedelta(minutes=rng.randint(8, 90)),
+                ended_at=start + timedelta(minutes=rng.randint(90, 180)),
+                end_reason=wchoice([("logout", 3), ("expired", 2)])))
+
+    db.session.commit()
+    app.logger.info("Demo metrics refreshed: %d visits, %d 404s.",
+                    len(visit_rows), len(nf_rows))

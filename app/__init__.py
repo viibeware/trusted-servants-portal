@@ -613,8 +613,15 @@ def create_app():
         _seed_homepage_page(app)
         # >>> TSP demo overlay (branch: demo — keep on merge, not on main) >>>
         if demo_mode:
-            from .demo_seed import seed_demo_data
+            from .demo_seed import seed_demo_data, refresh_demo_metrics
             seed_demo_data(app)
+            # Regenerate now-anchored analytics every boot so Watchtower + the
+            # Web Frontend visitor metrics always read as a live site.
+            try:
+                refresh_demo_metrics(app)
+            except Exception:
+                app.logger.exception("demo metrics refresh failed")
+                db.session.rollback()
         # <<< TSP demo overlay <<<
         _backfill_media(app)
         _migrate_unique_post_slugs(app)
