@@ -11,7 +11,8 @@
        {% if _header_full %}style="padding-left: {{ _header_pct }}%; padding-right: {{ _header_pct }}%; min-height: {{ _header_h }}px;"{% else %}style="max-width: {{ _header_max }}px; min-height: {{ _header_h }}px;"{% endif %}>
     {% set _fe_logo = site and site.frontend_logo_filename %}
     {% set _fe_logo_w = (site.frontend_logo_width if site else 40) or 40 %}
-    <a class="fe-brand" href="{{ url_for('frontend.index') }}">
+    {# TSP demo overlay: home_url falls back to url_for when unset (non-demo) #}
+    <a class="fe-brand" href="{{ home_url or url_for('frontend.index') }}">
       {% if _fe_logo %}
       <img src="{{ url_for('public.site_frontend_logo') }}" alt="{{ frontend_title }}"
            class="fe-brand-logo" style="width: {{ _fe_logo_w }}px; height: auto;">

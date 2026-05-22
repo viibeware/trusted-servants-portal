@@ -53,6 +53,7 @@
                     and current_user.is_authenticated
                     and current_user.fe_admin_autohide_sidebar -%}
 <body class="{% if embed %}embed{% endif %}{% if _fe_admin %} fe-admin-autohide{% endif %}">
+{% include 'product/_demo_banner.html' ignore missing %}{# TSP demo overlay (no-op without the partial) #}
 {% if current_user.is_authenticated %}
 {% if not embed %}
 <div class="layout">

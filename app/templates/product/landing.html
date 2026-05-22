@@ -1,0 +1,285 @@
+{#- SPDX-License-Identifier: AGPL-3.0-or-later
+   Product marketing homepage for TSP Pro (demo mode front door). Standalone
+   document — deliberately does NOT extend the app/frontend base so its bold
+   "mission control" aesthetic stays independent of the themeable fellowship
+   frontend. -#}
+{%- macro tick() -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>{%- endmacro -%}
+{%- macro feature_icon(name) -%}
+{%- set p = {
+  'calendar': '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  'book': '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+  'megaphone': '<path d="m3 11 18-5v12L3 13v-2z"/><path d="M11.6 16.8a3 3 0 1 1-5.2-3"/>',
+  'heart': '<path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 12 5 5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/>',
+  'feather': '<path d="M20.2 3.8a5.5 5.5 0 0 0-7.8 0L4 12.2V20h7.8l8.4-8.4a5.5 5.5 0 0 0 0-7.8z"/><path d="M16 8 2 22M17.5 15H9"/>',
+  'layout': '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
+  'palette': '<circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2a10 10 0 1 0 0 20 2.5 2.5 0 0 0 2-4 2.5 2.5 0 0 1 2-4h2a4 4 0 0 0 4-4 10 10 0 0 0-10-8z"/>',
+  'shield': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  'activity': '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  'save': '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/>',
+  'video': '<path d="m23 7-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>',
+  'globe': '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/>'
+} -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{{ p.get(name, p['globe']) | safe }}</svg>
+{%- endmacro -%}
+<!doctype html>
+<html lang="en" class="pp">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TSP Pro — the all-in-one web portal for recovery fellowships</title>
+  <meta name="description" content="TSP Pro runs your fellowship's entire web presence — public site and admin backend — from one self-hosted app. Explore the live, fully interactive demo.">
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/product.css') }}">
+</head>
+<body class="pp">
+  <div class="pp-aurora" aria-hidden="true"></div>
+  <div class="pp-grain" aria-hidden="true"></div>
+
+  {%- set DEMO_SITE = '/demo' -%}
+  {%- set DEMO_ADMIN = '/demo/login-admin' -%}
+
+  <!-- nav -->
+  <header class="pp-nav">
+    <div class="pp-wrap pp-nav-in">
+      <a class="pp-brand" href="{{ url_for('product.welcome') }}">
+        <span class="pp-mark">TS</span>
+        <span>TSP&nbsp;Pro<small>Trusted Servant Portal</small></span>
+      </a>
+      <nav class="pp-nav-cta">
+        <a class="pp-btn pp-btn-ghost" href="{{ DEMO_ADMIN }}">Admin backend</a>
+        <a class="pp-btn pp-btn-primary" href="{{ DEMO_SITE }}">Launch live demo
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- hero -->
+  <section class="pp-hero">
+    <div class="pp-wrap pp-hero-grid">
+      <div class="pp-reveal in">
+        <span class="pp-eyebrow">Self-hosted · open portal · for fellowships</span>
+        <h1>Your fellowship's <span class="pp-grad">entire web presence</span>, in one place.</h1>
+        <p class="lede">Meeting schedules, a literature library, events, stories, a blog, a drag-and-drop page builder, analytics, backups — public site <em>and</em> admin backend, run from a single app you control.</p>
+        <div class="pp-hero-cta">
+          <a class="pp-btn pp-btn-primary pp-btn-lg" href="{{ DEMO_SITE }}">Explore the live demo
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          <a class="pp-btn pp-btn-ghost pp-btn-lg" href="{{ DEMO_ADMIN }}">Open the admin backend</a>
+        </div>
+        <p class="pp-hero-note">Fully interactive. <b>Edit anything</b> — your changes are private to your session and reset automatically. Nothing you do is permanent.</p>
+      </div>
+
+      <div class="pp-reveal in">
+        <div class="pp-window" role="img" aria-label="Preview of the public meeting schedule">
+          <div class="pp-window-bar">
+            <span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-dot"></span>
+            <span class="pp-window-url">meridianrecovery.example/meetings</span>
+          </div>
+          <div class="pp-window-body">
+            <div class="pp-mini-head"><span>This week's meetings</span><em>● 3 live now</em></div>
+            <div class="pp-mini-row"><span class="pp-mini-time">07:00</span><span class="pp-mini-name">Sunrise Serenity</span><span class="pp-chip pp-chip-online">Online</span></div>
+            <div class="pp-mini-row"><span class="pp-mini-time">12:00</span><span class="pp-mini-name">Midday Reset</span><span class="pp-chip pp-chip-live">Live</span></div>
+            <div class="pp-mini-row"><span class="pp-mini-time">19:00</span><span class="pp-mini-name">Steps &amp; Traditions Study</span><span class="pp-chip pp-chip-hybrid">Hybrid</span></div>
+            <div class="pp-mini-row"><span class="pp-mini-time">23:00</span><span class="pp-mini-name">Late Night Lifeline</span><span class="pp-chip pp-chip-online">Online</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pp-wrap">
+      <div class="pp-stats pp-stagger pp-reveal">
+        <div class="pp-stat"><b data-count="20" data-suffix="+">20+</b><span>built-in modules, all toggleable</span></div>
+        <div class="pp-stat"><b data-count="100" data-suffix="%">100%</b><span>your data — self-hosted, no per-seat fees</span></div>
+        <div class="pp-stat"><b>1</b><span>command to deploy with Docker</span></div>
+        <div class="pp-stat"><b>$0</b><span>open source, SQLite-simple</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- two surfaces -->
+  <section class="pp-section" id="surfaces">
+    <div class="pp-wrap">
+      <div class="pp-section-head pp-reveal">
+        <span class="pp-eyebrow">Two surfaces, one app</span>
+        <h2>A polished <span class="pp-grad">public site</span>, and the backend to run it.</h2>
+        <p>Members get a fast, themeable website. Trusted servants get a friendly admin area with roles, audit logs, and backups. The demo lets you walk through both.</p>
+      </div>
+
+      <div class="pp-split pp-reveal">
+        <div>
+          <span class="pp-kicker">The frontend</span>
+          <h3>A website members actually want to use</h3>
+          <p>Meeting schedules with live "happening now" badges, a browsable literature library, events, recovery stories, a blog, and a visual page builder — wrapped in a theme you control down to the design tokens.</p>
+          <ul class="pp-ticks">
+            <li>{{ tick() }}<span>Day/time schedule, in-person · online · hybrid, with one-click Zoom join</span></li>
+            <li>{{ tick() }}<span>Drag-and-drop pages, light/dark mode, custom fonts &amp; colors</span></li>
+            <li>{{ tick() }}<span>Stories, blog, events &amp; announcements, fellowships index</span></li>
+          </ul>
+          <p style="margin-top:1.4rem"><a class="pp-btn pp-btn-ghost" href="{{ DEMO_SITE }}">See the public site →</a></p>
+        </div>
+        <div class="pp-split-media">
+          <div class="pp-surface-card">
+            <div class="pp-window-bar"><span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-window-url">/library</span></div>
+            <div class="pp-window-body" style="padding:0">
+              <div class="pp-mini-row"><span class="pp-mini-name">Newcomer Packet</span><span class="pp-chip pp-chip-online">4 readings</span></div>
+              <div class="pp-mini-row"><span class="pp-mini-name">Meeting Scripts</span><span class="pp-chip pp-chip-hybrid">3 readings</span></div>
+              <div class="pp-mini-row"><span class="pp-mini-name">Service Materials</span><span class="pp-chip pp-chip-online">3 readings</span></div>
+              <div class="pp-mini-row"><span class="pp-mini-name">Daily Readings</span><span class="pp-chip pp-chip-hybrid">3 readings</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pp-split rev pp-reveal">
+        <div>
+          <span class="pp-kicker">The backend</span>
+          <h3>An admin area built for volunteers</h3>
+          <p>Three roles, an audit trail, a recycle bin, visitor analytics, scheduled off-site backups, and a one-screen restore. Powerful where it needs to be, gentle for the trusted servant doing it after their day job.</p>
+          <ul class="pp-ticks">
+            <li>{{ tick() }}<span>Admin · editor · viewer roles with per-module gating</span></li>
+            <li>{{ tick() }}<span>Watchtower: visitor metrics, 404s, access requests, IP controls</span></li>
+            <li>{{ tick() }}<span>Daily snapshots, off-site backups, full-portal export/restore</span></li>
+          </ul>
+          <p style="margin-top:1.4rem"><a class="pp-btn pp-btn-ghost" href="{{ DEMO_ADMIN }}">Open the admin (admin / admin) →</a></p>
+        </div>
+        <div class="pp-split-media">
+          <div class="pp-surface-card">
+            <div class="pp-window-bar"><span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-window-url">/tspro · dashboard</span></div>
+            <div class="pp-admin-grid" style="padding:0">
+              <div class="pp-admin-side"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="pp-admin-main">
+                <div class="pp-admin-tiles"><div class="pp-admin-tile"></div><div class="pp-admin-tile"></div><div class="pp-admin-tile"></div></div>
+                <div class="pp-admin-tile" style="height:90px"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- feature grid -->
+  <section class="pp-section" id="features">
+    <div class="pp-wrap">
+      <div class="pp-section-head pp-reveal">
+        <span class="pp-eyebrow">Everything in the box</span>
+        <h2>One portal. <span class="pp-grad">Every tool</span> your fellowship needs.</h2>
+        <p>Each module is independently toggleable, so you ship exactly the site your fellowship wants — nothing more.</p>
+      </div>
+      <div class="pp-features pp-stagger pp-reveal">
+        {% set cards = [
+          ('calendar', 'Meetings & schedules', 'Recurring day/time schedules across every time zone, in-person · online · hybrid, with Zoom details and live badges.'),
+          ('book', 'Literature libraries', 'Curated readings, scripts, and service docs — files, links, or pasted markdown, public or members-only.'),
+          ('megaphone', 'Events & announcements', 'Post events with locations and Zoom links; announcements auto-archive when they expire.'),
+          ('heart', 'Recovery stories', 'First-person stories with author bylines and milestone dates — a moderated, public submission flow included.'),
+          ('feather', 'Blog', 'Long-form posts with categories and tags; one table can power many committee blogs.'),
+          ('layout', 'Page builder', 'Drag-and-drop blocks — heroes, cards, galleries, containers — for any page, no code.'),
+          ('palette', 'Design system', 'Themes, design tokens, custom fonts, light/dark mode, mega-menus, and footers you control.'),
+          ('shield', 'Roles & permissions', 'Admin, editor, and viewer roles with fine-grained per-module access gating.'),
+          ('activity', 'Watchtower analytics', 'Privacy-first visitor metrics, 404 tracking, access requests, and IP blocking.'),
+          ('save', 'Backups & restore', 'Daily snapshots, scheduled off-site backups (SFTP/FTP/Dropbox), and one-screen restore.'),
+          ('video', 'Zoom & tech hub', 'A built-in knowledge base of hosting checklists and security best practices.'),
+          ('globe', 'Forms, contact & more', 'Custom forms, contact routing, a fellowships index, trusted-servant mailing list, and printable schedules.')
+        ] %}
+        {% for icon, title, body in cards %}
+        <article class="pp-card">
+          <div class="pp-card-ic">{{ feature_icon(icon) }}</div>
+          <h3>{{ title }}</h3>
+          <p>{{ body }}</p>
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <!-- how the demo works -->
+  <section class="pp-section" id="how">
+    <div class="pp-wrap">
+      <div class="pp-section-head pp-reveal">
+        <span class="pp-eyebrow">Try it without fear</span>
+        <h2>A sandbox that's <span class="pp-grad">yours alone</span>.</h2>
+        <p>The demo is fully live — yet completely safe to break. Here's how it works under the hood.</p>
+      </div>
+      <div class="pp-steps pp-stagger pp-reveal">
+        <div class="pp-step">
+          <h3>Launch</h3>
+          <p>The demo loads a fictitious fellowship — <b>Meridian Recovery Collective</b> — fully populated with meetings, libraries, events, stories, and a blog.</p>
+        </div>
+        <div class="pp-step">
+          <h3>Explore &amp; edit</h3>
+          <p>Sign into the admin with <code>admin / admin</code> and change anything. Edit meetings, rewrite pages, flip modules, upload files — it all updates instantly on the public site.</p>
+        </div>
+        <div class="pp-step">
+          <h3>Reset, automatically</h3>
+          <p>Your changes live in a private copy tied to your browser session. They never affect anyone else, and the slate wipes clean — so every visitor starts fresh.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- deploy -->
+  <section class="pp-section" id="deploy">
+    <div class="pp-wrap pp-deploy">
+      <div class="pp-reveal">
+        <span class="pp-eyebrow">Own your stack</span>
+        <h2>Deploy it yourself <span class="pp-grad">in minutes</span>.</h2>
+        <p style="color:var(--muted);margin:1rem 0 1.4rem;">No SaaS lock-in, no per-seat pricing. TSP Pro is a single Flask app backed by SQLite — bring your own domain and run it on any box that speaks Docker.</p>
+        <ul class="pp-ticks">
+          <li>{{ tick() }}<span>One container, one SQLite file — trivial to back up and move</span></li>
+          <li>{{ tick() }}<span>HTTPS, security headers, and an installer for production hosts</span></li>
+          <li>{{ tick() }}<span>Your data stays on your server. Full export &amp; restore built in.</span></li>
+        </ul>
+      </div>
+      <div class="pp-reveal">
+        <div class="pp-code">
+          <div class="pp-window-bar"><span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-window-url">~/tspro</span></div>
+<pre><span class="c"># clone, configure a secret, and bring it up</span>
+<span class="g">$</span> git clone &lt;your-repo&gt; tspro && cd tspro
+<span class="g">$</span> echo "TSP_SECRET_KEY=$(openssl rand -hex 32)" &gt; .env
+<span class="g">$</span> docker compose up -d --build
+
+<span class="c"># your portal is live</span>
+<span class="p">→</span> http://localhost:8090        <span class="c"># public site</span>
+<span class="p">→</span> http://localhost:8090/tspro  <span class="c"># admin backend</span></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- final cta -->
+  <section class="pp-section">
+    <div class="pp-wrap">
+      <div class="pp-cta-band pp-reveal">
+        <span class="pp-eyebrow">See it for yourself</span>
+        <h2>The best way to understand it is to <span class="pp-grad">break it</span>.</h2>
+        <p>Step into a live, fully-loaded fellowship portal. Edit freely — it resets itself.</p>
+        <div class="pp-hero-cta">
+          <a class="pp-btn pp-btn-primary pp-btn-lg" href="{{ DEMO_SITE }}">Explore the live demo
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          <a class="pp-btn pp-btn-ghost pp-btn-lg" href="{{ DEMO_ADMIN }}">Open the admin backend</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- footer -->
+  <footer class="pp-foot">
+    <div class="pp-wrap pp-foot-in">
+      <div>© {{ year }} TSP&nbsp;Pro · Trusted Servant Portal. Built with Flask.</div>
+      <nav class="pp-foot-links">
+        <a href="{{ DEMO_SITE }}">Public demo</a>
+        <a href="{{ DEMO_ADMIN }}">Admin demo</a>
+        <a href="#features">Features</a>
+        <a href="#deploy">Deploy</a>
+      </nav>
+    </div>
+    <div class="pp-wrap" style="margin-top:1.2rem;color:var(--muted-2);font-size:0.78rem;">
+      The demo content (Meridian Recovery Collective and all names, meetings, and contact details) is fictitious, created solely to showcase the software.
+    </div>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/product.js') }}" defer></script>
+</body>
+</html>

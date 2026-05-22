@@ -1,0 +1,29 @@
+{#- SPDX-License-Identifier: AGPL-3.0-or-later
+   Slim, self-contained demo banner injected at the top of every app page (both
+   the public frontend and the /tspro admin) when TSP_DEMO_MODE is on. Gated by
+   the ``demo_mode`` Jinja global so it never renders in a normal install. -#}
+{%- if demo_mode %}
+<style>
+.tsp-demobar{font:600 13px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#eef0ff;background:linear-gradient(100deg,#4338ca,#6366f1 45%,#0ea5e9);border-bottom:1px solid rgba(255,255,255,.18)}
+.tsp-demobar-in{width:min(1180px,94vw);margin-inline:auto;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:8px 0}
+.tsp-demobar .lbl{font-weight:800;display:inline-flex;align-items:center;gap:7px}
+.tsp-demobar .lbl::before{content:"";width:8px;height:8px;border-radius:50%;background:#5eead4;box-shadow:0 0 0 3px rgba(94,234,212,.3)}
+.tsp-demobar .txt{font-weight:500;color:rgba(255,255,255,.92)}
+.tsp-demobar .sp{flex:1 1 auto}
+.tsp-demobar a{color:#fff;text-decoration:none;font-weight:600;padding:4px 11px;border-radius:999px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.10);white-space:nowrap}
+.tsp-demobar a:hover{background:rgba(255,255,255,.22)}
+.tsp-demobar code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(0,0,0,.22);padding:1px 5px;border-radius:5px}
+@media(max-width:680px){.tsp-demobar .txt{display:none}}
+</style>
+<div class="tsp-demobar" role="region" aria-label="Demo mode">
+  <div class="tsp-demobar-in">
+    <span class="lbl">Live demo</span>
+    <span class="txt">Exploring TSP&nbsp;Pro — your changes are private to this session &amp; reset automatically.</span>
+    <span class="sp"></span>
+    <a href="/demo" title="The demo's home page">Demo home</a>
+    {% if not current_user.is_authenticated %}<a href="/demo/login-admin" title="One-click sign in">Admin: <code>admin / admin</code></a>{% endif %}
+    <a href="/demo/reset" title="Wipe your session and start fresh">Reset demo</a>
+    <a href="/" title="The TSP Pro product page">About TSP&nbsp;Pro</a>
+  </div>
+</div>
+{%- endif %}

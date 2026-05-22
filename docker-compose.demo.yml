@@ -1,0 +1,53 @@
+# TSP Pro — public demo deployment.
+#
+# Runs the app in DEMO MODE: every browser session gets its own ephemeral copy
+# of the database + uploads, so visitors can change anything (frontend AND the
+# /tspro admin) without their edits persisting or affecting other visitors.
+# The golden, seeded fellowship (Meridian Recovery Collective) lives in the
+# named volume below and is rebuilt on first boot.
+#
+#   Quick start:  bash demo/run-demo.sh
+#   Or directly:  docker compose -f docker-compose.demo.yml up -d --build
+#
+#   Product page : http://localhost:8090/                  (marketing homepage)
+#   Live demo    : http://localhost:8090/demo              (the fellowship site)
+#   Admin login  : http://localhost:8090/demo/login-admin  (one-click; or /tspro, admin/admin)
+services:
+  tsp-demo:
+    build: .
+    container_name: tspro-demo
+    # --preload builds the app (and the golden seed DB) ONCE in the master
+    # before forking workers. Without it each worker runs create_app
+    # concurrently, racing on golden-DB creation/migration. Safe here because
+    # the per-session engine uses NullPool (no connections survive the fork).
+    command: ["gunicorn", "-b", "0.0.0.0:8000", "-w", "2", "--preload",
+              "--timeout", "120", "--access-logfile", "-", "run:app"]
+    ports:
+      # Host port is configurable (default 8090) so the demo can coexist with
+      # other instances:  TSP_DEMO_PORT=8095 docker compose -f docker-compose.demo.yml up
+      - "${TSP_DEMO_PORT:-8090}:8000"
+    environment:
+      # Turns on per-session isolation, the product marketing page, and the
+      # demo data seeder. This single flag is the only difference from a normal
+      # production deploy.
+      - TSP_DEMO_MODE=1
+      # HTTP-friendly: don't set the Secure cookie flag (so sessions work over
+      # plain http://localhost) and allow the admin/admin seed. For an HTTPS
+      # demo behind a TLS proxy, drop TSP_DEBUG and serve over https instead.
+      - TSP_DEBUG=1
+      - TSP_SECRET_KEY=${TSP_SECRET_KEY:?TSP_SECRET_KEY must be set in .env — run demo/run-demo.sh or add it manually}
+      - TSP_ADMIN_USERNAME=admin
+      - TSP_ADMIN_PASSWORD=admin
+      - TSP_ADMIN_EMAIL=admin@meridianrecovery.example
+      # How long an idle visitor session is kept before the janitor reclaims
+      # its private DB + uploads (minutes).
+      - TSP_DEMO_SESSION_TTL_MIN=90
+    volumes:
+      # Golden state (seeded DB + uploads) + per-session copies live here.
+      # Remove this volume to fully reset the demo to a fresh seed:
+      #   docker compose -f docker-compose.demo.yml down -v
+      - tspro_demo_data:/data
+    restart: unless-stopped
+
+volumes:
+  tspro_demo_data:

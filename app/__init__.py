@@ -123,9 +123,28 @@ def create_app():
         WTF_CSRF_TIME_LIMIT=None,  # tie to session lifetime, not a 1-hour window
     )
 
+    # >>> TSP demo overlay (branch: demo — keep on merge, not on main) >>>
+    # Per-session ephemeral demo. configure() MUST run before db.init_app so the
+    # per-session engine creator/NullPool + context-aware config take effect.
+    demo_mode = os.environ.get("TSP_DEMO_MODE", "").lower() in ("1", "true", "yes")
+    if demo_mode:
+        from . import demo as _demo
+        _demo.configure(app, data_dir=data_dir, upload_dir=upload_dir, db_path=db_path)
+    # <<< TSP demo overlay <<<
+
     db.init_app(app)
     login_manager.init_app(app)
     csrf.init_app(app)
+
+    # >>> TSP demo overlay (branch: demo — keep on merge, not on main) >>>
+    if demo_mode:
+        # install() registers the per-session before_request FIRST (so the
+        # thread-local DB path is set before the app's DB-touching gates run),
+        # then mounts the product marketing site + demo entry routes.
+        from . import product as _product
+        _demo.install(app)
+        _product.register(app)
+    # <<< TSP demo overlay <<<
 
     @app.template_filter("file_type")
     def file_type(src):
@@ -592,6 +611,11 @@ def create_app():
         # we can default to the 'page-blank' preset key on the new
         # row without it dangling.
         _seed_homepage_page(app)
+        # >>> TSP demo overlay (branch: demo — keep on merge, not on main) >>>
+        if demo_mode:
+            from .demo_seed import seed_demo_data
+            seed_demo_data(app)
+        # <<< TSP demo overlay <<<
         _backfill_media(app)
         _migrate_unique_post_slugs(app)
         _migrate_trusted_servant_user_id_nullable(app)
@@ -610,7 +634,11 @@ def create_app():
     # hiccup can't block the app from coming up.
     try:
         from .backup import daily_snapshot, list_snapshots as _list_snapshots
-        daily_snapshot(app)
+        # >>> TSP demo overlay: skip snapshots in demo mode (raw sqlite3 on the
+        #     shared data dir; would only capture the golden DB) >>>
+        if not demo_mode:
+            daily_snapshot(app)
+        # <<< TSP demo overlay <<<
 
         def _snapshots_for_template():
             try:
@@ -626,7 +654,10 @@ def create_app():
     # worker drives the loop; the others see the lock and idle.
     try:
         from .backup_scheduler import start_scheduler
-        start_scheduler(app)
+        # >>> TSP demo overlay: no off-site backup thread in an ephemeral demo >>>
+        if not demo_mode:
+            start_scheduler(app)
+        # <<< TSP demo overlay <<<
     except Exception:  # noqa: BLE001
         app.logger.exception("backup scheduler failed to start")
 

@@ -18,7 +18,8 @@
   <div class="fe-recovery-main">
     <div class="fe-recovery-main-inner{% if not _header_full %} fe-container{% endif %}"
          {% if _header_full %}style="padding-left: {{ _header_pct }}%; padding-right: {{ _header_pct }}%; min-height: {{ _header_h }}px;"{% else %}style="max-width: {{ _header_max }}px; min-height: {{ _header_h }}px;"{% endif %}>
-      <a class="fe-recovery-brand" href="{{ url_for('frontend.index') }}">
+      {# TSP demo overlay: home_url falls back to url_for when unset (non-demo) #}
+      <a class="fe-recovery-brand" href="{{ home_url or url_for('frontend.index') }}">
         {% if _fe_logo %}
         <img src="{{ url_for('public.site_frontend_logo') }}" alt="{{ frontend_title }}"
              class="fe-recovery-logo" style="width: {{ _fe_logo_w }}px; height: auto;">
