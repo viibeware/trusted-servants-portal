@@ -11,6 +11,7 @@ const shots = [
   { url: '/demo',            file: 'fe-home.png',      login: false },
   { url: '/meetings',        file: 'fe-meetings.png',  login: false },
   { url: '/library',         file: 'fe-library.png',   login: false },
+  { url: '/events',          file: 'fe-events.png',    login: false },
   // Backend (logged in)
   { url: '/tspro',           file: 'be-dashboard.png', login: true },
   { url: '/tspro/meetings',  file: 'be-meetings.png',  login: true },

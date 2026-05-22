@@ -128,11 +128,9 @@
 /* ── nav ────────────────────────────────────────────────────────────────── */
 .pp-nav { position: sticky; top: 0; z-index: 40; backdrop-filter: blur(14px); background: linear-gradient(to bottom, var(--nav-top), var(--nav-bot)); border-bottom: 1px solid var(--line); }
 .pp-nav-in { display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 0; gap: 1rem; }
-.pp-brand { display: inline-flex; align-items: center; }
-.pp-brand img { height: 34px; width: auto; }
-/* default (dark): show the white logo, hide the light one. Specificity must
-   beat the generic `.pp img { display:block }` rule above. */
-.pp-brand .pp-logo-light { display: none; }
+.pp-brand { display: inline-flex; align-items: center; gap: 0.6rem; }
+.pp-brand-mark { width: 34px; height: 34px; border-radius: 9px; flex: none; display: grid; place-items: center; font-family: var(--body); font-weight: 800; font-size: 0.92rem; letter-spacing: 0.01em; color: #fff; background: linear-gradient(135deg, var(--brand), var(--teal)); box-shadow: 0 6px 18px rgba(99,102,241,0.35); }
+.pp-brand-name { font-family: "Inter", var(--body); font-weight: 600; font-size: 1.12rem; letter-spacing: -0.01em; color: var(--text); white-space: nowrap; }
 .pp-nav-cta { display: flex; align-items: center; gap: 0.6rem; }
 .pp-themetoggle { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; transition: background .2s ease; }
 .pp-themetoggle:hover { background: var(--panel-2); }
@@ -142,11 +140,7 @@
 .pp-themetoggle .pp-sun { display: none; }
 :root.pp[data-theme="light"] .pp-themetoggle .pp-sun { display: block; }
 :root.pp[data-theme="light"] .pp-themetoggle .pp-moon { display: none; }
-
-/* logo swap by theme (keyed off <html>'s data-theme via :root) — default dark
-   shows the white logo; light mode swaps in the brand-blue one. */
-:root.pp[data-theme="light"] .pp-logo-dark { display: none; }
-:root.pp[data-theme="light"] .pp-logo-light { display: block; }
+@media (max-width: 560px) { .pp-brand-name { display: none; } }
 
 /* ── hero ───────────────────────────────────────────────────────────────── */
 .pp-hero { padding: clamp(3.5rem, 8vw, 7rem) 0 clamp(2rem, 5vw, 4rem); }
@@ -181,7 +175,17 @@
 
 /* screenshots in a browser frame */
 .pp-browser { margin: 0; }
-.pp-browser img { display: block; width: 100%; height: auto; }
+.pp-browser img { display: block; width: 100%; height: auto; cursor: zoom-in; }
+
+/* stacked screenshots in a split media column */
+.pp-split-media { display: grid; gap: 1rem; align-content: center; }
+
+/* lightbox — click any screenshot to enlarge */
+.pp-lightbox { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 4vmin; background: rgba(3, 5, 18, 0.86); backdrop-filter: blur(6px); cursor: zoom-out; opacity: 0; visibility: hidden; transition: opacity .2s ease, visibility .2s ease; }
+.pp-lightbox.open { opacity: 1; visibility: visible; }
+.pp-lightbox img { max-width: 96vw; max-height: 92vh; width: auto; height: auto; border-radius: 12px; border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 40px 120px -20px rgba(0,0,0,0.8); cursor: default; }
+.pp-lightbox-close { position: absolute; top: 18px; right: 22px; width: 44px; height: 44px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.12); color: #fff; font-size: 1.7rem; line-height: 1; cursor: pointer; display: grid; place-items: center; }
+.pp-lightbox-close:hover { background: rgba(255,255,255,0.22); }
 
 /* ── stat band ──────────────────────────────────────────────────────────── */
 .pp-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; margin-top: clamp(2.5rem, 5vw, 4rem); }
@@ -230,8 +234,11 @@
 .pp-step p { color: var(--muted); font-size: 0.93rem; margin: 0; }
 
 /* ── deploy ─────────────────────────────────────────────────────────────── */
-.pp-deploy-paths { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem; align-items: stretch; }
-.pp-deploy-card { border: 1px solid var(--line); border-radius: 18px; padding: 1.8rem; background: var(--panel); display: flex; flex-direction: column; }
+.pp-deploy-paths { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.4rem; align-items: stretch; }
+/* min-width:0 lets the card shrink inside the grid track so a wide <pre>
+   scrolls internally instead of pushing the right card off the viewport. */
+.pp-deploy-card { border: 1px solid var(--line); border-radius: 18px; padding: 1.8rem; background: var(--panel); display: flex; flex-direction: column; min-width: 0; }
+.pp-deploy-card .pp-code, .pp-deploy-card .pp-code pre { min-width: 0; max-width: 100%; }
 .pp-deploy-card h3 { margin: 0.55rem 0 0; font-size: 1.5rem; }
 .pp-deploy-card > p { color: var(--muted); margin: 0.6rem 0 0; font-size: 0.95rem; }
 .pp-steps-ol { counter-reset: d; list-style: none; margin: 1.2rem 0 1.3rem; padding: 0; display: grid; gap: 0.85rem; }
@@ -256,6 +263,8 @@
 .pp-foot { border-top: 1px solid var(--line); padding: 2.5rem 0 3.5rem; margin-top: clamp(3rem,6vw,5rem); }
 .pp-foot-in { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; align-items: center; color: var(--muted-2); font-size: 0.86rem; }
 .pp-foot a { color: var(--muted); } .pp-foot a:hover { color: var(--text); }
+.pp-foot-vw { display: inline-flex; align-items: center; gap: 0.35rem; vertical-align: middle; font-weight: 600; }
+.pp-foot-vw img { height: 18px; width: 18px; display: block; }
 .pp-foot-links { display: flex; gap: 1.3rem; flex-wrap: wrap; }
 
 /* ── reveal-on-scroll ───────────────────────────────────────────────────── */

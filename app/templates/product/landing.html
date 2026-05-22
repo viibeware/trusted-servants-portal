@@ -49,9 +49,9 @@
   <!-- nav -->
   <header class="pp-nav">
     <div class="pp-wrap pp-nav-in">
-      <a class="pp-brand" href="{{ url_for('product.welcome') }}" aria-label="TSP Pro home">
-        <img class="pp-logo-dark" src="{{ url_for('static', filename='img/logo_tspro_white.svg') }}" alt="Trusted Servants Pro">
-        <img class="pp-logo-light" src="{{ url_for('static', filename='img/logo_tspro_about.svg') }}" alt="Trusted Servants Pro">
+      <a class="pp-brand" href="{{ url_for('product.welcome') }}" aria-label="Trusted Servants Pro home">
+        <span class="pp-brand-mark" aria-hidden="true">TS</span>
+        <span class="pp-brand-name">Trusted Servants Pro</span>
       </a>
       <nav class="pp-nav-cta">
         <button class="pp-themetoggle" type="button" data-theme-toggle aria-label="Toggle light / dark theme" title="Toggle light / dark">
@@ -71,7 +71,7 @@
     <div class="pp-wrap pp-hero-grid">
       <div class="pp-reveal in">
         <span class="pp-eyebrow">Content management for recovery fellowships</span>
-        <h1>Your fellowship's <span class="pp-grad">entire web presence</span>, in one place.</h1>
+        <h1>Your fellowship's web presence, <span class="pp-grad">supercharged</span>.</h1>
         <p class="lede">Meeting schedules, a literature library, events, stories, a blog, a drag-and-drop page builder, analytics, backups — public site <em>and</em> admin backend, run from a single app you control.</p>
         <div class="pp-hero-cta">
           <a class="pp-btn pp-btn-primary pp-btn-lg" href="{{ DEMO_SITE }}">Explore the live demo
@@ -118,7 +118,10 @@
           </ul>
           <p style="margin-top:1.4rem"><a class="pp-btn pp-btn-ghost" href="{{ DEMO_SITE }}">See the public site →</a></p>
         </div>
-        <div class="pp-split-media">{{ shot('fe-home.png', 'meridianrecovery.example', 'The public fellowship homepage') }}</div>
+        <div class="pp-split-media">
+          {{ shot('fe-events.png', 'meridianrecovery.example/events', 'Public events page') }}
+          {{ shot('fe-home.png', 'meridianrecovery.example', 'The public fellowship homepage') }}
+        </div>
       </div>
 
       <div class="pp-split rev pp-reveal">
@@ -189,31 +192,6 @@
     </div>
   </section>
 
-  <!-- how the demo works -->
-  <section class="pp-section" id="how">
-    <div class="pp-wrap">
-      <div class="pp-section-head pp-reveal">
-        <span class="pp-eyebrow">Try it without fear</span>
-        <h2>A sandbox that's <span class="pp-grad">yours alone</span>.</h2>
-        <p>The demo is fully live — yet completely safe to break. Here's how it works under the hood.</p>
-      </div>
-      <div class="pp-steps pp-stagger pp-reveal">
-        <div class="pp-step">
-          <h3>Launch</h3>
-          <p>The demo loads a fictitious fellowship — <b>Meridian Recovery Collective</b> — fully populated with meetings, libraries, events, stories, and a blog.</p>
-        </div>
-        <div class="pp-step">
-          <h3>Explore &amp; edit</h3>
-          <p>Sign into the admin with <code>admin / admin</code> and change anything. Edit meetings, rewrite pages, flip modules, upload files — it all updates instantly on the public site.</p>
-        </div>
-        <div class="pp-step">
-          <h3>Reset, automatically</h3>
-          <p>Your changes live in a private copy tied to your browser session. They never affect anyone else, and the slate wipes clean — so every visitor starts fresh.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- deploy -->
   <section class="pp-section" id="deploy">
     <div class="pp-wrap">
@@ -273,13 +251,6 @@ viibeware/trusted-servants-pro/main/install.sh | sudo bash
 <span class="p">→</span> https://portal.example.org</pre></div>
         </div>
       </div>
-
-      <p class="pp-deploy-note pp-reveal">
-        Day-2 ops are just Compose: <code>docker compose logs -f tsp</code> to tail,
-        <code>docker compose pull &amp;&amp; docker compose up -d</code> to upgrade,
-        <code>uninstall.sh</code> to cleanly remove. Your data lives in <code>./data</code>
-        (the SQLite DB + uploads) — back that up and you've backed up everything.
-      </p>
     </div>
   </section>
 
@@ -288,7 +259,7 @@ viibeware/trusted-servants-pro/main/install.sh | sudo bash
     <div class="pp-wrap">
       <div class="pp-cta-band pp-reveal">
         <span class="pp-eyebrow">See it for yourself</span>
-        <h2>The best way to understand it is to <span class="pp-grad">break it</span>.</h2>
+        <h2>Take it for a <span class="pp-grad">spin</span>.</h2>
         <p>Step into a live, fully-loaded fellowship portal. Edit freely — it resets itself.</p>
         <div class="pp-hero-cta">
           <a class="pp-btn pp-btn-primary pp-btn-lg" href="{{ DEMO_SITE }}">Explore the live demo
@@ -303,7 +274,7 @@ viibeware/trusted-servants-pro/main/install.sh | sudo bash
   <!-- footer -->
   <footer class="pp-foot">
     <div class="pp-wrap pp-foot-in">
-      <div>© {{ year }} Trusted&nbsp;Servants&nbsp;Pro. Built with Flask.</div>
+      <div>© {{ year }} Trusted&nbsp;Servants&nbsp;Pro. Built by <a class="pp-foot-vw" href="https://viibeware.com" target="_blank" rel="noopener"><img src="{{ url_for('static', filename='img/viibeware.svg') }}" alt="" width="18" height="18">Viibeware</a></div>
       <nav class="pp-foot-links">
         <a href="{{ DEMO_SITE }}">Public demo</a>
         <a href="{{ DEMO_ADMIN }}">Admin demo</a>

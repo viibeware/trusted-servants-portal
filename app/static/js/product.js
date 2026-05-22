@@ -62,3 +62,34 @@
     });
   });
 })();
+
+// Lightbox — click any screenshot (.pp-browser img) to enlarge it.
+(function () {
+  "use strict";
+  var imgs = document.querySelectorAll(".pp-browser img");
+  if (!imgs.length) return;
+  var box = document.createElement("div");
+  box.className = "pp-lightbox";
+  box.setAttribute("aria-hidden", "true");
+  box.innerHTML = '<button class="pp-lightbox-close" type="button" aria-label="Close">×</button><img alt="">';
+  document.body.appendChild(box);
+  var big = box.querySelector("img");
+  function open(src, alt) {
+    big.src = src; big.alt = alt || "";
+    box.classList.add("open"); box.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+  }
+  function close() {
+    box.classList.remove("open"); box.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = ""; big.removeAttribute("src");
+  }
+  imgs.forEach(function (im) {
+    im.addEventListener("click", function () { open(im.currentSrc || im.src, im.alt); });
+  });
+  box.addEventListener("click", function (e) {
+    if (e.target === box || e.target.classList.contains("pp-lightbox-close")) close();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && box.classList.contains("open")) close();
+  });
+})();
