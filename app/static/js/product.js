@@ -47,4 +47,20 @@
     }, { threshold: 0.4 });
     so.observe(band);
   }
+
+  // Theme toggle — flips data-theme on <html> and persists the choice.
+  // Default (no stored choice) follows the OS via CSS prefers-color-scheme.
+  var root = document.documentElement;
+  function effectiveTheme() {
+    var t = root.getAttribute("data-theme");
+    if (t === "light" || t === "dark") return t;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  document.querySelectorAll("[data-theme-toggle]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var next = effectiveTheme() === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem("pp-theme", next); } catch (e) {}
+    });
+  });
 })();

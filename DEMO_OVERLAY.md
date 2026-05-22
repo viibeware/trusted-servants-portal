@@ -22,13 +22,35 @@ app/demo_seed.py                         seeds the demo fellowship (Meridian Rec
 app/product.py                           product marketing blueprint + demo entry routes
 app/templates/product/landing.html       the marketing homepage
 app/templates/product/_demo_banner.html  the per-page demo banner
-app/static/css/product.css               marketing page styles
-app/static/js/product.js                 marketing page interactions
+app/static/css/product.css               marketing page styles (light + dark)
+app/static/js/product.js                 marketing page interactions + theme toggle
+app/static/img/product/*.png             real screenshots of the live demo (see regen below)
 docker-compose.demo.yml                  demo deployment (sets TSP_DEMO_MODE=1)
 demo/run-demo.sh                         one-command launch
+demo/screenshots.js                      regenerates the marketing screenshots (puppeteer)
 demo/README.md                           demo deployment docs
 DEMO_OVERLAY.md                          this file
 ```
+
+The marketing page uses the existing TS Pro logos (`app/static/img/logo_tspro_white.svg`
+for dark, `logo_tspro_about.svg` for light) — those already ship on `main`, so they're
+not part of the overlay.
+
+### Regenerating the marketing screenshots
+
+The screenshots in `app/static/img/product/` are captured from the running demo with a
+headless browser. To refresh them after a UI change:
+
+```bash
+# with the demo running (e.g. on :8095):
+docker run --rm --network host -w /home/pptruser \
+  -e NODE_PATH=/home/pptruser/node_modules \
+  -v "$PWD/demo/screenshots.js":/shot.js:ro \
+  -v "$PWD/app/static/img/product":/out \
+  ghcr.io/puppeteer/puppeteer:latest node /shot.js
+```
+
+Edit the `BASE` URL / shot list in `demo/screenshots.js` if your port differs.
 
 ## Shared files with overlay edits (the only merge friction)
 

@@ -2,7 +2,7 @@
    Product marketing homepage for TSP Pro (demo mode front door). Standalone
    document — deliberately does NOT extend the app/frontend base so its bold
    "mission control" aesthetic stays independent of the themeable fellowship
-   frontend. -#}
+   frontend. Light + dark compatible (follows OS, with a manual toggle). -#}
 {%- macro tick() -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>{%- endmacro -%}
 {%- macro feature_icon(name) -%}
 {%- set p = {
@@ -21,11 +21,19 @@
 } -%}
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{{ p.get(name, p['globe']) | safe }}</svg>
 {%- endmacro -%}
+{%- macro shot(file, url, alt) -%}
+<figure class="pp-browser">
+  <div class="pp-window-bar"><span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-window-url">{{ url }}</span></div>
+  <img src="{{ url_for('static', filename='img/product/' ~ file) }}" alt="{{ alt }}" width="1440" height="900" loading="lazy">
+</figure>
+{%- endmacro -%}
 <!doctype html>
 <html lang="en" class="pp">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  {# Apply saved theme before paint to avoid a flash. #}
+  <script>(function(){try{var t=localStorage.getItem('pp-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   <title>TSP Pro — the all-in-one web portal for recovery fellowships</title>
   <meta name="description" content="TSP Pro runs your fellowship's entire web presence — public site and admin backend — from one self-hosted app. Explore the live, fully interactive demo.">
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.png') }}">
@@ -41,12 +49,16 @@
   <!-- nav -->
   <header class="pp-nav">
     <div class="pp-wrap pp-nav-in">
-      <a class="pp-brand" href="{{ url_for('product.welcome') }}">
-        <span class="pp-mark">TS</span>
-        <span>TSP&nbsp;Pro<small>Trusted Servant Portal</small></span>
+      <a class="pp-brand" href="{{ url_for('product.welcome') }}" aria-label="TSP Pro home">
+        <img class="pp-logo-dark" src="{{ url_for('static', filename='img/logo_tspro_white.svg') }}" alt="Trusted Servants Pro">
+        <img class="pp-logo-light" src="{{ url_for('static', filename='img/logo_tspro_about.svg') }}" alt="Trusted Servants Pro">
       </a>
       <nav class="pp-nav-cta">
-        <a class="pp-btn pp-btn-ghost" href="{{ DEMO_ADMIN }}">Admin backend</a>
+        <button class="pp-themetoggle" type="button" data-theme-toggle aria-label="Toggle light / dark theme" title="Toggle light / dark">
+          <svg class="pp-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+          <svg class="pp-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        </button>
+        <a class="pp-btn pp-btn-ghost pp-hide-sm" href="{{ DEMO_ADMIN }}">Admin backend</a>
         <a class="pp-btn pp-btn-primary" href="{{ DEMO_SITE }}">Launch live demo
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </a>
@@ -97,7 +109,7 @@
     </div>
   </section>
 
-  <!-- two surfaces -->
+  <!-- two surfaces (with real screenshots) -->
   <section class="pp-section" id="surfaces">
     <div class="pp-wrap">
       <div class="pp-section-head pp-reveal">
@@ -118,17 +130,7 @@
           </ul>
           <p style="margin-top:1.4rem"><a class="pp-btn pp-btn-ghost" href="{{ DEMO_SITE }}">See the public site →</a></p>
         </div>
-        <div class="pp-split-media">
-          <div class="pp-surface-card">
-            <div class="pp-window-bar"><span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-window-url">/library</span></div>
-            <div class="pp-window-body" style="padding:0">
-              <div class="pp-mini-row"><span class="pp-mini-name">Newcomer Packet</span><span class="pp-chip pp-chip-online">4 readings</span></div>
-              <div class="pp-mini-row"><span class="pp-mini-name">Meeting Scripts</span><span class="pp-chip pp-chip-hybrid">3 readings</span></div>
-              <div class="pp-mini-row"><span class="pp-mini-name">Service Materials</span><span class="pp-chip pp-chip-online">3 readings</span></div>
-              <div class="pp-mini-row"><span class="pp-mini-name">Daily Readings</span><span class="pp-chip pp-chip-hybrid">3 readings</span></div>
-            </div>
-          </div>
-        </div>
+        <div class="pp-split-media">{{ shot('fe-home.png', 'meridianrecovery.example', 'The public fellowship homepage') }}</div>
       </div>
 
       <div class="pp-split rev pp-reveal">
@@ -143,18 +145,24 @@
           </ul>
           <p style="margin-top:1.4rem"><a class="pp-btn pp-btn-ghost" href="{{ DEMO_ADMIN }}">Open the admin (admin / admin) →</a></p>
         </div>
-        <div class="pp-split-media">
-          <div class="pp-surface-card">
-            <div class="pp-window-bar"><span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-window-url">/tspro · dashboard</span></div>
-            <div class="pp-admin-grid" style="padding:0">
-              <div class="pp-admin-side"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-              <div class="pp-admin-main">
-                <div class="pp-admin-tiles"><div class="pp-admin-tile"></div><div class="pp-admin-tile"></div><div class="pp-admin-tile"></div></div>
-                <div class="pp-admin-tile" style="height:90px"></div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <div class="pp-split-media">{{ shot('be-dashboard.png', 'localhost:8090/tspro · dashboard', 'The admin dashboard') }}</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- screenshot showcase -->
+  <section class="pp-section" id="tour">
+    <div class="pp-wrap">
+      <div class="pp-section-head pp-reveal">
+        <span class="pp-eyebrow">A look inside</span>
+        <h2>Real screens, <span class="pp-grad">not mockups</span>.</h2>
+        <p>Every screenshot below is the live demo you're about to open — captured straight from the running app.</p>
+      </div>
+      <div class="pp-showcase pp-stagger pp-reveal">
+        <figure>{{ shot('be-frontend.png', '/tspro/frontend', 'Web Frontend admin') }}<figcaption><b>Web Frontend studio</b>Pages, branding, design tokens, navigation, footer, forms — a CMS for your whole public site.</figcaption></figure>
+        <figure>{{ shot('be-meetings.png', '/tspro/meetings', 'Meetings admin') }}<figcaption><b>Meetings &amp; schedules</b>Recurring days/times, Zoom details, libraries, and public visibility per meeting.</figcaption></figure>
+        <figure>{{ shot('be-watchtower.png', '/tspro/watchtower', 'Watchtower analytics') }}<figcaption><b>Watchtower analytics</b>Privacy-first visitor metrics, 404 tracking, access requests, and IP controls.</figcaption></figure>
+        <figure>{{ shot('fe-library.png', 'meridianrecovery.example/library', 'Public literature library') }}<figcaption><b>Literature library</b>Curated readings, scripts, and service docs — public on the site, managed in the admin.</figcaption></figure>
       </div>
     </div>
   </section>
@@ -220,30 +228,70 @@
 
   <!-- deploy -->
   <section class="pp-section" id="deploy">
-    <div class="pp-wrap pp-deploy">
-      <div class="pp-reveal">
+    <div class="pp-wrap">
+      <div class="pp-section-head pp-reveal">
         <span class="pp-eyebrow">Own your stack</span>
         <h2>Deploy it yourself <span class="pp-grad">in minutes</span>.</h2>
-        <p style="color:var(--muted);margin:1rem 0 1.4rem;">No SaaS lock-in, no per-seat pricing. TSP Pro is a single Flask app backed by SQLite — bring your own domain and run it on any box that speaks Docker.</p>
-        <ul class="pp-ticks">
-          <li>{{ tick() }}<span>One container, one SQLite file — trivial to back up and move</span></li>
-          <li>{{ tick() }}<span>HTTPS, security headers, and an installer for production hosts</span></li>
-          <li>{{ tick() }}<span>Your data stays on your server. Full export &amp; restore built in.</span></li>
-        </ul>
+        <p>No SaaS lock-in, no per-seat pricing — a single Flask app backed by SQLite. Pick the path that fits: a one-liner for any Docker host, or the turnkey installer for a production server with HTTPS.</p>
       </div>
-      <div class="pp-reveal">
-        <div class="pp-code">
-          <div class="pp-window-bar"><span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-window-url">~/tspro</span></div>
-<pre><span class="c"># clone, configure a secret, and bring it up</span>
-<span class="g">$</span> git clone &lt;your-repo&gt; tspro && cd tspro
+
+      <div class="pp-deploy-paths pp-reveal">
+        <!-- Option A: Docker Compose -->
+        <div class="pp-deploy-card">
+          <span class="pp-kicker">Option A · any machine</span>
+          <h3>Docker Compose</h3>
+          <p>One container, one SQLite file. Perfect for a laptop, a homelab, or any VPS.</p>
+          <ol class="pp-steps-ol">
+            <li>Install Docker, then clone the repo and <code>cd</code> in.</li>
+            <li>Generate a secret key into <code>.env</code>.</li>
+            <li>Build &amp; start — that's the whole install.</li>
+            <li>Open <code>http://localhost:8090</code> and sign in with <code>admin / admin</code> (change it from Settings → Users).</li>
+          </ol>
+          <div class="pp-code"><pre><span class="c"># 1 + 2 — clone and set a signing secret</span>
+<span class="g">$</span> git clone https://github.com/viibeware/trusted-servants-pro.git
+<span class="g">$</span> cd trusted-servants-pro
 <span class="g">$</span> echo "TSP_SECRET_KEY=$(openssl rand -hex 32)" &gt; .env
+
+<span class="c"># 3 — build &amp; run</span>
 <span class="g">$</span> docker compose up -d --build
 
-<span class="c"># your portal is live</span>
+<span class="c"># 4 — it's live</span>
 <span class="p">→</span> http://localhost:8090        <span class="c"># public site</span>
-<span class="p">→</span> http://localhost:8090/tspro  <span class="c"># admin backend</span></pre>
+<span class="p">→</span> http://localhost:8090/tspro  <span class="c"># admin backend</span></pre></div>
+        </div>
+
+        <!-- Option B: installer -->
+        <div class="pp-deploy-card">
+          <span class="pp-kicker">Option B · production + HTTPS</span>
+          <h3>One-command installer</h3>
+          <p>A fresh Ubuntu 24.04 server gets Docker, Caddy (auto Let's Encrypt TLS), a random secret, and auto-updates.</p>
+          <ol class="pp-steps-ol">
+            <li>Point your domain's <code>A</code> record at the server's public IP (needed for a real cert; Cloudflare users: grey-cloud / DNS-only during install).</li>
+            <li>SSH in and run the installer (pipe from GitHub, or clone first to read it).</li>
+            <li>Answer two prompts: <b>domain</b> (blank = self-signed) and a <b>contact email</b> for renewals.</li>
+            <li>It pulls the image, starts everything, and prints your URL. Sign in with <code>admin / admin</code> and change it immediately.</li>
+          </ol>
+          <div class="pp-code"><pre><span class="c"># 2 — run on the server (root/sudo)</span>
+<span class="g">$</span> curl -fsSL https://raw.githubusercontent.com/\
+viibeware/trusted-servants-pro/main/install.sh | sudo bash
+
+<span class="c"># …or non-interactive (skip the prompts):</span>
+<span class="g">$</span> sudo TSP_DOMAIN=portal.example.org \
+       TSP_ACME_EMAIL=you@example.org \
+       TSP_ADMIN_PASSWORD='a-strong-password' \
+       bash install.sh
+
+<span class="c"># 4 — live over TLS</span>
+<span class="p">→</span> https://portal.example.org</pre></div>
         </div>
       </div>
+
+      <p class="pp-deploy-note pp-reveal">
+        Day-2 ops are just Compose: <code>docker compose logs -f tsp</code> to tail,
+        <code>docker compose pull &amp;&amp; docker compose up -d</code> to upgrade,
+        <code>uninstall.sh</code> to cleanly remove. Your data lives in <code>./data</code>
+        (the SQLite DB + uploads) — back that up and you've backed up everything.
+      </p>
     </div>
   </section>
 
@@ -271,6 +319,7 @@
       <nav class="pp-foot-links">
         <a href="{{ DEMO_SITE }}">Public demo</a>
         <a href="{{ DEMO_ADMIN }}">Admin demo</a>
+        <a href="#tour">Screens</a>
         <a href="#features">Features</a>
         <a href="#deploy">Deploy</a>
       </nav>
