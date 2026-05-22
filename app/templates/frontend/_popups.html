@@ -1,0 +1,163 @@
+{# ── Site-wide popups ───────────────────────────────────────────────
+   Rendered once per public page (included from frontend/base.html).
+   Each enabled Popup becomes a hidden modal that opens from `#name`
+   anchor selectors. `popups` is supplied by the `_inject_popups`
+   context processor in app/frontend.py; the popup_preview route
+   overrides it with a single (possibly disabled) popup plus
+   `popup_force_open` so editors can preview drafts.
+
+   Content is authored with the same page-builder blocks as Pages and
+   rendered through the shared `render_sections` macro, so popups inherit
+   every block style the public site already ships. #}
+{% from "_blocks.html" import render_sections %}
+{%- set _popup_shadows = {
+  'none': 'none',
+  'sm':   '0 1px 2px rgba(15,23,42,0.08), 0 1px 3px rgba(15,23,42,0.10)',
+  'md':   '0 8px 24px rgba(15,23,42,0.12)',
+  'lg':   '0 14px 40px rgba(15,23,42,0.16)',
+  'xl':   '0 24px 60px rgba(15,23,42,0.22)',
+} -%}
+{% if popups %}
+{% for p in popups %}
+<div class="fe-popup{% if not p.show_desktop %} fe-popup-no-desktop{% endif %}{% if not p.show_mobile %} fe-popup-no-mobile{% endif %}"
+     id="fe-popup-{{ p.name }}"
+     data-popup-name="{{ p.name }}"
+     data-pos="{{ p.position }}"
+     data-close-on-overlay="{{ '1' if p.close_on_overlay else '0' }}"
+     data-auto-open="{{ '1' if p.auto_open else '0' }}"
+     data-auto-delay="{{ p.auto_open_delay or 0 }}"
+     hidden
+     style="--fe-popup-overlay: {{ p.overlay_rgba if p.overlay_enabled else 'transparent' }};">
+  <div class="fe-popup-overlay" data-popup-close-overlay></div>
+  <div class="fe-popup-panel{% if p.mobile_full_width %} fe-popup-mobile-full{% endif %}"
+       role="dialog" aria-modal="true" aria-label="{{ p.title }}"
+       style="--fe-popup-w: {{ p.width }}px;
+              --fe-popup-maxw: {{ p.max_width_pct }}%;
+              --fe-popup-pad: {{ p.padding }}px;
+              --fe-popup-radius: {{ p.border_radius }}px;
+              --fe-popup-bg: {{ p.bg_color }};
+              --fe-popup-bg-dark: {{ p.bg_color_dark or p.bg_color }};
+              --fe-popup-shadow: {{ _popup_shadows.get(p.shadow, _popup_shadows['xl']) }};
+              {% if p.height_mode == 'fixed' %}--fe-popup-h: {{ p.height }}px;{% endif %}">
+    {% if p.show_close_button %}
+    <button type="button" class="fe-popup-close" data-popup-close aria-label="Close popup">{{ icon('x') }}</button>
+    {% endif %}
+    <div class="fe-popup-body">
+      {{ render_sections(p.sections()) }}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<script>
+// ── Popup trigger engine ───────────────────────────────────────────
+// Opens a popup when:
+//   • a link/element pointing at `#<name>` (or carrying
+//     data-popup="<name>") is clicked,
+//   • the page loads with (or navigates to) the matching URL hash,
+//   • the popup is flagged auto-open, or
+//   • an editor preview sets window.__fePopupForceOpen.
+// Closes on the × button, backdrop click (when allowed), or Escape.
+(function () {
+  var nodes = document.querySelectorAll('.fe-popup[data-popup-name]');
+  if (!nodes.length) return;
+  var popups = {};
+  nodes.forEach(function (el) { popups[el.getAttribute('data-popup-name')] = el; });
+
+  function isMobile() { return window.matchMedia('(max-width: 768px)').matches; }
+  function deviceHidden(el) {
+    return isMobile()
+      ? el.classList.contains('fe-popup-no-mobile')
+      : el.classList.contains('fe-popup-no-desktop');
+  }
+  function anyOpen() {
+    return Object.keys(popups).some(function (n) { return popups[n].__open; });
+  }
+  function open(el, force) {
+    if (!el || el.__open) return;
+    if (!force && deviceHidden(el)) return;
+    // One popup at a time.
+    Object.keys(popups).forEach(function (n) { if (popups[n] !== el) close(popups[n]); });
+    el.hidden = false;
+    el.__open = true;
+    // Force reflow so the opacity/transform transition runs.
+    void el.offsetWidth;
+    el.classList.add('is-open');
+    document.body.classList.add('fe-popup-open');
+  }
+  function close(el) {
+    if (!el || !el.__open) return;
+    el.__open = false;
+    el.classList.remove('is-open');
+    window.setTimeout(function () { if (!el.__open) el.hidden = true; }, 240);
+    if (!anyOpen()) document.body.classList.remove('fe-popup-open');
+    var name = el.getAttribute('data-popup-name');
+    if (location.hash === '#' + name) {
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  }
+  function openByName(name, force) {
+    if (name && popups[name]) open(popups[name], force);
+  }
+
+  // Click-to-open: any anchor to `#name` or element with data-popup.
+  document.addEventListener('click', function (e) {
+    var trigger = e.target.closest('[data-popup], a[href]');
+    if (!trigger) return;
+    var name = trigger.getAttribute('data-popup');
+    if (!name) {
+      var href = trigger.getAttribute('href') || '';
+      if (href.charAt(0) === '#') name = href.slice(1);
+    }
+    if (name && popups[name]) {
+      e.preventDefault();
+      openByName(name, false);
+    }
+  });
+
+  // Click-to-close: × button + backdrop (when the popup allows it).
+  document.addEventListener('click', function (e) {
+    var closeBtn = e.target.closest('[data-popup-close]');
+    if (closeBtn) {
+      var p1 = closeBtn.closest('.fe-popup');
+      if (p1) close(p1);
+      return;
+    }
+    var overlay = e.target.closest('[data-popup-close-overlay]');
+    if (overlay) {
+      var p2 = overlay.closest('.fe-popup');
+      if (p2 && p2.getAttribute('data-close-on-overlay') === '1') close(p2);
+    }
+  });
+
+  // Escape closes whatever is open.
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      Object.keys(popups).forEach(function (n) { if (popups[n].__open) close(popups[n]); });
+    }
+  });
+
+  // URL-hash triggers (shareable links + back/forward navigation).
+  function checkHash() {
+    var h = (location.hash || '').replace(/^#/, '');
+    if (h && popups[h]) openByName(h, false);
+  }
+  window.addEventListener('hashchange', checkHash);
+
+  // Auto-open popups (after their configured delay).
+  Object.keys(popups).forEach(function (n) {
+    var el = popups[n];
+    if (el.getAttribute('data-auto-open') === '1') {
+      var delay = parseInt(el.getAttribute('data-auto-delay'), 10) || 0;
+      window.setTimeout(function () { openByName(n, false); }, delay);
+    }
+  });
+
+  // Editor preview: force a specific popup open regardless of flags.
+  if (window.__fePopupForceOpen) openByName(window.__fePopupForceOpen, true);
+
+  // Initial hash on first load.
+  checkHash();
+})();
+</script>
+{% endif %}

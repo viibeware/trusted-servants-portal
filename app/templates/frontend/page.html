@@ -1,6 +1,6 @@
 {% extends "frontend/base.html" %}
 {% from "_blocks.html" import render_sections, render_toc, render_block %}
-{% block title %}{{ page.title }} · {{ frontend_title }}{% endblock %}
+{% block title %}{% if page %}{{ page.title }} · {% endif %}{{ frontend_title }}{% endblock %}
 
 {# Shadow lookup mirrors `_BLOCK_CONT_SHADOW` in _blocks.html. Kept here
    so pp_container_styles can resolve the same five presets without
@@ -514,6 +514,12 @@
     {{- value -}}
   {%- endif -%}
 {%- endmacro -%}
+{# Everything below reads `page.*` to build the article's inline style.
+   The homepage placeholder (index()'s no-homepage fallback) renders this
+   template with `page = None`, so the whole block is gated on `page`
+   being present; the no-homepage branch in the content block below
+   supplies its own minimal markup. #}
+{%- if page -%}
 {%- if page.bg_color -%}
   {%- set _design_resolved = resolve_design(site) -%}
   {%- set _light_css = _bg_color_css(page.bg_color) | trim -%}
@@ -580,8 +586,9 @@
 {%- set _ = _style_parts.append("--fe-pp-pad-x: " ~ ((page.pad_x if page.pad_x is not none else 16)|int) ~ "px") -%}
 {%- set _ = _style_parts.append("--fe-pp-section-gap: " ~ ((page.section_gap if page.section_gap is not none else 32)|int) ~ "px") -%}
 {%- set _ = _style_parts.append("--fe-pp-block-margin-y: " ~ ((page.block_margin_y if page.block_margin_y is not none else 12)|int) ~ "px") -%}
+{%- endif -%}
 {%- set _bg_style = (_style_parts | join('; ')) -%}
-{%- set _heading_align = (page.heading_align or 'auto') -%}
+{%- set _heading_align = (page.heading_align or 'auto') if page else 'auto' -%}
 
 {% block content %}
 {% if preview_mode %}
@@ -622,6 +629,26 @@
   @media (prefers-reduced-motion: reduce) { .fe-preview-banner-dot { animation: none; } }
 </style>
 {% endif %}
+{% if not page %}
+{# No homepage configured — index()'s fallback renders this template with
+   page=None so the public root still serves a friendly 200 instead of
+   crashing on the page-shell style block above. Editors get a shortcut
+   to the Pages admin; the auto-seed normally sets a homepage so this is
+   only seen in the brief pre-seed window or if the homepage is deleted. #}
+<article class="fe-section fe-pp fe-pp-w-boxed">
+  <div class="fe-pp-shell" style="max-width: 760px">
+    <div style="text-align: center; padding: 64px 16px;">
+      <h1 style="margin-bottom: .5rem;">Welcome</h1>
+      <p class="muted">This site doesn’t have a homepage configured yet.</p>
+      {% if current_user.is_authenticated and current_user.can_edit_frontend() %}
+      <p style="margin-top: 1.25rem;">
+        <a class="btn btn-primary" href="{{ url_for('main.frontend_pages') }}">Set a homepage in Pages →</a>
+      </p>
+      {% endif %}
+    </div>
+  </div>
+</article>
+{% else %}
 {# Page-wide width formatting. Boxed = centered with max_width.
    Full = viewport-wide with `full_padding_pct` % left/right gutter.
    Both branches share the same render path (no auto-injected
@@ -656,6 +683,7 @@
     {% for sec in sections %}{{ pp_section(sec) }}{% endfor %}
   </div>
 </article>
+{% endif %}
 {% if has_lottie %}
 {# Vendored lottie-web (Bodymovin) player + a minimal init script. Only
    loaded on pages that actually contain a `lottie` block — detected

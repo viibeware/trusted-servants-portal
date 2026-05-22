@@ -800,7 +800,14 @@
       });
 
       const addBar = el('div', { class: 'be-add-block-bar' });
-      BLOCK_TYPES.forEach(bt => {
+      // Optional palette restriction. When the host passes
+      // `allowedTypes: ['paragraph', 'image', ...]`, only those block
+      // buttons are offered (used by the Popups editor to hide the
+      // homepage-section blocks that need the page editor's dedicated
+      // modals). Omitted/empty → the full BLOCK_TYPES catalog.
+      const _allowed = Array.isArray(opts.allowedTypes) && opts.allowedTypes.length
+        ? opts.allowedTypes : null;
+      BLOCK_TYPES.filter(bt => !_allowed || _allowed.indexOf(bt.type) !== -1).forEach(bt => {
         addBar.appendChild(el('button', {
           type: 'button', class: 'btn btn-sm be-add-block', title: `Add ${bt.label}`,
           onclick: () => {

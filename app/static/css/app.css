@@ -13996,3 +13996,57 @@ body.embed .backups-wrap {
   margin: .75rem 0;
 }
 
+
+/* ── Popups admin (Web Frontend → Popups) ───────────────────────────
+   Helper styles for the popup list + editor settings form. */
+.fe-popup-handle-field {
+  display: inline-flex;
+  align-items: stretch;
+  width: 100%;
+}
+.fe-popup-handle-hash {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 .55rem;
+  border: 1px solid var(--border, #d1d5db);
+  border-right: 0;
+  border-radius: 8px 0 0 8px;
+  background: var(--surface-2, #f3f4f6);
+  color: var(--muted, #6b7280);
+  font-weight: 600;
+}
+.fe-popup-handle-field input {
+  border-radius: 0 8px 8px 0 !important;
+  flex: 1;
+}
+.fe-popup-check {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin: .35rem 0;
+  cursor: pointer;
+}
+.fe-popup-check input { margin: 0; }
+.fe-inline-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  margin-right: .9rem;
+  cursor: pointer;
+}
+.fe-popup-status-row {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  flex-wrap: wrap;
+}
+.fe-popup-dark-toggle {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .35rem;
+}
+.fe-popup-dark-toggle input { margin: 0; }
+.fe-popup-trigger-card {
+  border-left: 3px solid var(--accent, #2563eb);
+}

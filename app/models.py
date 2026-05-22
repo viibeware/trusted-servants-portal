@@ -2498,6 +2498,109 @@ class Page(db.Model):
                            onupdate=datetime.utcnow)
 
 
+class Popup(db.Model):
+    """Admin-authored modal popup rendered site-wide on the public
+    frontend. Triggered by anchor-style ``#<name>`` selectors: any link
+    with ``href="#newsletter"`` (or an element carrying
+    ``data-popup="newsletter"``), and any page load / hashchange to the
+    matching URL hash, opens the popup whose ``name`` is ``newsletter``.
+
+    Body lives in ``blocks_json`` using the exact same schema as
+    :class:`Page` — a JSON list of sections of typed blocks rendered
+    through the shared ``_blocks.html`` macros — so the page-builder
+    drag-and-drop editor and its block palette are reused verbatim. The
+    remaining columns are the popup's own chrome: size, padding,
+    background, overlay, position, per-device visibility, and trigger
+    behaviour.
+    """
+    __tablename__ = "popup"
+    id = db.Column(db.Integer, primary_key=True)
+    # Trigger handle. Slugified to ``[a-z0-9-]`` and unique so a given
+    # ``#hash`` maps to exactly one popup. This IS the selector — a popup
+    # named "newsletter" opens from ``#newsletter``.
+    name = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    # Admin-facing label (list table, editor title, accessible name).
+    title = db.Column(db.String(200), nullable=False)
+    blocks_json = db.Column(db.Text)
+    # Master on/off. Disabled popups are not emitted on the public site
+    # (but editors can still preview them via the preview route).
+    is_enabled = db.Column(db.Boolean, nullable=False, default=True)
+
+    # ── Sizing ──────────────────────────────────────────────────────
+    width = db.Column(db.Integer, nullable=False, default=480)         # px
+    # Viewport-relative cap so a wide popup still fits small screens.
+    max_width_pct = db.Column(db.Integer, nullable=False, default=92)  # % of viewport
+    # 'auto' grows to fit content (up to the viewport); 'fixed' pins the
+    # panel to ``height`` px (content scrolls inside).
+    height_mode = db.Column(db.String(16), nullable=False, default="auto")
+    height = db.Column(db.Integer, nullable=False, default=420)        # px (fixed mode)
+    padding = db.Column(db.Integer, nullable=False, default=32)        # px, inside the panel
+
+    # ── Appearance ──────────────────────────────────────────────────
+    bg_color = db.Column(db.String(16), nullable=False, default="#ffffff")
+    # Optional dark-mode override; None = reuse the light value in dark.
+    bg_color_dark = db.Column(db.String(16))
+    border_radius = db.Column(db.Integer, nullable=False, default=16)  # px
+    shadow = db.Column(db.String(8), nullable=False, default="xl")     # none|sm|md|lg|xl
+
+    # ── Overlay (dimmed backdrop behind the panel) ──────────────────
+    overlay_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    overlay_color = db.Column(db.String(16), nullable=False, default="#0f172a")
+    overlay_opacity = db.Column(db.Integer, nullable=False, default=60)  # 0..100
+
+    # ── Position within the viewport ────────────────────────────────
+    position = db.Column(db.String(16), nullable=False, default="center")  # center|top|bottom
+
+    # ── Responsiveness ──────────────────────────────────────────────
+    show_desktop = db.Column(db.Boolean, nullable=False, default=True)
+    show_mobile = db.Column(db.Boolean, nullable=False, default=True)
+    # On phones, ignore ``width`` and fill the viewport (minus a small
+    # gutter) so narrow screens get a comfortable, full-width sheet.
+    mobile_full_width = db.Column(db.Boolean, nullable=False, default=True)
+
+    # ── Behaviour ───────────────────────────────────────────────────
+    close_on_overlay = db.Column(db.Boolean, nullable=False, default=True)
+    show_close_button = db.Column(db.Boolean, nullable=False, default=True)
+    # Optional: open automatically on page load (in addition to the
+    # ``#name`` selector trigger), after ``auto_open_delay`` ms.
+    auto_open = db.Column(db.Boolean, nullable=False, default=False)
+    auto_open_delay = db.Column(db.Integer, nullable=False, default=0)  # ms
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow,
+                           onupdate=datetime.utcnow)
+
+    def sections(self):
+        """Decode ``blocks_json`` into the section list the shared
+        ``render_sections`` macro consumes. Malformed / non-list
+        payloads collapse to an empty list so the renderer's truthiness
+        check ("does this popup have content?") just works."""
+        import json as _json
+        raw = (self.blocks_json or "").strip()
+        if not raw:
+            return []
+        try:
+            data = _json.loads(raw)
+        except (ValueError, TypeError):
+            return []
+        return data if isinstance(data, list) else []
+
+    @property
+    def overlay_rgba(self):
+        """``overlay_color`` + ``overlay_opacity`` as a CSS ``rgba(...)``
+        string for the backdrop fill."""
+        hexv = (self.overlay_color or "#0f172a").lstrip("#")
+        if len(hexv) == 3:
+            hexv = "".join(c * 2 for c in hexv)
+        try:
+            r, g, b = int(hexv[0:2], 16), int(hexv[2:4], 16), int(hexv[4:6], 16)
+        except (ValueError, IndexError):
+            r, g, b = 15, 23, 42
+        opa = self.overlay_opacity if self.overlay_opacity is not None else 60
+        a = max(0, min(100, opa)) / 100.0
+        return f"rgba({r}, {g}, {b}, {a:.2f})"
+
+
 class VisitorEvent(db.Model):
     """One row per anonymous page view on the public frontend.
 

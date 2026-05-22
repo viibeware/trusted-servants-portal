@@ -480,6 +480,11 @@
    page. Self-contained (markup + style + JS in the partial). #}
 {% include "frontend/_gsr_modal.html" %}
 
+{# Site-wide popups — every enabled Popup rendered as a hidden modal that
+   opens from `#name` anchor selectors. Self-contained (markup + trigger
+   JS in the partial; styles live in frontend.css). #}
+{% include "frontend/_popups.html" %}
+
 {% if site and site.turnstile_enabled and site.turnstile_site_key %}
 {# Loaded once for the page so the modal's Turnstile widget can
    render. The standalone /submissionform page loads its own copy

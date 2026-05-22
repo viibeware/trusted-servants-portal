@@ -11422,3 +11422,105 @@ html:not([data-theme="dark"]) [style*="--fe-dynbg-c3-light"] {
 .fe-stories-submit-btn {
   font-size: 1.05rem;
 }
+
+/* ── Site-wide popups ───────────────────────────────────────────────
+   Modal popups authored with the page builder and fired from `#name`
+   anchor selectors. Markup + trigger JS live in
+   templates/frontend/_popups.html; per-popup size / colour / overlay
+   values arrive as inline CSS custom properties. */
+.fe-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  opacity: 0;
+  transition: opacity .22s ease;
+}
+.fe-popup[hidden] { display: none; }
+.fe-popup.is-open { opacity: 1; }
+.fe-popup[data-pos="top"]    { align-items: flex-start; padding-top: 6vh; }
+.fe-popup[data-pos="bottom"] { align-items: flex-end;   padding-bottom: 6vh; }
+
+.fe-popup-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--fe-popup-overlay, rgba(15, 23, 42, 0.6));
+  backdrop-filter: blur(2px);
+}
+
+.fe-popup-panel {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: var(--fe-popup-w, 480px);
+  max-width: min(var(--fe-popup-maxw, 92%), calc(100vw - 32px));
+  height: var(--fe-popup-h, auto);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: var(--fe-popup-pad, 32px);
+  background: var(--fe-popup-bg, #fff);
+  border-radius: var(--fe-popup-radius, 16px);
+  box-shadow: var(--fe-popup-shadow, 0 24px 60px rgba(15, 23, 42, 0.22));
+  transform: translateY(10px) scale(0.98);
+  transition: transform .22s ease;
+}
+.fe-popup.is-open .fe-popup-panel { transform: none; }
+html[data-theme="dark"] .fe-popup-panel {
+  background: var(--fe-popup-bg-dark, var(--fe-popup-bg, #1e293b));
+}
+
+.fe-popup-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  color: inherit;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+.fe-popup-close:hover { background: rgba(15, 23, 42, 0.14); }
+html[data-theme="dark"] .fe-popup-close { background: rgba(255, 255, 255, 0.10); }
+html[data-theme="dark"] .fe-popup-close:hover { background: rgba(255, 255, 255, 0.18); }
+.fe-popup-close .icon { width: 18px; height: 18px; }
+
+/* Block content sits flush with the panel padding — drop the first/last
+   block's outer margins so the spacing reads from `padding` alone. */
+.fe-popup-body > .block-section:first-child { margin-top: 0; }
+.fe-popup-body > .block-section:last-child  { margin-bottom: 0; }
+.fe-popup-body .block-section { margin: 0; }
+
+body.fe-popup-open { overflow: hidden; }
+
+/* Editor preview stage (frontend/popup_preview.html). */
+.fe-popup-preview-stage {
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px;
+}
+
+@media (max-width: 768px) {
+  .fe-popup-no-mobile { display: none !important; }
+  .fe-popup-mobile-full .fe-popup-panel {
+    width: 100%;
+    max-width: calc(100vw - 24px);
+  }
+}
+@media (min-width: 769px) {
+  .fe-popup-no-desktop { display: none !important; }
+}

@@ -11670,6 +11670,263 @@ def frontend_pages_bulk():
     return redirect(url_for("main.frontend_pages"))
 
 
+# ── Popups ──────────────────────────────────────────────────────────
+# Site-wide modal popups, authored with the same page-builder block
+# editor and triggered from ``#name`` anchor selectors on the public
+# frontend. See models.Popup + templates/frontend/_popups.html.
+POPUP_SHADOWS = ("none", "sm", "md", "lg", "xl")
+POPUP_POSITIONS = ("center", "top", "bottom")
+POPUP_HEIGHT_MODES = ("auto", "fixed")
+
+# Block types the popup editor exposes in its palette. Restricted to the
+# page-builder blocks that have a fully inline editor in block_editor.js
+# — the homepage-section blocks (hero / meetings / events / features /
+# faq) are configured through the page editor's dedicated modals, which
+# the popup editor deliberately doesn't host.
+_POPUP_ALLOWED_BLOCK_TYPES = [
+    "paragraph", "heading", "image", "button", "container",
+    "list", "callout", "code", "separator", "icon", "video",
+]
+
+# Palette tiles offered in the popup builder's floating "Add block" FAB.
+# Same drag-and-drop palette the page builder uses (`structure_block_palette`)
+# — includes the layout helpers (`split` / `split3` two- and three-panel
+# rows, which page_structure.js expands into containers) on top of the
+# inline-editable content blocks above. Excludes the homepage-section
+# blocks (hero / meetings / events / features / faq), wiki TOC, lottie,
+# and the data-bound officer / library / blog blocks.
+_POPUP_PALETTE_KEYS = [
+    "split", "split3", "container", "heading", "paragraph",
+    "image", "icon", "button", "list", "callout", "video", "code", "separator",
+]
+
+# Reserved popup handles that would collide with the trigger JS / hash
+# conventions, kept clear so a popup name can't shadow them.
+_POPUP_RESERVED_NAMES = {"popup", "open", "close"}
+
+
+def _popup_unique_name(name, exclude_id=None):
+    """Resolve ``name`` to a slug that's unique across popups (and not in
+    the reserved set), suffix-bumping (``-2``, ``-3``…) on collision."""
+    from .models import Popup
+    base = _slugify_page(name)
+    candidate = base
+    n = 2
+    with db.session.no_autoflush:
+        while True:
+            clash = (Popup.query
+                     .filter(Popup.name == candidate,
+                             Popup.id != (exclude_id or -1))
+                     .first())
+            if not clash and candidate not in _POPUP_RESERVED_NAMES:
+                return candidate
+            candidate = f"{base}-{n}"
+            n += 1
+
+
+@bp.route("/frontend/popups")
+@admin_required
+def frontend_popups():
+    from .models import Popup
+    s = _get_site_setting()
+    popups = Popup.query.order_by(Popup.title.asc()).all()
+    return render_template("frontend_popups.html", site=s, popups=popups)
+
+
+@bp.route("/frontend/popups/create", methods=["POST"])
+@admin_required
+def frontend_popup_create():
+    """Mint a new popup from the New-popup modal (name + optional handle
+    + initial status) and drop straight into its editor. The full block
+    + chrome editor lives on the edit screen."""
+    import json as _json
+    from .models import Popup
+    title = (request.form.get("title") or "").strip()
+    if not title:
+        flash("Popup name required", "danger")
+        return redirect(url_for("main.frontend_popups"))
+    # Handle defaults to a slug of the title when the admin leaves it blank.
+    name = _popup_unique_name(request.form.get("name") or title)
+    raw_status = (request.form.get("status") or "enabled").strip().lower()
+    is_enabled = raw_status != "disabled"
+    # Seed one empty-titled section so the inline editor opens clean (no
+    # stray "New Section" heading) and ready for the admin to drop blocks.
+    seed = _json.dumps([{"id": _uuid_short(), "title": "", "blocks": []}])
+    popup = Popup(title=title, name=name, blocks_json=seed, is_enabled=is_enabled)
+    db.session.add(popup)
+    db.session.commit()
+    return redirect(url_for("main.frontend_popup_edit", popup_id=popup.id))
+
+
+@bp.route("/frontend/popups/<int:popup_id>/edit")
+@admin_required
+def frontend_popup_edit(popup_id):
+    import json as _json
+    from .models import Popup
+    s = _get_site_setting()
+    popup = Popup.query.get_or_404(popup_id)
+    # Reuse the page builder's structure-card visualisation: a draggable
+    # tree of block pills + per-pill hover previews, driven by the shared
+    # page_structure.js. _page_active_tree only reads `.blocks_json`, so a
+    # Popup feeds it directly (popups never carry orphan bins).
+    tree_data = _page_active_tree(popup)
+    try:
+        _sections = _json.loads(popup.blocks_json or "[]") or []
+    except (ValueError, TypeError):
+        _sections = []
+    block_previews = {}
+    block_payloads = {}
+    for bid, b in _walk_blocks_by_id(_sections):
+        block_previews[bid] = _block_preview(b)
+        block_payloads[bid] = b
+    popup_catalog = [c for c in _PAGE_BLOCK_CATALOG if c["key"] in _POPUP_PALETTE_KEYS]
+    return render_template("frontend_popup_edit.html", site=s, popup=popup,
+                           blocks_json=popup.blocks_json or "[]",
+                           popup_allowed_block_types=_POPUP_ALLOWED_BLOCK_TYPES,
+                           popup_block_catalog=popup_catalog,
+                           active_layout_tree=tree_data["tree"],
+                           active_layout_orphans=tree_data["orphans"],
+                           block_previews=block_previews,
+                           block_payloads=block_payloads)
+
+
+@bp.route("/frontend/popups/save", methods=["POST"])
+@admin_required
+def frontend_popup_save():
+    """Persist a popup's block content + chrome settings. Mirrors
+    ``frontend_page_save``: blocks_json is only overwritten when the
+    editor serialised a value, and every clamp keeps tampered POSTs in
+    range."""
+    import json as _json
+    import re as _re
+    from .models import Popup
+    popup_id = (request.form.get("popup_id") or "").strip()
+    title = (request.form.get("title") or "").strip()
+    if not title:
+        flash("Popup name is required", "danger")
+        return redirect(_safe_referrer() or url_for("main.frontend_popups"))
+
+    raw_blocks = request.form.get("blocks_json")
+    blocks_to_save = None
+    if raw_blocks is not None and raw_blocks.strip() != "":
+        try:
+            _json.loads(raw_blocks)
+            blocks_to_save = raw_blocks
+        except (ValueError, TypeError):
+            flash("Invalid blocks JSON", "danger")
+            return redirect(_safe_referrer() or url_for("main.frontend_popups"))
+
+    def _clamp(field, default, lo, hi):
+        try:
+            v = int(request.form.get(field) or default)
+        except (TypeError, ValueError):
+            v = default
+        return max(lo, min(hi, v))
+
+    width = _clamp("width", 480, 200, 1200)
+    max_width_pct = _clamp("max_width_pct", 92, 30, 100)
+    height = _clamp("height", 420, 120, 2000)
+    padding = _clamp("padding", 32, 0, 160)
+    border_radius = _clamp("border_radius", 16, 0, 80)
+    overlay_opacity = _clamp("overlay_opacity", 60, 0, 100)
+    auto_open_delay = _clamp("auto_open_delay", 0, 0, 60000)
+
+    height_mode = (request.form.get("height_mode") or "auto").strip().lower()
+    if height_mode not in POPUP_HEIGHT_MODES:
+        height_mode = "auto"
+    shadow = (request.form.get("shadow") or "xl").strip().lower()
+    if shadow not in POPUP_SHADOWS:
+        shadow = "xl"
+    position = (request.form.get("position") or "center").strip().lower()
+    if position not in POPUP_POSITIONS:
+        position = "center"
+
+    _hex = _re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+
+    def _color(value, default):
+        value = (value or "").strip()
+        return value if _hex.match(value) else default
+
+    bg_color = _color(request.form.get("bg_color"), "#ffffff")
+    raw_dark = (request.form.get("bg_color_dark") or "").strip()
+    bg_color_dark = raw_dark if _hex.match(raw_dark) else None
+    overlay_color = _color(request.form.get("overlay_color"), "#0f172a")
+
+    if popup_id:
+        popup = Popup.query.get_or_404(int(popup_id))
+    else:
+        popup = Popup()
+        db.session.add(popup)
+
+    popup.title = title
+    popup.name = _popup_unique_name(request.form.get("name") or title,
+                                    exclude_id=popup.id)
+    if blocks_to_save is not None:
+        popup.blocks_json = blocks_to_save
+    elif popup.blocks_json is None:
+        popup.blocks_json = "[]"
+
+    raw_status = (request.form.get("status") or "").strip().lower()
+    if raw_status in ("enabled", "disabled"):
+        popup.is_enabled = raw_status == "enabled"
+    else:
+        popup.is_enabled = request.form.get("is_enabled") == "1"
+
+    popup.width = width
+    popup.max_width_pct = max_width_pct
+    popup.height_mode = height_mode
+    popup.height = height
+    popup.padding = padding
+    popup.bg_color = bg_color
+    popup.bg_color_dark = bg_color_dark
+    popup.border_radius = border_radius
+    popup.shadow = shadow
+    popup.overlay_enabled = request.form.get("overlay_enabled") == "1"
+    popup.overlay_color = overlay_color
+    popup.overlay_opacity = overlay_opacity
+    popup.position = position
+    popup.show_desktop = request.form.get("show_desktop") == "1"
+    popup.show_mobile = request.form.get("show_mobile") == "1"
+    popup.mobile_full_width = request.form.get("mobile_full_width") == "1"
+    popup.close_on_overlay = request.form.get("close_on_overlay") == "1"
+    popup.show_close_button = request.form.get("show_close_button") == "1"
+    popup.auto_open = request.form.get("auto_open") == "1"
+    popup.auto_open_delay = auto_open_delay
+
+    db.session.commit()
+    flash(f"Popup “{title}” saved", "success")
+    return redirect(url_for("main.frontend_popup_edit", popup_id=popup.id))
+
+
+@bp.route("/frontend/popups/<int:popup_id>/status", methods=["POST"])
+@admin_required
+def frontend_popup_status(popup_id):
+    """Quick enable/disable toggle from the list / editor without a full
+    form round-trip."""
+    from .models import Popup
+    popup = Popup.query.get_or_404(popup_id)
+    status = (request.form.get("status") or "").strip().lower()
+    if status not in ("enabled", "disabled"):
+        flash("Unknown status", "danger")
+        return redirect(_safe_referrer() or url_for("main.frontend_popups"))
+    popup.is_enabled = status == "enabled"
+    db.session.commit()
+    return redirect(_safe_referrer()
+                    or url_for("main.frontend_popup_edit", popup_id=popup.id))
+
+
+@bp.route("/frontend/popups/<int:popup_id>/delete", methods=["POST"])
+@admin_required
+def frontend_popup_delete(popup_id):
+    from .models import Popup
+    popup = Popup.query.get_or_404(popup_id)
+    title = popup.title
+    db.session.delete(popup)
+    db.session.commit()
+    flash(f"Popup “{title}” deleted", "success")
+    return redirect(url_for("main.frontend_popups"))
+
+
 @bp.route("/frontend/footer-save", methods=["POST"])
 @admin_required
 def frontend_footer_save():

@@ -1,0 +1,536 @@
+{% extends "base.html" %}
+{% from "_frontend_structure_card.html" import structure_page_tree, structure_orphans_card, structure_block_palette %}
+{% block heading %}Edit popup{% endblock %}
+{% block heading_help %}Triggered from <code>#{{ popup.name }}</code>.{% endblock %}
+
+{% block top_actions %}
+<a class="btn" href="{{ url_for('main.frontend_popups') }}">← All popups</a>
+<a class="btn btn-primary" href="{{ url_for('frontend.popup_preview', popup_id=popup.id) }}"
+   target="_blank" rel="noopener"
+   title="Open a preview of the saved popup (works while disabled)">Preview ↗</a>
+{% endblock %}
+
+{% block content %}
+{# Load the public frontend.css alongside app.css so the block editor's
+   live previews (image, button, callout, etc.) match the public render. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/frontend.css', v=app_build_id) }}">
+
+{# Pill labels for the structure-card tree — same shape the page builder
+   uses, scoped to the block types popups offer (split/split3 collapse to
+   containers in the tree, so only the leaf + container types appear). #}
+{% set _PAGE_BLOCK_LABELS = {
+  'paragraph': ('Text',      'type'),
+  'heading':   ('Heading',   'heading'),
+  'image':     ('Image',     'image'),
+  'icon':      ('Icon',      'star'),
+  'button':    ('Button',    'mouse-pointer-click'),
+  'container': ('Container', 'layout-grid'),
+  'video':     ('Video',     'video'),
+  'code':      ('Code',      'code'),
+  'callout':   ('Callout',   'alert-triangle'),
+  'list':      ('List',      'list'),
+  'separator': ('Divider',   'minus'),
+} %}
+{% set _editable = ['paragraph','heading','image','icon','button','container',
+                    'video','code','callout','list'] %}
+
+<div class="fe-admin-layout">
+  {% include "_frontend_subnav.html" %}
+  <div class="fe-admin-main">
+
+    {%- set _status = 'enabled' if popup.is_enabled else 'disabled' -%}
+    <div class="fe-page-edit-title-banner">
+      <div class="fe-page-edit-title-banner-eyebrow muted smaller">Editing popup</div>
+      <h1 class="fe-page-edit-title-banner-title">{{ popup.title }}</h1>
+      <div class="fe-page-edit-title-banner-meta muted smaller">
+        <code>#{{ popup.name }}</code>
+        {% if popup.is_enabled %}
+          · <span class="post-chip post-chip-online">Enabled</span>
+        {% else %}
+          · <span class="post-chip post-chip-draft">Disabled</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Trigger hint — how to fire this popup from anywhere on the site. #}
+    <section class="card fe-popup-trigger-card">
+      <p class="muted small" style="margin: 0;">
+        Open this popup from any link or button pointing at
+        <code>#{{ popup.name }}</code> — for example
+        <code>&lt;a href="#{{ popup.name }}"&gt;Sign up&lt;/a&gt;</code>,
+        a navigation link set to <code>#{{ popup.name }}</code>, or any element with
+        <code>data-popup="{{ popup.name }}"</code>. Visiting a URL ending in
+        <code>#{{ popup.name }}</code> opens it too.
+      </p>
+    </section>
+
+    {# ── Content: the page-builder structure card + draggable pills ──
+       Same drag-and-drop interface as content pages. The floating
+       "Add block" palette (blue FAB, bottom-right) drops new blocks;
+       clicking a pill opens the BlockEditor modal focused on it. Driven
+       by page_structure.js, which keys off the shared element IDs below
+       (#page-blocks-json / #page-editor-root / #page-layout-edit-modal). #}
+    <section class="card fe-page-structure">
+      <div class="card-head">
+        <h2>Content</h2>
+        <span class="muted smaller">Drag pills to rearrange. Drag from the “Add block” palette
+          (bottom-right) to drop in new blocks. Click any pill to edit its content.</span>
+      </div>
+      {{ structure_page_tree(active_layout_tree, 'page-layout-edit-modal',
+                             _PAGE_BLOCK_LABELS, _editable,
+                             block_previews, block_payloads) }}
+    </section>
+
+    {# Self-hiding "Unplaced blocks" bin — only appears if removing a
+       container leaves its children unplaced (drag them back in). #}
+    {{ structure_orphans_card(active_layout_orphans, 'page-layout-edit-modal',
+                              _PAGE_BLOCK_LABELS, block_previews, block_payloads) }}
+
+    {{ structure_block_palette(popup_block_catalog) }}
+
+    {# ── Popup settings form ────────────────────────────────────────
+       The hidden #page-blocks-json input lives here so a save round-trips
+       both the block content (written by page_structure.js / the modal
+       editor) and the chrome settings below. #}
+    <form method="post" action="{{ url_for('main.frontend_popup_save') }}"
+          class="form" id="popup-edit-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="popup_id" value="{{ popup.id }}">
+      <input type="hidden" name="blocks_json" id="page-blocks-json">
+
+      <section class="card fe-page-settings-card">
+        <div class="card-head"><h2>Popup settings</h2></div>
+
+        <div class="fe-page-settings-section">
+          <div class="form-grid">
+            <label>Name
+              <input type="text" name="title" required maxlength="200"
+                     value="{{ popup.title }}" autocomplete="off">
+            </label>
+            <label>Trigger handle
+              <span class="fe-popup-handle-field">
+                <span class="fe-popup-handle-hash">#</span>
+                <input type="text" name="name" maxlength="120" value="{{ popup.name }}"
+                       autocomplete="off" pattern="[A-Za-z0-9\- ]*">
+              </span>
+              <span class="muted smaller">The <code>#name</code> selector that opens this popup.</span>
+            </label>
+          </div>
+          <div class="fe-popup-status-row" style="margin-top: 12px;">
+            <span class="muted smaller">Status</span>
+            <label class="fe-inline-radio">
+              <input type="radio" name="status" value="enabled"
+                     {% if popup.is_enabled %}checked{% endif %}> Enabled
+            </label>
+            <label class="fe-inline-radio">
+              <input type="radio" name="status" value="disabled"
+                     {% if not popup.is_enabled %}checked{% endif %}> Disabled
+            </label>
+          </div>
+        </div>
+
+        {# ── Size & spacing ── #}
+        <div class="fe-page-settings-section">
+          <h3 class="fe-page-settings-sub">Size &amp; spacing</h3>
+          <div class="form-grid">
+            <label>Width <output id="popup-width-out">{{ popup.width }}px</output>
+              <input type="range" name="width" id="popup-width" min="200" max="1200" step="10"
+                     value="{{ popup.width }}">
+            </label>
+            <label>Max width <output id="popup-maxw-out">{{ popup.max_width_pct }}%</output>
+              <span class="muted smaller">Cap relative to the viewport so wide popups still fit small screens.</span>
+              <input type="range" name="max_width_pct" id="popup-maxw" min="30" max="100" step="1"
+                     value="{{ popup.max_width_pct }}">
+            </label>
+            <label>Height
+              <select name="height_mode" id="popup-height-mode">
+                <option value="auto" {% if popup.height_mode == 'auto' %}selected{% endif %}>Auto (fit content)</option>
+                <option value="fixed" {% if popup.height_mode == 'fixed' %}selected{% endif %}>Fixed</option>
+              </select>
+            </label>
+            <label id="popup-height-field" {% if popup.height_mode != 'fixed' %}style="display:none;"{% endif %}>
+              Fixed height <output id="popup-height-out">{{ popup.height }}px</output>
+              <input type="range" name="height" id="popup-height" min="120" max="2000" step="10"
+                     value="{{ popup.height }}">
+            </label>
+            <label>Inner padding <output id="popup-pad-out">{{ popup.padding }}px</output>
+              <input type="range" name="padding" id="popup-pad" min="0" max="160" step="2"
+                     value="{{ popup.padding }}">
+            </label>
+            <label>Corner radius <output id="popup-radius-out">{{ popup.border_radius }}px</output>
+              <input type="range" name="border_radius" id="popup-radius" min="0" max="80" step="1"
+                     value="{{ popup.border_radius }}">
+            </label>
+          </div>
+        </div>
+
+        {# ── Appearance ── #}
+        <div class="fe-page-settings-section">
+          <h3 class="fe-page-settings-sub">Appearance</h3>
+          <div class="form-grid">
+            <label>Background colour
+              <input type="color" name="bg_color" value="{{ popup.bg_color or '#ffffff' }}">
+            </label>
+            <label>
+              <span class="fe-popup-dark-toggle">
+                <input type="checkbox" id="popup-dark-toggle"
+                       {% if popup.bg_color_dark %}checked{% endif %}>
+                Different colour in dark mode
+              </span>
+              <input type="color" name="bg_color_dark" id="popup-bg-dark"
+                     value="{{ popup.bg_color_dark or '#1e293b' }}"
+                     {% if not popup.bg_color_dark %}disabled{% endif %}>
+            </label>
+            <label>Shadow
+              <select name="shadow">
+                {% for key in ['none','sm','md','lg','xl'] %}
+                <option value="{{ key }}" {% if popup.shadow == key %}selected{% endif %}>{{ key|upper if key != 'none' else 'None' }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Position
+              <select name="position">
+                <option value="center" {% if popup.position == 'center' %}selected{% endif %}>Centre</option>
+                <option value="top" {% if popup.position == 'top' %}selected{% endif %}>Top</option>
+                <option value="bottom" {% if popup.position == 'bottom' %}selected{% endif %}>Bottom</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        {# ── Overlay ── #}
+        <div class="fe-page-settings-section">
+          <h3 class="fe-page-settings-sub">Backdrop</h3>
+          <label class="fe-popup-check">
+            <input type="checkbox" name="overlay_enabled" value="1"
+                   {% if popup.overlay_enabled %}checked{% endif %}>
+            Dim the page behind the popup
+          </label>
+          <div class="form-grid" style="margin-top: 10px;">
+            <label>Backdrop colour
+              <input type="color" name="overlay_color" value="{{ popup.overlay_color or '#0f172a' }}">
+            </label>
+            <label>Backdrop opacity <output id="popup-overlay-out">{{ popup.overlay_opacity }}%</output>
+              <input type="range" name="overlay_opacity" id="popup-overlay" min="0" max="100" step="5"
+                     value="{{ popup.overlay_opacity }}">
+            </label>
+          </div>
+        </div>
+
+        {# ── Responsiveness ── #}
+        <div class="fe-page-settings-section">
+          <h3 class="fe-page-settings-sub">Responsiveness</h3>
+          <label class="fe-popup-check">
+            <input type="checkbox" name="show_desktop" value="1"
+                   {% if popup.show_desktop %}checked{% endif %}>
+            Show on desktop
+          </label>
+          <label class="fe-popup-check">
+            <input type="checkbox" name="show_mobile" value="1"
+                   {% if popup.show_mobile %}checked{% endif %}>
+            Show on mobile
+          </label>
+          <label class="fe-popup-check">
+            <input type="checkbox" name="mobile_full_width" value="1"
+                   {% if popup.mobile_full_width %}checked{% endif %}>
+            Fill the screen width on phones
+          </label>
+        </div>
+
+        {# ── Behaviour ── #}
+        <div class="fe-page-settings-section">
+          <h3 class="fe-page-settings-sub">Behaviour</h3>
+          <label class="fe-popup-check">
+            <input type="checkbox" name="close_on_overlay" value="1"
+                   {% if popup.close_on_overlay %}checked{% endif %}>
+            Close when the backdrop is clicked
+          </label>
+          <label class="fe-popup-check">
+            <input type="checkbox" name="show_close_button" value="1"
+                   {% if popup.show_close_button %}checked{% endif %}>
+            Show a close (×) button
+          </label>
+          <label class="fe-popup-check">
+            <input type="checkbox" name="auto_open" id="popup-auto-open" value="1"
+                   {% if popup.auto_open %}checked{% endif %}>
+            Open automatically on page load
+          </label>
+          <label id="popup-auto-delay-field" {% if not popup.auto_open %}style="display:none;"{% endif %}>
+            Delay before auto-opening
+            <span class="muted smaller">Milliseconds (e.g. 3000 = 3&nbsp;seconds).</span>
+            <input type="number" name="auto_open_delay" min="0" max="60000" step="100"
+                   value="{{ popup.auto_open_delay }}">
+          </label>
+        </div>
+      </section>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save popup</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── BlockEditor modal — hosts the full editor. Lives outside
+   .fe-admin-main so it covers the whole viewport. Same IDs the page
+   builder uses so the shared page_structure.js + mount glue drive it. #}
+<div class="modal fe-page-edit-modal fe-page-edit-modal--wide" id="page-layout-edit-modal" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="page-layout-edit-modal-title">
+    <div class="modal-head">
+      <h2 id="page-layout-edit-modal-title">Edit content</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close">{{ icon('x') }}</button>
+    </div>
+    <div class="modal-body">
+      <p class="muted small fe-block-editor-help">
+        Drag blocks to reorder. Click <code>+ Container</code> to nest blocks with their own
+        padding, gap, and background. Changes save with the popup when you hit <b>Save</b>.
+      </p>
+      <div id="page-editor-root" data-initial='{{ blocks_json|e }}'></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-close>Done</button>
+    </div>
+  </div>
+</div>
+
+{# ── Shared icon-picker modal (powers the icon block's "Pick an icon…"
+   button inside the BlockEditor). Same markup the page editor uses. #}
+<div class="modal icon-picker-modal" id="icon-picker-modal" aria-hidden="true"
+     data-catalog-url="{{ url_for('static', filename='vendor/lucide/icons.json') }}"
+     data-custom-list-url="{{ url_for('main.frontend_custom_icons_list') }}"
+     data-custom-upload-url="{{ url_for('main.frontend_custom_icon_upload') }}"
+     data-custom-delete-url="{{ url_for('main.frontend_custom_icon_delete', cid=0) }}"
+     data-csrf-token="{{ csrf_token() }}">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true">
+    <div class="modal-head"><h2>Pick an icon</h2>
+      <button type="button" class="icon-btn" data-close>{{ icon('x') }}</button></div>
+    <div class="modal-body icon-picker-body">
+      <div class="icon-picker-toolbar">
+        <input type="search" class="icon-picker-search" placeholder="Search icons…" data-icon-search autocomplete="off">
+        <label class="icon-picker-size-label">
+          <span class="muted smaller">Size <output data-icon-size-out>20</output>px</span>
+          <input type="range" min="12" max="64" step="1" value="20" data-icon-modal-size>
+        </label>
+        <label class="icon-picker-upload-btn btn btn-sm">
+          {{ icon('upload') }} <span>Upload</span>
+          <input type="file" accept=".svg,.png,image/svg+xml,image/png" data-icon-upload hidden>
+        </label>
+      </div>
+      <div class="icon-picker-catalog" data-icon-catalog>
+        <p class="muted smaller" style="padding: 16px;">Loading icons…</p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-close>Close</button>
+      <button type="button" class="btn btn-danger" data-icon-picker-remove hidden>Remove icon</button>
+      <button type="button" class="btn btn-primary" data-icon-picker-save hidden>Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Surface available fonts to the BlockEditor's per-block typography panel.
+window.tspFonts = [
+  {%- for f in frontend_fonts() %}
+  { key: {{ f.key|tojson }}, name: {{ f.name|tojson }}, stack: {{ font_stack(f.key)|tojson }} }{% if not loop.last %},{% endif %}
+  {%- endfor %}
+];
+// Surface design colour tokens so block colour inputs can offer them.
+{%- set _design_resolved = resolve_design(site) %}
+window.tspDesignColorTokens = {
+  {%- for f in design_fields if f.kind == 'color' %}
+  {{ f.key|tojson }}: {{ _design_resolved.get(f.key)|tojson }}{% if not loop.last %},{% endif %}
+  {%- endfor %}
+};
+</script>
+<script src="{{ url_for('static', filename='js/vendor/Sortable.min.js', v=app_build_id) }}"></script>
+<script src="{{ url_for('static', filename='js/block_editor.js', v=app_build_id) }}"></script>
+<script src="{{ url_for('static', filename='js/page_structure.js', v=app_build_id) }}"></script>
+<script>
+// BlockEditor mount + structure-card glue. Adapted from the page editor:
+// same element IDs so page_structure.js drives the structure card, with
+// the popup's restricted block palette passed to the modal editor.
+(function () {
+  const ALLOWED = {{ popup_allowed_block_types|tojson }};
+  const root = document.getElementById('page-editor-root');
+  const hidden = document.getElementById('page-blocks-json');
+  const form = document.getElementById('popup-edit-form');
+  if (!root || !form) return;
+  let initial = [];
+  try { initial = JSON.parse(root.dataset.initial || '[]'); }
+  catch (e) { console.warn('popup editor: initial JSON parse failed', e); }
+  let editor = null;
+  const editModal = document.getElementById('page-layout-edit-modal');
+
+  function ensureEditor() {
+    if (editor) return editor;
+    try { editor = BlockEditor.mount(root, { initial: initial, allowedTypes: ALLOWED }); }
+    catch (e) { console.warn('popup editor: mount failed', e); }
+    return editor;
+  }
+
+  // ── Focus mode (open the modal scrolled to one block) ───────────
+  const modalTitle = document.getElementById('page-layout-edit-modal-title');
+  const editorHelp = editModal.querySelector('.fe-block-editor-help');
+  const defaultTitle = modalTitle ? modalTitle.textContent : 'Edit content';
+
+  function clearFocus() {
+    editModal.classList.remove('is-focus-mode');
+    root.querySelectorAll('.be-block-focused, .be-block-focused-path').forEach(el => {
+      el.classList.remove('be-block-focused', 'be-block-focused-path');
+    });
+    if (modalTitle) modalTitle.textContent = defaultTitle;
+    if (editorHelp) editorHelp.hidden = false;
+  }
+  editModal.querySelectorAll('[data-close]').forEach(el =>
+    el.addEventListener('click', clearFocus));
+  function focusBlock(id) {
+    if (!id) return;
+    const target = root.querySelector('.be-block[data-id="' + id + '"]');
+    if (!target) return;
+    root.querySelectorAll('.be-block-focused, .be-block-focused-path').forEach(el => {
+      el.classList.remove('be-block-focused', 'be-block-focused-path');
+    });
+    target.classList.add('be-block-focused');
+    let node = target.parentElement;
+    while (node && node !== root) {
+      if (node.classList && (node.classList.contains('be-block')
+                              || node.classList.contains('be-section'))) {
+        node.classList.add('be-block-focused-path');
+      }
+      node = node.parentElement;
+    }
+    editModal.classList.add('is-focus-mode');
+    if (modalTitle) {
+      const typeLabel = (target.querySelector('.be-block-type') || {}).textContent || 'block';
+      modalTitle.textContent = 'Edit ' + typeLabel;
+    }
+    if (editorHelp) editorHelp.hidden = true;
+    requestAnimationFrame(() => {
+      const body = editModal.querySelector('.modal-body');
+      if (body) body.scrollTop = 0;
+      target.classList.add('be-block-flash');
+      setTimeout(() => target.classList.remove('be-block-flash'), 1400);
+    });
+  }
+  // Expose the same hooks page_structure.js calls so newly-dragged pills
+  // can open + focus the editor without per-pill rebinding.
+  window.ensurePageBlockEditor = ensureEditor;
+  window.focusPageBlock = focusBlock;
+  window.remountPageBlockEditor = () => {
+    if (editor && root) { try { root.innerHTML = ''; } catch (_) {} }
+    editor = null;
+    try { initial = JSON.parse(root.dataset.initial || '[]'); }
+    catch (_) { initial = []; }
+  };
+
+  // Server-rendered pills → open the modal focused on the block.
+  document.querySelectorAll('[data-page-block-id]').forEach(pill => {
+    if (pill.dataset.pillBound === '1') return;
+    pill.dataset.pillBound = '1';
+    pill.addEventListener('click', e => {
+      if (e.target.closest('[data-be-remove-block], [data-be-remove-row], '
+                         + '[data-be-duplicate-block], [data-be-duplicate-row]')) return;
+      requestAnimationFrame(() => {
+        ensureEditor();
+        const id = pill.dataset.pageBlockId;
+        requestAnimationFrame(() => focusBlock(id));
+      });
+    });
+  });
+  // Plain open-modal buttons open the full editor (no focus).
+  document.querySelectorAll('[data-open-modal="page-layout-edit-modal"]:not([data-page-block-id])').forEach(btn => {
+    btn.addEventListener('click', () => {
+      requestAnimationFrame(() => { ensureEditor(); clearFocus(); });
+    });
+  });
+
+  // Re-dispatch BlockEditor edits (made inside the modal, outside the
+  // form) onto the form so the save bar lights up + structure pills stay
+  // in sync with the editor's authoritative state.
+  editModal.addEventListener('input', () => {
+    try { form.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+    const bar = document.getElementById('fe-save-bar');
+    if (bar && bar.hasAttribute('hidden')) {
+      bar.hidden = false;
+      const m = bar.querySelector('.fe-save-bar-msg');
+      if (m) m.textContent = 'Unsaved changes';
+    }
+    try {
+      if (editor && typeof editor.getState === 'function'
+          && typeof window.tspSyncStructurePayloadsFromState === 'function') {
+        window.tspSyncStructurePayloadsFromState(editor.getState());
+      }
+    } catch (_) {}
+  }, true);
+  editModal.addEventListener('change', () => {
+    try { form.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+  }, true);
+
+  // Deleting the focused block inside the modal closes it.
+  editModal.addEventListener('blockremove', () => {
+    const focused = root.querySelector('.be-block-focused');
+    if (!editModal.classList.contains('is-focus-mode')) return;
+    if (focused) return;
+    const closer = editModal.querySelector('[data-close]');
+    if (closer) closer.click();
+    else editModal.classList.remove('is-focus-mode');
+  }, true);
+
+  // Serialise the editor's tree into the hidden input on save. Only
+  // overwrite when the modal editor is mounted with authoritative state;
+  // otherwise page_structure.js's structure-card value already in the
+  // hidden input is canonical (don't clobber drag-only edits).
+  function serialise() {
+    try {
+      if (editor && typeof editor.serialize === 'function') return editor.serialize();
+    } catch (err) { console.warn('popup editor: serialise threw', err); }
+    return null;
+  }
+  form.addEventListener('submit', () => {
+    const v = serialise();
+    if (v != null) hidden.value = v;
+  });
+  form.addEventListener('formdata', (e) => {
+    const v = serialise();
+    if (v != null) { e.formData.set('blocks_json', v); hidden.value = v; }
+  });
+
+  // ── Settings UI niceties ─────────────────────────────────────────
+  function bindRange(id, outId, suffix) {
+    const inp = document.getElementById(id);
+    const out = document.getElementById(outId);
+    if (!inp || !out) return;
+    inp.addEventListener('input', () => { out.textContent = inp.value + suffix; });
+  }
+  bindRange('popup-width', 'popup-width-out', 'px');
+  bindRange('popup-maxw', 'popup-maxw-out', '%');
+  bindRange('popup-height', 'popup-height-out', 'px');
+  bindRange('popup-pad', 'popup-pad-out', 'px');
+  bindRange('popup-radius', 'popup-radius-out', 'px');
+  bindRange('popup-overlay', 'popup-overlay-out', '%');
+
+  const heightMode = document.getElementById('popup-height-mode');
+  const heightField = document.getElementById('popup-height-field');
+  if (heightMode && heightField) {
+    heightMode.addEventListener('change', () => {
+      heightField.style.display = heightMode.value === 'fixed' ? '' : 'none';
+    });
+  }
+  const darkToggle = document.getElementById('popup-dark-toggle');
+  const darkInput = document.getElementById('popup-bg-dark');
+  if (darkToggle && darkInput) {
+    darkToggle.addEventListener('change', () => { darkInput.disabled = !darkToggle.checked; });
+  }
+  const autoOpen = document.getElementById('popup-auto-open');
+  const autoDelay = document.getElementById('popup-auto-delay-field');
+  if (autoOpen && autoDelay) {
+    autoOpen.addEventListener('change', () => {
+      autoDelay.style.display = autoOpen.checked ? '' : 'none';
+    });
+  }
+})();
+</script>
+{% endblock %}

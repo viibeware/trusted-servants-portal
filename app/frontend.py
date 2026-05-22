@@ -1118,6 +1118,23 @@ def _frontend_context(site):
     }
 
 
+@bp.context_processor
+def _inject_popups():
+    """Surface every enabled popup to all public-frontend templates so the
+    site-wide ``frontend/_popups.html`` partial (included in
+    ``frontend/base.html``) can render them. Cheap query against a small
+    table; failures degrade to no popups rather than 500ing the page."""
+    try:
+        from .models import Popup
+        popups = (Popup.query
+                  .filter_by(is_enabled=True)
+                  .order_by(Popup.id)
+                  .all())
+    except Exception:
+        popups = []
+    return {"popups": popups}
+
+
 def _page_og(site, title=None, description=None, image_url=None):
     """Build the per-page Open Graph override context consumed by
     ``frontend/base.html``. Any arg left None / empty falls back to the
@@ -4582,6 +4599,32 @@ def page_preview(page_id):
                 sections = None
     return _render_page(page, site, sections=sections, preview=True,
                         unsaved=(sections is not None))
+
+
+@bp.route("/_preview/popup/<int:popup_id>")
+def popup_preview(popup_id):
+    """Editor-only preview of a popup, opened on a neutral page and
+    forced visible regardless of the popup's enabled / per-device flags
+    so admins can preview drafts before enabling them.
+
+    Reuses the same site-wide popup partial as the live site (included
+    in ``frontend/base.html``): we override the ``popups`` context with
+    just this popup and set ``popup_force_open`` so the trigger JS opens
+    it on load. Visible to signed-in frontend editors only."""
+    from .models import Popup
+    if not (current_user.is_authenticated
+            and getattr(current_user, "can_edit_frontend", lambda: False)()):
+        abort(404)
+    site = _site()
+    if not site or not site.frontend_module_enabled:
+        abort(404)
+    popup = Popup.query.get_or_404(popup_id)
+    ctx = _frontend_context(site)
+    # Override the context-processor's enabled-only list with this single
+    # popup (which may be disabled) so the partial renders it.
+    ctx["popups"] = [popup]
+    return render_template("frontend/popup_preview.html",
+                           popup=popup, popup_force_open=popup.name, **ctx)
 
 
 def _sections_have_block_type(sections, block_type):

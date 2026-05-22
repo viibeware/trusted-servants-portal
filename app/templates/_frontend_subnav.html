@@ -93,6 +93,10 @@
                     or (request.endpoint == 'main.frontend_page_edit' and not _on_hp_edit) %}selected{% endif %}>
           Pages
         </option>
+        <option value="{{ url_for('main.frontend_popups') }}"
+                {% if request.endpoint in ('main.frontend_popups', 'main.frontend_popup_edit') %}selected{% endif %}>
+          Popups
+        </option>
       </optgroup>
     </select>
   </label>
@@ -185,6 +189,13 @@
          class="fe-subnav-link {% if request.endpoint == 'main.frontend_pages'
                                     or (request.endpoint == 'main.frontend_page_edit' and not _on_hp_edit) %}active{% endif %}">
         {{ icon('file-text') }}<span>Pages</span>
+      </a>
+      {# Popups — site-wide modal popups authored with the page builder
+         and fired from `#name` anchor selectors. Lives under Content
+         next to Pages since both are block-editor content surfaces. #}
+      <a href="{{ url_for('main.frontend_popups') }}"
+         class="fe-subnav-link {% if request.endpoint in ('main.frontend_popups', 'main.frontend_popup_edit') %}active{% endif %}">
+        {{ icon('message-square') }}<span>Popups</span>
       </a>
     </div>
   </nav>

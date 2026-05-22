@@ -6,6 +6,22 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-05-22
+
+### Added — Popups: site-wide modal popups built with the page builder
+
+A new **Popups** section under **Web Frontend → Content** lets admins author modal popups using the same drag-and-drop block builder as content pages, fired from `#name` anchor selectors anywhere on the public site.
+
+- **New `Popup` model** (`app/models.py`) — `name` (the trigger handle / `#` selector, unique + slugified), `title`, `blocks_json` (same section/block schema as `Page`), an `is_enabled` toggle, plus the popup's own chrome: `width` + `max_width_pct`, `height_mode` (auto/fixed) + `height`, `padding`, `bg_color` (+ optional `bg_color_dark`), `border_radius`, `shadow`, overlay (`overlay_enabled` / `overlay_color` / `overlay_opacity`), `position` (centre/top/bottom), per-device visibility (`show_desktop` / `show_mobile` / `mobile_full_width`), and behaviour (`close_on_overlay`, `show_close_button`, `auto_open` + `auto_open_delay`). The new table is created by `db.create_all()` on upgrade — no migration needed.
+- **Admin CRUD** (`app/routes.py`): list / create / edit / save / enable-disable / delete under `/tspro/frontend/popups`, plus a **Popups** entry in the Web Frontend subnav (`_frontend_subnav.html`).
+- **Builder reuses the page builder verbatim** — the editor renders the shared structure card with draggable block pills, the blue "Add block" floating palette, and the BlockEditor modal, driven by the same `page_structure.js` and `_frontend_structure_card.html` macros content pages use. `block_editor.js` gained an optional `allowedTypes` mount option so the popup palette is scoped to content blocks (the homepage-section blocks — hero / meetings / events / features / faq — and the wiki TOC are excluded).
+- **Triggers** (`templates/frontend/_popups.html`, included site-wide in `frontend/base.html`): any link to `#name`, any element with `data-popup="name"`, and a matching URL hash on load / `hashchange` open the popup; it closes via the × button, a backdrop click (when enabled), or Escape. Popups are surfaced to every public template by a `frontend` blueprint context processor; content renders through the shared `render_sections` macro so popups inherit every block style the site already ships.
+- **Editor-only preview** route (`/_preview/popup/<id>`) force-opens a popup on a neutral page so admins can preview drafts before enabling them.
+
+### Fixed — Public homepage no longer 500s when no homepage is configured
+
+`frontend/page.html` built its page-shell inline style from `page.*` even in `index()`'s no-homepage fallback (which renders with `page=None`), so the public `/` returned a 500 (`'None' has no attribute 'pad_top'`) during the brief pre-seed window on a fresh install or if the designated homepage page was deleted. The template now guards every `page.*` access and renders a friendly "no homepage configured yet" placeholder (with a *Set a homepage in Pages* shortcut for signed-in editors) instead of crashing.
+
 ## [2.4.0] — 2026-05-21
 
 ### Added — Live meeting bar updates without a page refresh

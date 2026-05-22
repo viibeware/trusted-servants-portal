@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block heading %}Popups{% endblock %}
+{% block heading_help %}Modal popups shown on the public site, triggered from <code>#name</code> links.{% endblock %}
+{% block top_actions %}
+<a class="btn" href="{{ url_for('frontend.index') }}" target="_blank" rel="noopener">View frontend ↗</a>
+<button type="button" class="btn btn-primary" data-open-modal="new-popup-modal">New popup</button>
+{% endblock %}
+{% block content %}
+
+{# ── New-popup modal ───────────────────────────────────────────────
+   Mints a popup from a display name + optional trigger handle, then
+   redirects into the editor. The handle is the `#name` selector that
+   opens the popup; left blank it's slugified from the name. #}
+<div class="modal" id="new-popup-modal" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true">
+    <form class="form" method="post" action="{{ url_for('main.frontend_popup_create') }}"
+          data-fe-skip-save-bar id="new-popup-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-head">
+        <h2>New popup</h2>
+        <button type="button" class="icon-btn" data-close>{{ icon('x') }}</button>
+      </div>
+      <div class="modal-body">
+        <label>Popup name
+          <input type="text" name="title" required maxlength="200"
+                 placeholder="e.g. Newsletter signup" autocomplete="off"
+                 data-popup-title-src>
+        </label>
+        <label>Trigger handle
+          <span class="fe-popup-handle-field">
+            <span class="fe-popup-handle-hash">#</span>
+            <input type="text" name="name" maxlength="120"
+                   placeholder="newsletter-signup" autocomplete="off"
+                   pattern="[A-Za-z0-9\- ]*" data-popup-handle>
+          </span>
+          <span class="muted smaller">Opens from any link to
+            <code data-popup-handle-preview>#newsletter-signup</code>. Leave blank to
+            auto-generate from the name.</span>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Create popup</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="fe-admin-layout">
+  {% include "_frontend_subnav.html" %}
+  <div class="fe-admin-main">
+    <section class="card">
+      <div class="card-head"><h2>All popups</h2></div>
+      {% if popups %}
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Trigger</th>
+            <th>Status</th>
+            <th class="nowrap">Updated</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in popups %}
+          <tr>
+            <td><a href="{{ url_for('main.frontend_popup_edit', popup_id=p.id) }}">{{ p.title }}</a></td>
+            <td class="nowrap"><code>#{{ p.name }}</code></td>
+            <td>
+              {% if p.is_enabled %}
+                <span class="post-chip post-chip-online">Enabled</span>
+              {% else %}
+                <span class="post-chip post-chip-draft">Disabled</span>
+              {% endif %}
+            </td>
+            <td class="nowrap muted">{{ p.updated_at.strftime('%Y-%m-%d') if p.updated_at else '' }}</td>
+            <td class="row-actions">
+              <a class="btn btn-sm" href="{{ url_for('frontend.popup_preview', popup_id=p.id) }}"
+                 target="_blank" rel="noopener"
+                 title="Preview this popup (works while disabled) — not visible to the public">Preview</a>
+              <a class="btn btn-sm" href="{{ url_for('main.frontend_popup_edit', popup_id=p.id) }}">Edit</a>
+              <form method="post" action="{{ url_for('main.frontend_popup_status', popup_id=p.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {% if p.is_enabled %}
+                  <input type="hidden" name="status" value="disabled">
+                  <button type="submit" class="btn btn-sm" title="Stop showing this popup">Disable</button>
+                {% else %}
+                  <input type="hidden" name="status" value="enabled">
+                  <button type="submit" class="btn btn-sm btn-primary" title="Show this popup on the site">Enable</button>
+                {% endif %}
+              </form>
+              <form method="post" action="{{ url_for('main.frontend_popup_delete', popup_id=p.id) }}"
+                    onsubmit="return confirm('Delete this popup? This cannot be undone.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">No popups yet. Use <b>New popup</b> to create one, then trigger it
+        from any link pointing at its <code>#handle</code>.</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<script>
+  // New-popup modal — live-preview the trigger handle as the admin
+  // types, and default the handle from the name when left blank.
+  (function () {
+    var titleEl = document.querySelector('[data-popup-title-src]');
+    var handleEl = document.querySelector('[data-popup-handle]');
+    var previewEl = document.querySelector('[data-popup-handle-preview]');
+    if (!titleEl || !handleEl || !previewEl) return;
+    function slugify(s) {
+      return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    }
+    function refresh() {
+      var raw = handleEl.value.trim() || titleEl.value.trim();
+      previewEl.textContent = '#' + (slugify(raw) || 'popup');
+    }
+    titleEl.addEventListener('input', refresh);
+    handleEl.addEventListener('input', refresh);
+    refresh();
+  })();
+</script>
+{% endblock %}

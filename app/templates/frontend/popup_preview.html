@@ -1,0 +1,15 @@
+{% extends "frontend/base.html" %}
+{% block title %}Popup preview · {{ frontend_title }}{% endblock %}
+{% block content %}
+{# Editor-only preview stage. The popup itself is rendered by the
+   site-wide frontend/_popups.html partial (included in base.html); we
+   just set the force-open flag so the trigger JS opens it on load,
+   regardless of the popup's enabled / per-device flags. This inline
+   script appears before the partial's trigger script in document order,
+   so the flag is set in time. #}
+<div class="fe-popup-preview-stage">
+  <p class="muted">Previewing popup &ldquo;{{ popup.title }}&rdquo; — visible to editors only.</p>
+  <p class="muted smaller">Triggers from <code>#{{ popup.name }}</code> on the live site.</p>
+</div>
+<script>window.__fePopupForceOpen = {{ popup.name|tojson }};</script>
+{% endblock %}

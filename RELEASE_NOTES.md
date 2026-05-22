@@ -7,7 +7,19 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.4.0 — 2026-05-21 (latest) — Live meeting bar updates on its own
+## 2.5.0 — 2026-05-22 (latest) — Popups you build like a page
+
+You can now create **popups** — modal windows that appear over your public site — using the **same drag-and-drop builder you already use for pages**.
+
+- Find them under **Web Frontend → Popups**. Click **New popup**, give it a name, and you land in the familiar builder: the same **draggable blocks** and the blue **“Add block”** button as the page editor. Drop in text, headings, images, buttons, columns, and more.
+- **Style each popup**: width and max width, auto or fixed height, padding, background colour (with a separate dark-mode colour), corner radius, and shadow. Dim the page behind it with an adjustable backdrop, and place it in the centre, at the top, or at the bottom.
+- **Control where it shows**: turn it on or off for desktop and mobile independently, and let it fill the screen width on phones.
+- **Open it from anywhere**: point any link or button at **`#yourpopupname`** — a navigation link, a button on a page, or even a shared URL ending in `#yourpopupname`. You can also have a popup **open automatically** a few seconds after the page loads.
+- **Preview before going live**: each popup has a Preview button that opens it for you even while it's disabled, so you can get it right before anyone else sees it. Visitors can close it with the × button, by clicking the dimmed background, or by pressing Escape.
+
+Also fixed: the public home page no longer shows an error in the rare case where no homepage has been chosen yet — it now shows a friendly placeholder (and a shortcut to pick a homepage if you're signed in).
+
+## 2.4.0 — 2026-05-21 — Live meeting bar updates on its own
 
 The **LIVE meeting badge** at the top of your public site now appears and disappears **automatically, without anyone needing to refresh the page**.
 
