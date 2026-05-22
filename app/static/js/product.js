@@ -49,12 +49,10 @@
   }
 
   // Theme toggle — flips data-theme on <html> and persists the choice.
-  // Default (no stored choice) follows the OS via CSS prefers-color-scheme.
+  // Dark is the default; light only when the visitor has explicitly chosen it.
   var root = document.documentElement;
   function effectiveTheme() {
-    var t = root.getAttribute("data-theme");
-    if (t === "light" || t === "dark") return t;
-    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    return root.getAttribute("data-theme") === "light" ? "light" : "dark";
   }
   document.querySelectorAll("[data-theme-toggle]").forEach(function (btn) {
     btn.addEventListener("click", function () {

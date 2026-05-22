@@ -61,20 +61,9 @@
   --shot-shadow: 0 34px 70px -36px rgba(24, 34, 90, 0.30);
   color-scheme: light;
 }
-@media (prefers-color-scheme: light) {
-  :root.pp:not([data-theme="dark"]) {
-    --ink: #f5f7fc; --ink-2: #ffffff;
-    --panel: rgba(14, 19, 48, 0.035); --panel-2: rgba(14, 19, 48, 0.06);
-    --line: rgba(14, 19, 48, 0.12);
-    --text: #0e1330; --muted: #4c5478; --muted-2: #8a90b3;
-    --grad-1: #0e1330; --grad-2: #4338ca; --grad-3: #0d9488;
-    --aurora-op: 0.42;
-    --grain-op: 0.10; --grain-blend: multiply;
-    --nav-top: rgba(255, 255, 255, 0.88); --nav-bot: rgba(255, 255, 255, 0.45);
-    --shot-shadow: 0 34px 70px -36px rgba(24, 34, 90, 0.30);
-    color-scheme: light;
-  }
-}
+/* Dark is the default for everyone — the page does NOT follow the OS theme.
+   Light is only applied when the visitor explicitly picks it via the toggle
+   (which sets data-theme="light" and persists it in localStorage). */
 
 .pp {
   margin: 0; background: var(--ink); color: var(--text);
@@ -148,22 +137,16 @@
 .pp-themetoggle { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; transition: background .2s ease; }
 .pp-themetoggle:hover { background: var(--panel-2); }
 .pp-themetoggle svg { width: 18px; height: 18px; }
-/* default (no explicit theme) follows OS; show moon on dark, sun on light */
+/* default is dark → show the moon; the sun only appears once the visitor
+   switches to light (data-theme="light"). */
 .pp-themetoggle .pp-sun { display: none; }
 :root.pp[data-theme="light"] .pp-themetoggle .pp-sun { display: block; }
 :root.pp[data-theme="light"] .pp-themetoggle .pp-moon { display: none; }
-@media (prefers-color-scheme: light) {
-  :root.pp:not([data-theme="dark"]) .pp-themetoggle .pp-sun { display: block; }
-  :root.pp:not([data-theme="dark"]) .pp-themetoggle .pp-moon { display: none; }
-}
 
-/* logo swap by theme (keyed off <html>'s data-theme via :root) */
+/* logo swap by theme (keyed off <html>'s data-theme via :root) — default dark
+   shows the white logo; light mode swaps in the brand-blue one. */
 :root.pp[data-theme="light"] .pp-logo-dark { display: none; }
 :root.pp[data-theme="light"] .pp-logo-light { display: block; }
-@media (prefers-color-scheme: light) {
-  :root.pp:not([data-theme="dark"]) .pp-logo-dark { display: none; }
-  :root.pp:not([data-theme="dark"]) .pp-logo-light { display: block; }
-}
 
 /* ── hero ───────────────────────────────────────────────────────────────── */
 .pp-hero { padding: clamp(3.5rem, 8vw, 7rem) 0 clamp(2rem, 5vw, 4rem); }
