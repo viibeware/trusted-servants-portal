@@ -17,7 +17,11 @@
 }
 
 /* ── theme tokens: dark is the base ──────────────────────────────────────── */
-.pp {
+/* NB: theme variables are declared on :root (the <html> element) ONLY, not on
+   the generic `.pp` — because `.pp` is also on <body>, and if the conditional
+   light rules matched <body> independently it would ignore the data-theme
+   toggle set on <html>. Declaring vars on :root lets <body> inherit them. */
+:root.pp {
   --brand: #6366f1;
   --brand-2: #8b5cf6;
   --teal: #2dd4bf;
@@ -45,7 +49,7 @@
 /* light overrides — applied when the user picks light OR the OS prefers light
    and they haven't forced dark. (Block intentionally duplicated; CSS can't
    share a declaration body between a media query and a plain selector.) */
-.pp[data-theme="light"] {
+:root.pp[data-theme="light"] {
   --ink: #f5f7fc; --ink-2: #ffffff;
   --panel: rgba(14, 19, 48, 0.035); --panel-2: rgba(14, 19, 48, 0.06);
   --line: rgba(14, 19, 48, 0.12);
@@ -58,7 +62,7 @@
   color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
-  .pp:not([data-theme="dark"]) {
+  :root.pp:not([data-theme="dark"]) {
     --ink: #f5f7fc; --ink-2: #ffffff;
     --panel: rgba(14, 19, 48, 0.035); --panel-2: rgba(14, 19, 48, 0.06);
     --line: rgba(14, 19, 48, 0.12);
@@ -146,19 +150,19 @@
 .pp-themetoggle svg { width: 18px; height: 18px; }
 /* default (no explicit theme) follows OS; show moon on dark, sun on light */
 .pp-themetoggle .pp-sun { display: none; }
-.pp[data-theme="light"] .pp-themetoggle .pp-sun { display: block; }
-.pp[data-theme="light"] .pp-themetoggle .pp-moon { display: none; }
+:root.pp[data-theme="light"] .pp-themetoggle .pp-sun { display: block; }
+:root.pp[data-theme="light"] .pp-themetoggle .pp-moon { display: none; }
 @media (prefers-color-scheme: light) {
-  .pp:not([data-theme="dark"]) .pp-themetoggle .pp-sun { display: block; }
-  .pp:not([data-theme="dark"]) .pp-themetoggle .pp-moon { display: none; }
+  :root.pp:not([data-theme="dark"]) .pp-themetoggle .pp-sun { display: block; }
+  :root.pp:not([data-theme="dark"]) .pp-themetoggle .pp-moon { display: none; }
 }
 
-/* logo swap by theme */
-.pp[data-theme="light"] .pp-logo-dark { display: none; }
-.pp[data-theme="light"] .pp-logo-light { display: block; }
+/* logo swap by theme (keyed off <html>'s data-theme via :root) */
+:root.pp[data-theme="light"] .pp-logo-dark { display: none; }
+:root.pp[data-theme="light"] .pp-logo-light { display: block; }
 @media (prefers-color-scheme: light) {
-  .pp:not([data-theme="dark"]) .pp-logo-dark { display: none; }
-  .pp:not([data-theme="dark"]) .pp-logo-light { display: block; }
+  :root.pp:not([data-theme="dark"]) .pp-logo-dark { display: none; }
+  :root.pp:not([data-theme="dark"]) .pp-logo-light { display: block; }
 }
 
 /* ── hero ───────────────────────────────────────────────────────────────── */

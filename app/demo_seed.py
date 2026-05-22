@@ -753,7 +753,7 @@ def _seed_pages(s, libraries, blog_news_id):
                       "body": "Cameras off is fine. Hosts keep every room secure."},
                  ]),
         ]),
-        _section("Upcoming meetings", [
+        _section("", [
             _blk("meetings", filter="next_7_days", max_count=6, group_by_day=False,
                  show_type_chip=True, show_schedule=True),
         ]),
@@ -778,6 +778,11 @@ def _seed_pages(s, libraries, blog_news_id):
         db.session.flush()
     home.blocks_json = json.dumps(home_blocks)
     home.title = FELLOWSHIP_NAME
+    # Boxed content (centered at max_width) while the hero block itself breaks
+    # out to full-bleed via the `.fe-pp .fe-hero` rule added in frontend.css —
+    # a full-width hero with comfortably centered content below.
+    home.width_mode = "boxed"
+    home.max_width = 1160
     db.session.flush()
     if s.homepage_page_id != home.id:
         s.homepage_page_id = home.id

@@ -64,6 +64,7 @@ markers and is a **no-op on a normal install**, so they're safe and easy to spot
 | `app/templates/frontend/base.html` | same include | same |
 | `app/templates/frontend/headers/classic.html` | `href="{{ home_url or url_for('frontend.index') }}"` | `home_url` is unset off-demo → falls back to `url_for` |
 | `app/templates/frontend/headers/recovery-blue.html` | same | same |
+| `app/static/css/frontend.css` | appended `.fe-pp .fe-hero` full-bleed rule (+ `overflow-x: clip`) so page-builder heroes span full width | Additive rule at EOF; only affects page-builder hero blocks |
 
 ## The bugfix
 

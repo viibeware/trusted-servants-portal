@@ -11524,3 +11524,20 @@ body.fe-popup-open { overflow: hidden; }
 @media (min-width: 769px) {
   .fe-popup-no-desktop { display: none !important; }
 }
+
+/* >>> TSP demo overlay (branch: demo — keep on merge, not on main) >>>
+   Full-bleed hero on page-builder pages: let a `hero` block break out of the
+   boxed page shell to span the viewport, while the rest of the page stays
+   centered. Scoped to `.fe-pp` so it only affects page-builder pages (not the
+   classic homepage or meeting/event detail heroes). `overflow-x: clip` guards
+   against the 1px-ish horizontal overflow that 100vw causes when a classic
+   scrollbar is present — and unlike `hidden`, `clip` doesn't break sticky. */
+body.frontend-body { overflow-x: clip; }
+.fe-pp .fe-hero {
+  width: 100vw;
+  max-width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  border-radius: 0;
+}
+/* <<< TSP demo overlay <<< */

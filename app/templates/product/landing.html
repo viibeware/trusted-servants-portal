@@ -34,7 +34,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   {# Apply saved theme before paint to avoid a flash. #}
   <script>(function(){try{var t=localStorage.getItem('pp-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
-  <title>TSP Pro — the all-in-one web portal for recovery fellowships</title>
+  <title>Trusted Servants Pro — the all-in-one web platform for recovery fellowships</title>
   <meta name="description" content="TSP Pro runs your fellowship's entire web presence — public site and admin backend — from one self-hosted app. Explore the live, fully interactive demo.">
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/product.css') }}">
@@ -83,19 +83,7 @@
       </div>
 
       <div class="pp-reveal in">
-        <div class="pp-window" role="img" aria-label="Preview of the public meeting schedule">
-          <div class="pp-window-bar">
-            <span class="pp-dot"></span><span class="pp-dot"></span><span class="pp-dot"></span>
-            <span class="pp-window-url">meridianrecovery.example/meetings</span>
-          </div>
-          <div class="pp-window-body">
-            <div class="pp-mini-head"><span>This week's meetings</span><em>● 3 live now</em></div>
-            <div class="pp-mini-row"><span class="pp-mini-time">07:00</span><span class="pp-mini-name">Sunrise Serenity</span><span class="pp-chip pp-chip-online">Online</span></div>
-            <div class="pp-mini-row"><span class="pp-mini-time">12:00</span><span class="pp-mini-name">Midday Reset</span><span class="pp-chip pp-chip-live">Live</span></div>
-            <div class="pp-mini-row"><span class="pp-mini-time">19:00</span><span class="pp-mini-name">Steps &amp; Traditions Study</span><span class="pp-chip pp-chip-hybrid">Hybrid</span></div>
-            <div class="pp-mini-row"><span class="pp-mini-time">23:00</span><span class="pp-mini-name">Late Night Lifeline</span><span class="pp-chip pp-chip-online">Online</span></div>
-          </div>
-        </div>
+        {{ shot('be-dashboard.png', 'localhost:8090/tspro · dashboard', 'The Trusted Servants Pro admin dashboard') }}
       </div>
     </div>
 
@@ -104,7 +92,7 @@
         <div class="pp-stat"><b data-count="20" data-suffix="+">20+</b><span>built-in modules, all toggleable</span></div>
         <div class="pp-stat"><b data-count="100" data-suffix="%">100%</b><span>your data — self-hosted, no per-seat fees</span></div>
         <div class="pp-stat"><b>1</b><span>command to deploy with Docker</span></div>
-        <div class="pp-stat"><b>$0</b><span>open source, SQLite-simple</span></div>
+        <div class="pp-stat"><b>Free</b><span>open source &amp; self-hosted</span></div>
       </div>
     </div>
   </section>
@@ -145,7 +133,7 @@
           </ul>
           <p style="margin-top:1.4rem"><a class="pp-btn pp-btn-ghost" href="{{ DEMO_ADMIN }}">Open the admin (admin / admin) →</a></p>
         </div>
-        <div class="pp-split-media">{{ shot('be-dashboard.png', 'localhost:8090/tspro · dashboard', 'The admin dashboard') }}</div>
+        <div class="pp-split-media">{{ shot('be-watchtower.png', 'localhost:8090/tspro/watchtower', 'Watchtower analytics') }}</div>
       </div>
     </div>
   </section>
@@ -161,7 +149,7 @@
       <div class="pp-showcase pp-stagger pp-reveal">
         <figure>{{ shot('be-frontend.png', '/tspro/frontend', 'Web Frontend admin') }}<figcaption><b>Web Frontend studio</b>Pages, branding, design tokens, navigation, footer, forms — a CMS for your whole public site.</figcaption></figure>
         <figure>{{ shot('be-meetings.png', '/tspro/meetings', 'Meetings admin') }}<figcaption><b>Meetings &amp; schedules</b>Recurring days/times, Zoom details, libraries, and public visibility per meeting.</figcaption></figure>
-        <figure>{{ shot('be-watchtower.png', '/tspro/watchtower', 'Watchtower analytics') }}<figcaption><b>Watchtower analytics</b>Privacy-first visitor metrics, 404 tracking, access requests, and IP controls.</figcaption></figure>
+        <figure>{{ shot('fe-meetings.png', 'meridianrecovery.example/meetings', 'Public meeting schedule') }}<figcaption><b>Public meeting schedule</b>Day/time grid with in-person, online &amp; hybrid badges and one-click Zoom join.</figcaption></figure>
         <figure>{{ shot('fe-library.png', 'meridianrecovery.example/library', 'Public literature library') }}<figcaption><b>Literature library</b>Curated readings, scripts, and service docs — public on the site, managed in the admin.</figcaption></figure>
       </div>
     </div>
@@ -315,7 +303,7 @@ viibeware/trusted-servants-pro/main/install.sh | sudo bash
   <!-- footer -->
   <footer class="pp-foot">
     <div class="pp-wrap pp-foot-in">
-      <div>© {{ year }} TSP&nbsp;Pro · Trusted Servant Portal. Built with Flask.</div>
+      <div>© {{ year }} Trusted&nbsp;Servants&nbsp;Pro. Built with Flask.</div>
       <nav class="pp-foot-links">
         <a href="{{ DEMO_SITE }}">Public demo</a>
         <a href="{{ DEMO_ADMIN }}">Admin demo</a>
