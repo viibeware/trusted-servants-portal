@@ -1,7 +1,8 @@
 {% extends "frontend/base.html" %}
-{%- set _ok = (status in ('confirmed', 'already')) -%}
+{%- set _ok = (status in ('confirmed', 'already', 'disavowed')) -%}
 {%- set _title = ('Removal confirmed' if (status == 'confirmed' and kind == 'removal')
                   else 'Listing updated' if (status == 'confirmed' and kind == 'update')
+                  else 'Request discarded' if status == 'disavowed'
                   else 'Already confirmed' if status == 'already'
                   else 'Link not found') -%}
 {% block title %}{{ _title }} · {{ frontend_title }}{% endblock %}
@@ -24,6 +25,8 @@
           Thanks{% if confirm_name %}, {{ confirm_name }}{% endif %} — you've been removed from the {{ frontend_title }} contact list. No further action is needed.
         {% elif status == 'confirmed' and kind == 'update' %}
           Thanks{% if confirm_name %}, {{ confirm_name }}{% endif %} — your {{ frontend_title }} listing has been updated and is live. No further action is needed.
+        {% elif status == 'disavowed' %}
+          Thanks for letting us know. That {{ 'removal' if kind == 'removal' else 'update' }} request has been discarded — nothing on your {{ frontend_title }} listing changed. To protect it, the listing is now locked against further update or removal requests for the next 7 days. If you need a change during that time, please contact us directly.
         {% elif status == 'already' %}
           This confirmation link was already used — your {{ 'removal' if kind == 'removal' else 'update' }} has already been processed.
         {% else %}

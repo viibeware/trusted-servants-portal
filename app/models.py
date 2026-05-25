@@ -1627,6 +1627,17 @@ class RecoveryContact(db.Model):
     ip_address = db.Column(db.String(64))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     approved_at = db.Column(db.DateTime)
+    # Anti-abuse on the self-service update/removal flow.
+    #  • ``last_update_request_at`` stamps when an update request was last
+    #    filed against this listing; the public form rejects a second update
+    #    within 24 h (and flags it) so a malicious actor can't spam the
+    #    listing owner with confirmation emails.
+    #  • ``requests_locked_until`` is set 7 days out when the listing owner
+    #    clicks "I didn't submit this" in a confirmation email — while it's
+    #    in the future the form refuses any update OR removal request for
+    #    this listing.
+    last_update_request_at = db.Column(db.DateTime)
+    requests_locked_until = db.Column(db.DateTime)
 
     # Self-referential link to the existing entry a pending update matched.
     matched_entry = db.relationship("RecoveryContact", remote_side=[id],
@@ -1673,6 +1684,73 @@ def log_recovery_contact(event, message, entry_name=None, actor=None, ip_address
         db.session.commit()
     except Exception:  # noqa: BLE001
         db.session.rollback()
+
+
+class RecoveryContactAbuse(db.Model):
+    """A flagged, likely-malicious self-service request against a Recovery
+    Contacts listing — surfaced in Watchtower so an admin can block the IP
+    and deal with it. Two kinds:
+
+      • ``rate_limited`` — a second update request hit the same listing
+        within 24 h. The second request's data is discarded (not ingested).
+      • ``disavowed``    — the listing owner clicked "I didn't submit this"
+        in a confirmation email. The request is discarded and the listing
+        is locked against further update/removal requests for 7 days
+        (``locked_until`` snapshots that deadline).
+
+    ``ip_address`` is the requestor's IP (the abuser), so the Watchtower
+    panel can offer a one-click block. Repeat hits from the same kind +
+    listing + IP bump ``attempt_count`` / ``last_attempt_at`` rather than
+    piling up rows. ``resolved`` lets an admin clear it once handled."""
+    __tablename__ = "recovery_contact_abuse"
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    kind = db.Column(db.String(20), nullable=False)        # 'rate_limited' | 'disavowed'
+    entry_id = db.Column(db.Integer,
+                         db.ForeignKey("recovery_contact.id", ondelete="SET NULL"))
+    entry_name = db.Column(db.String(200))                  # snapshot of the targeted listing
+    entry_email = db.Column(db.String(255))                 # snapshot
+    ip_address = db.Column(db.String(64))                   # requestor (abuser) IP
+    detail = db.Column(db.Text)                             # human-readable line
+    attempt_count = db.Column(db.Integer, nullable=False, default=1)
+    last_attempt_at = db.Column(db.DateTime, default=datetime.utcnow)
+    locked_until = db.Column(db.DateTime)                   # set for 'disavowed'
+    resolved = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    resolved_at = db.Column(db.DateTime)
+    resolved_by = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"))
+
+
+def record_recovery_contact_abuse(kind, entry, ip_address, detail, locked_until=None):
+    """Record (or bump) a Recovery Contacts abuse flag and commit. If an
+    unresolved row of the same ``kind`` already exists for this listing +
+    IP, increment its ``attempt_count`` instead of adding a duplicate.
+    Returns the row, or None on failure (best-effort — never raises)."""
+    try:
+        name = getattr(entry, "name", None)
+        email = getattr(entry, "email", None)
+        eid = getattr(entry, "id", None)
+        now = datetime.utcnow()
+        row = (RecoveryContactAbuse.query
+               .filter_by(kind=kind, entry_id=eid, ip_address=ip_address,
+                          resolved=False)
+               .first()) if eid is not None else None
+        if row is not None:
+            row.attempt_count = (row.attempt_count or 1) + 1
+            row.last_attempt_at = now
+            row.detail = detail or row.detail
+            if locked_until is not None:
+                row.locked_until = locked_until
+        else:
+            row = RecoveryContactAbuse(
+                kind=kind, entry_id=eid, entry_name=name, entry_email=email,
+                ip_address=ip_address, detail=detail,
+                attempt_count=1, last_attempt_at=now, locked_until=locked_until)
+            db.session.add(row)
+        db.session.commit()
+        return row
+    except Exception:  # noqa: BLE001
+        db.session.rollback()
+        return None
 
 
 class NotificationDismissal(db.Model):

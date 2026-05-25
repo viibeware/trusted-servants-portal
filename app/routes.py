@@ -266,6 +266,7 @@ def inject_globals():
     pending_posts_count = 0
     pending_stories_count = 0
     pending_recovery_contacts_count = 0
+    recovery_contacts_abuse_count = 0
     try:
         if current_user.is_authenticated and current_user.is_admin():
             pending_access_count = AccessRequest.query.filter_by(
@@ -281,6 +282,14 @@ def inject_globals():
                 locked_accounts_count = len(currently_locked_usernames())
             except Exception:
                 locked_accounts_count = 0
+            # Flagged Recovery Contacts update/removal requests (rate-limited
+            # 2nd updates + owner-disavowed requests) drive a red attention
+            # chip on the Watchtower quicknav so admins catch abuse fast.
+            try:
+                from . import watchtower as _wt
+                recovery_contacts_abuse_count = _wt.recovery_contact_abuse_count()
+            except Exception:
+                recovery_contacts_abuse_count = 0
         # Pending Announcements/Events submissions chip. Shown to anyone
         # who can act on the holding tank — same gate the Posts route
         # uses to enable the "approve" action. Computed outside the
@@ -315,6 +324,7 @@ def inject_globals():
         pending_posts_count = 0
         pending_stories_count = 0
         pending_recovery_contacts_count = 0
+        recovery_contacts_abuse_count = 0
     try:
         otp = _get_otp_email()
     except Exception:
@@ -337,6 +347,7 @@ def inject_globals():
             "pending_posts_count": pending_posts_count,
             "pending_stories_count": pending_stories_count,
             "pending_recovery_contacts_count": pending_recovery_contacts_count,
+            "recovery_contacts_abuse_count": recovery_contacts_abuse_count,
             "notifications_count": notifications_count, "otp": otp}
 
 
@@ -2849,7 +2860,7 @@ def _require_recovery_contacts_admin():
 @login_required
 def recovery_contacts():
     _require_recovery_contacts_admin()
-    from .models import RecoveryContactLog
+    from .models import RecoveryContactLog, RecoveryContactAbuse
     s = _get_site_setting()
     pending = (RecoveryContact.query.filter_by(approved=False)
                .order_by(RecoveryContact.created_at.desc()).all())
@@ -2858,8 +2869,23 @@ def recovery_contacts():
     logs = (RecoveryContactLog.query
             .order_by(RecoveryContactLog.created_at.desc(), RecoveryContactLog.id.desc())
             .limit(60).all())
+    # Per-listing abuse flags (unresolved) so the published table can mark
+    # records that drew malicious update/removal requests. Maps entry_id →
+    # {"kinds": set, "count": n} — the listing's own lock state is read off
+    # the row's ``requests_locked_until``.
+    abuse_by_entry = {}
+    try:
+        for a in (RecoveryContactAbuse.query
+                  .filter(RecoveryContactAbuse.resolved.is_(False),
+                          RecoveryContactAbuse.entry_id.isnot(None)).all()):
+            slot = abuse_by_entry.setdefault(a.entry_id, {"kinds": set(), "count": 0})
+            slot["kinds"].add(a.kind)
+            slot["count"] += int(a.attempt_count or 1)
+    except Exception:  # noqa: BLE001
+        abuse_by_entry = {}
     return render_template("recovery_contacts.html", site=s,
-                           pending=pending, approved=approved, logs=logs)
+                           pending=pending, approved=approved, logs=logs,
+                           abuse_by_entry=abuse_by_entry, now=datetime.utcnow())
 
 
 @bp.route("/recovery-contacts/add", methods=["POST"])
@@ -14187,6 +14213,7 @@ def watchtower():
         active_sess=wt.active_sessions(minutes=60),
         system=wt.system_snapshot(),
         blocked=wt.blocked_ips(active_only=True),
+        rc_abuse=wt.recovery_contact_abuse(active_only=True, limit=50),
     )
 
 
@@ -14469,6 +14496,23 @@ def watchtower_ban_ip():
     else:
         flash("Couldn't block — invalid input.", "danger")
     return redirect(request.form.get("return_url") or url_for("main.watchtower_access"))
+
+
+@bp.route("/watchtower/rc-abuse/<int:aid>/resolve", methods=["POST"])
+@admin_required
+def watchtower_rc_abuse_resolve(aid):
+    """Mark a flagged Recovery Contacts update/removal request handled so it
+    drops off the overview panel and the attention chip."""
+    from . import watchtower as wt, activity
+    ok = wt.resolve_rc_abuse(aid, current_user.id)
+    if ok:
+        activity.log("watchtower.rc_abuse_resolve",
+                     entity_type="recovery_contact_abuse", entity_id=aid,
+                     summary="Resolved a flagged Recovery Contacts request")
+        flash("Marked the flagged request as handled.", "success")
+    else:
+        flash("That flag was already cleared.", "info")
+    return redirect(request.form.get("return_url") or url_for("main.watchtower"))
 
 
 @bp.route("/watchtower/unban-ip/<int:bid>", methods=["POST"])

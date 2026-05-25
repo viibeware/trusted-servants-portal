@@ -182,7 +182,7 @@
                 <input type="checkbox" name="wants_update" value="1">
                 <span>I'm updating my existing entry</span>
               </label>
-              <p class="muted smaller">Already on the list? Use <b>the email on your current listing</b> and check this — we'll send you a confirmation link. <b>Click it and your listing updates automatically</b>, no admin approval needed.</p>
+              <p class="muted smaller">Already on the list? Use <b>the email on your current listing</b> and check this — we'll send you a confirmation link. <b>Click it and your listing updates automatically</b>, no admin approval needed. You can only update a listing <b>once every 24 hours</b>.</p>
             </fieldset>
 
             <fieldset class="fe-rc-prefs fe-rc-remove">
@@ -206,6 +206,9 @@
             </div>
             <p class="muted smaller fe-submission-fineprint fe-contact-fineprint">
               Entries appear once an admin approves them. Required fields are marked <span class="req">*</span>.
+            </p>
+            <p class="muted smaller fe-rc-help">
+              <a href="{{ url_for('frontend.contact') }}">Need help?</a>
             </p>
           </form>
         </div>

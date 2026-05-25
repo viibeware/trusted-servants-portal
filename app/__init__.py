@@ -1848,7 +1848,11 @@ def _migrate_sqlite(app):
                          ("removal_confirmed_at", "DATETIME"),
                          ("contact_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
                          ("contact_count", "INTEGER NOT NULL DEFAULT 0"),
-                         ("matched_entry_id", "INTEGER REFERENCES recovery_contact(id) ON DELETE SET NULL")):
+                         ("matched_entry_id", "INTEGER REFERENCES recovery_contact(id) ON DELETE SET NULL"),
+                         # Anti-abuse on the self-service update/removal flow
+                         # (24 h update rate-limit + 7-day disavow lock).
+                         ("last_update_request_at", "DATETIME"),
+                         ("requests_locked_until", "DATETIME")):
             add("recovery_contact", col, ddl)
         for col, ddl in (("kind", "VARCHAR(16) NOT NULL DEFAULT 'link'"),
                          ("button_style", "VARCHAR(16) NOT NULL DEFAULT 'pill'"),

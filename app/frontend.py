@@ -4241,10 +4241,12 @@ def recovery_contacts_submit():
     admin knows there's an entry awaiting review. The submitter picks a
     starting phone/email display preference; the admin can override it.
     """
+    from datetime import datetime as _dt, timedelta as _td
     from flask import flash
     from .auth import _verify_turnstile
     from .mail import send_mail
-    from .models import db as _db, RecoveryContact, log_recovery_contact
+    from .models import (db as _db, RecoveryContact, log_recovery_contact,
+                         record_recovery_contact_abuse)
 
     site = _site()
     gate = _frontend_gate(site)
@@ -4309,6 +4311,44 @@ def recovery_contacts_submit():
                     matched_id = cand.id
                     break
 
+    # ── Anti-abuse on the self-service update/removal flow ──────────────
+    # Both checks need the matched (target) listing + the requestor's IP.
+    target = RecoveryContact.query.get(matched_id) if matched_id else None
+    now = _dt.utcnow()
+    req_ip = (request.remote_addr or "")[:64]
+    if needs_confirm and target is not None:
+        # 7-day disavow lock — refuses BOTH update and removal requests
+        # after the listing owner reported a prior request as not theirs.
+        if target.requests_locked_until and target.requests_locked_until > now:
+            kind_word = "removal" if wants_removal else "update"
+            record_recovery_contact_abuse(
+                "disavowed", target, req_ip,
+                f"Blocked {kind_word} request while the listing is locked "
+                "(owner previously reported a request as not theirs).",
+                locked_until=target.requests_locked_until)
+            log_recovery_contact(
+                "request_blocked",
+                f"{kind_word.capitalize()} request blocked — listing locked after a disavowed request",
+                entry_name=target.name, actor="Visitor", ip_address=req_ip)
+            flash("This listing is temporarily locked and can't accept update or "
+                  "removal requests right now. If this is your listing, please "
+                  "contact us directly.", "danger")
+            return redirect(url_for("frontend.recovery_contacts"))
+        # 24-hour update rate-limit (updates only). Discard the 2nd update
+        # — its data is never ingested — and flag it.
+        if (wants_update and target.last_update_request_at
+                and (now - target.last_update_request_at) < _td(hours=24)):
+            record_recovery_contact_abuse(
+                "rate_limited", target, req_ip,
+                "Second update request within 24 hours — discarded.")
+            log_recovery_contact(
+                "update_rate_limited",
+                "Update request blocked — submitted more than once in 24 hours",
+                entry_name=target.name, actor="Visitor", ip_address=req_ip)
+            flash("You can only request an update to a listing once every 24 hours. "
+                  "Please wait and try again later.", "danger")
+            return redirect(url_for("frontend.recovery_contacts"))
+
     # Update + removal are both double opt-in: stash a confirmation token
     # and email the submitter a link. Clicking it auto-applies the change
     # (no admin approval). The request still shows in the admin panel so
@@ -4331,31 +4371,45 @@ def recovery_contacts_submit():
     _db.session.add(entry)
     _db.session.commit()
 
+    # Stamp the update rate-limit clock on the matched listing so a second
+    # update within 24 h is rejected above.
+    if wants_update and target is not None:
+        target.last_update_request_at = now
+        _db.session.commit()
+
     site_label = (site.frontend_title or "Trusted Servants")
 
     if needs_confirm:
-        # Email the submitter a confirmation link (the opt-in mechanism).
+        # Email the submitter a confirmation link (the opt-in mechanism)
+        # plus a "this wasn't me" link that discards the request and locks
+        # the listing against further requests for 7 days.
         if site.smtp_host and email:
             try:
                 confirm_url = url_for("frontend.recovery_contacts_confirm",
                                       token=confirm_token, _external=True)
+                disavow_url = url_for("frontend.recovery_contacts_disavow",
+                                      token=confirm_token, _external=True)
             except Exception:  # noqa: BLE001
-                confirm_url = (request.url_root.rstrip("/")
-                               + "/contactlist/confirm/" + confirm_token)
+                _root = request.url_root.rstrip("/")
+                confirm_url = _root + "/contactlist/confirm/" + confirm_token
+                disavow_url = _root + "/contactlist/disavow/" + confirm_token
             if wants_removal:
                 subj = "Confirm your removal request"
                 msg = [f"Hi {name},", "",
                        f"We received a request to remove you from the {site_label} Recovery Contacts list.",
                        "Click the link below to confirm — you'll be removed automatically:", "",
-                       confirm_url, "",
-                       "If you didn't request this, you can ignore this email — nothing will change."]
+                       confirm_url]
             else:
                 subj = "Confirm your listing update"
                 msg = [f"Hi {name},", "",
                        f"We received an update to your {site_label} Recovery Contacts listing.",
                        "Click the link below to confirm — your listing updates automatically:", "",
-                       confirm_url, "",
-                       "If you didn't request this, you can ignore this email — nothing will change."]
+                       confirm_url]
+            msg += ["", "Didn't request this?",
+                    "Someone may have submitted it without your permission. Click below to "
+                    "report it — the request will be discarded and your listing locked "
+                    "against further changes for 7 days:", "",
+                    disavow_url]
             send_mail(site, email, subj, "\n".join(msg))
         if wants_removal:
             success_msg = ("Thanks — we've emailed you a confirmation link. Click it to confirm, "
@@ -4487,6 +4541,72 @@ def _render_rc_confirm(site, status, kind, name):
     ctx = _frontend_context(site)
     return render_template("frontend/recovery_contacts_confirm.html",
                            status=status, kind=kind, confirm_name=name, **ctx)
+
+
+@bp.route("/contactlist/disavow/<token>")
+def recovery_contacts_disavow(token):
+    """The "I didn't submit this" link in a confirmation email. Discards
+    the pending update/removal request without applying it, locks the
+    matched listing against further update/removal requests for 7 days,
+    and records the requestor's IP as a flagged abuse event so an admin
+    can block it from Watchtower."""
+    from types import SimpleNamespace
+    from datetime import datetime as _dt, timedelta as _td
+    from .models import (db as _db, RecoveryContact, log_recovery_contact,
+                         record_recovery_contact_abuse)
+    from .mail import send_mail
+    site = _site()
+    if not site:
+        abort(404)
+    entry = RecoveryContact.query.filter_by(removal_token=token).first() if token else None
+    if entry is None or not (entry.wants_update or entry.wants_removal):
+        return _render_rc_confirm(site, status="invalid", kind=None, name=None)
+
+    kind = "removal" if entry.wants_removal else "update"
+    name = entry.name
+    if entry.removal_confirmed_at:
+        # Already confirmed/applied — too late to disavow.
+        return _render_rc_confirm(site, status="already", kind=kind, name=name)
+
+    target = entry.matched_entry
+    req_ip = (entry.ip_address or "")        # IP that filed the request
+    snap_email = entry.email
+    lock_until = _dt.utcnow() + _td(days=7)
+
+    if target is not None:
+        target.requests_locked_until = lock_until
+    # Discard the pending request — never apply it.
+    _db.session.delete(entry)
+    _db.session.commit()
+
+    abuse_target = target if target is not None else SimpleNamespace(
+        id=None, name=name, email=snap_email)
+    record_recovery_contact_abuse(
+        "disavowed", abuse_target, req_ip,
+        f"Listing owner reported a {kind} request as not theirs — request "
+        "discarded; listing locked against changes for 7 days.",
+        locked_until=lock_until)
+    log_recovery_contact(
+        "disavowed",
+        f"{kind.capitalize()} request reported as not submitted by the owner — "
+        "discarded; listing locked for 7 days",
+        entry_name=name, actor="Visitor", ip_address=req_ip)
+
+    # Optional admin alert (reuses the removal-alerts toggle).
+    recipients = (getattr(site, "recovery_contacts_to", None)
+                  or getattr(site, "access_request_to", None) or "").strip()
+    if getattr(site, "recovery_contacts_removal_alerts", False) and site.smtp_host and recipients:
+        site_label = (site.frontend_title or "Trusted Servants")
+        send_mail(site, recipients,
+                  f"Recovery Contacts: disavowed {kind} request — {name}",
+                  "\n".join([
+                      f"A {kind} request for the {site_label} Recovery Contacts "
+                      f"listing \"{name}\" was reported as not submitted by the owner.",
+                      "", f"Requestor IP: {req_ip or 'unknown'}",
+                      "The request has been discarded and the listing locked against "
+                      "further update/removal requests for 7 days.",
+                      "", "Open Watchtower to review it and block the IP if needed."]))
+    return _render_rc_confirm(site, status="disavowed", kind=kind, name=name)
 
 
 @bp.route("/contactlist/contact", methods=["POST"])

@@ -190,7 +190,11 @@
       <tbody>
         {% for e in approved %}
         <tr>
-          <td data-label="Name">{{ e.name }}{% if e.available_to_sponsor %} <span class="rc-badge rc-badge-sponsor">Sponsor</span>{% endif %}{% if e.contact_enabled %} <span class="rc-badge rc-badge-contact" title="Contacted {{ e.contact_count }} time{{ '' if e.contact_count == 1 else 's' }} via the site">{{ icon('mail') }} {{ e.contact_count }}</span>{% endif %}</td>
+          <td data-label="Name">{{ e.name }}{% if e.available_to_sponsor %} <span class="rc-badge rc-badge-sponsor">Sponsor</span>{% endif %}{% if e.contact_enabled %} <span class="rc-badge rc-badge-contact" title="Contacted {{ e.contact_count }} time{{ '' if e.contact_count == 1 else 's' }} via the site">{{ icon('mail') }} {{ e.contact_count }}</span>{% endif %}
+            {%- set _ab = (abuse_by_entry or {}).get(e.id) -%}
+            {%- if _ab %} <span class="rc-badge rc-badge-abuse" title="{{ _ab.count }} flagged update/removal request{{ '' if _ab.count == 1 else 's' }} — review in Watchtower">{{ icon('alert-triangle') }} Flagged</span>{% endif -%}
+            {%- if e.requests_locked_until and now and e.requests_locked_until > now %} <span class="rc-badge rc-badge-locked" title="A request was reported as not submitted by the owner — update/removal requests are blocked until this date">{{ icon('lock') }} Locked until {{ e.requests_locked_until|fmt_site_local("%b %-d") }}</span>{% endif -%}
+          </td>
           <td data-label="Phone" class="{% if not (e.phone and e.show_phone) %}muted{% endif %}">{{ e.phone or '—' }}</td>
           <td data-label="Show phone">
             {% if e.phone %}
@@ -257,13 +261,15 @@
       'update_requested':'update', 'update_confirmed':'update', 'update_applied':'update', 'edited':'update',
       'removal_requested':'removal', 'removal_confirmed':'removal', 'removal_applied':'removal',
       'dismissed':'removal', 'deleted':'removal',
-      'approved':'ok', 'unapproved':'muted', 'visibility':'muted', 'contacted':'contact'} -%}
+      'approved':'ok', 'unapproved':'muted', 'visibility':'muted', 'contacted':'contact',
+      'update_rate_limited':'abuse', 'request_blocked':'abuse', 'disavowed':'abuse'} -%}
     {%- set _log_icon = {
       'submitted':'user-plus', 'manual_add':'user-plus',
       'update_requested':'rotate-cw', 'update_confirmed':'rotate-cw', 'update_applied':'rotate-cw', 'edited':'pencil',
       'removal_requested':'trash', 'removal_confirmed':'trash', 'removal_applied':'trash',
       'dismissed':'x', 'deleted':'trash',
-      'approved':'check-circle', 'unapproved':'eye-off', 'visibility':'eye', 'contacted':'mail'} -%}
+      'approved':'check-circle', 'unapproved':'eye-off', 'visibility':'eye', 'contacted':'mail',
+      'update_rate_limited':'alert-triangle', 'request_blocked':'lock', 'disavowed':'shield'} -%}
     <ul class="rc-log">
       {% for l in logs %}
       <li class="rc-log-row">

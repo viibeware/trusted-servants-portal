@@ -59,6 +59,7 @@
   /* Contact-only listings (phone + email hidden, but reachable via the
      site's "Contact me" button) — note that across the phone/email span. */
   .c-contact { font-style: italic; color: #475569; font-size: 9.5pt; }
+  .c-contact a { text-decoration: none; }
   .c-contact b { font-style: normal; color: #0b5cff; }
   .empty { margin-top: 28px; color: #64748b; font-size: 11pt; text-align: center; }
 </style>
@@ -91,7 +92,7 @@
       <tr>
         <td class="c-name">{{ e.name }}{% if e.available_to_sponsor %}<span class="sponsor-tag">SPONSOR</span>{% endif %}</td>
         {% if e.contact_enabled and not e.public_phone and not e.public_email %}
-        <td class="c-contact" colspan="2">Contact through the site{% if contact_url %} — <b>{{ contact_url }}</b>{% endif %}</td>
+        <td class="c-contact" colspan="2">Contact through the site{% if contact_url %} — <a href="{{ contact_url }}"><b>{{ contact_url|replace('https://', '')|replace('http://', '') }}</b></a>{% endif %}</td>
         {% else %}
         <td class="c-phone">{{ e.public_phone or '' }}{% if not e.public_phone %}<span class="muted">—</span>{% endif %}</td>
         <td class="c-email">{{ e.public_email or '' }}{% if not e.public_email %}<span class="muted">—</span>{% endif %}</td>

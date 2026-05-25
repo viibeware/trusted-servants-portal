@@ -9906,6 +9906,7 @@ html[data-theme="dark"] [style*="--tpl-bg-dark"] {
   font-size: 1rem;
 }
 .fe-contact-fineprint { text-align: center; }
+.fe-rc-help { text-align: center; margin-top: 0.35rem; }
 
 /* Dark-mode swap — section bg falls to the page-bg token, card swaps
    to the dark surface token, blurred blobs lift in opacity so they

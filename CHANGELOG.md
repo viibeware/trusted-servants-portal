@@ -6,6 +6,34 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.7.1] — 2026-05-25
+
+### Added — Recovery Contacts: anti-abuse on self-service update/removal
+
+Hardens the public update/removal flow against malicious requests aimed at a listing's owner, and surfaces what it catches in Watchtower.
+
+- **24-hour update rate-limit** — a second update request against the same listing within 24 h is rejected with a "wait 24 hours" message; the second submission's data is **never ingested**, and the attempt is flagged. Tracked via `RecoveryContact.last_update_request_at`. The "I'm updating my existing entry" block now states the once-per-24h limit.
+- **"I didn't submit this" link** — every update/removal confirmation email now carries a second link beside the confirm link. Clicking it discards the pending request and **locks the listing against any update/removal request for 7 days** (`RecoveryContact.requests_locked_until`); the confirmation page reports the request was discarded. While locked, both update and removal requests are refused.
+- **Watchtower panel + attention chip** — a "Recovery Contacts · flagged requests" panel on the Watchtower **Overview** tab lists each flagged request (rate-limited 2nd update or owner-disavowed) with the requestor's IP, a one-click **Block IP** (reusing the IP blocklist), and **Resolve**. Unresolved flags drive a red attention chip on the Watchtower sidebar quicknav and an anomaly callout. Listings with flags/locks also show **Flagged** / **Locked until …** badges in the Recovery Contacts admin table.
+- **Data model** — new `RecoveryContactAbuse` table (kind, targeted listing snapshot, requestor IP, attempt count, lock deadline, resolved state) + a `record_recovery_contact_abuse()` helper that bumps an existing unresolved row instead of duplicating. New `recovery_contact` columns patched in via `_migrate_sqlite()`; the abuse table is created by `db.create_all()`. New audit-log events: `update_rate_limited`, `disavowed`, `request_blocked`.
+
+### Added — Recovery Contacts form & directory refinements
+
+- **"Contact me by email through the site" is on by default**, and is **force-checked + locked** whenever a member hides both their phone and email — so there's always a way to reach them.
+- **"Need help?" link** at the foot of the form, pointing to the public `/contact` page.
+- The **"available to sponsor"** checkbox now sits below the "contact me by email" option.
+
+### Changed — Recovery Contacts polish
+
+- **Directory cards adopt the Primary card design tokens** (`--fe-color-card-primary-bg/border`, plus the `-dark` variants) and join the shared `.fe-card-primary` shadow/hover aggregator, so they match meeting/submission cards in every theme and dark mode.
+- **Pale-green tint** on the "I'm updating my existing entry" block (mirrors the pale-pink removal block); checking **"Remove me from the list"** now greys out and disables every other field except Name + Email.
+- **PDF**: contact-only listings (phone + email both hidden) now print **"Contact through the site — <site>/contactlist"** as a clickable link — the visible text drops the `https://` while the link still targets the full `https://` URL.
+- Removal-block copy now ends "Use the email from your listing."
+
+### Fixed — Recovery Contacts live search
+
+- Typing in the directory search now actually **hides non-matching cards** until the box is cleared — the card's `display: flex` had been overriding the `[hidden]` attribute, so excluded entries stayed visible.
+
 ## [2.7.0] — 2026-05-25
 
 ### Added — Recovery Contacts module

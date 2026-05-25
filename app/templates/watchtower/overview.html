@@ -15,9 +15,81 @@
       <strong>{{ a.title }}</strong>
       <span class="muted small"> · {{ a.detail }}</span>
     </div>
-    <a class="wt-anomaly-action" href="{{ url_for('main.watchtower_access') }}">Review →</a>
+    <a class="wt-anomaly-action" href="{% if a.anchor %}{{ url_for('main.watchtower') }}#{{ a.anchor }}{% else %}{{ url_for('main.watchtower_access') }}{% endif %}">Review →</a>
   </div>
   {% endfor %}
+</section>
+{% endif %}
+
+{# ───────── Recovery Contacts · flagged update/removal requests ───────── #}
+{% if rc_abuse %}
+<section class="card wt-rc-abuse-card" id="wt-rc-abuse">
+  <div class="card-head">
+    <h2>Recovery Contacts · flagged requests</h2>
+    <span class="muted smaller">{{ rc_abuse|length }} need{{ '' if rc_abuse|length == 1 else 's' }} review</span>
+  </div>
+  <p class="muted small wt-rc-abuse-lead">
+    Likely-malicious self-service requests: a second update within 24&nbsp;hours
+    (discarded, not applied) or a request the listing owner reported as
+    <em>“I didn't submit this”</em> (discarded; that listing is locked for 7&nbsp;days).
+    Block the requestor's IP to stop further attempts.
+  </p>
+  <div class="wt-ip-table-scroll">
+  <table class="tbl wt-rc-abuse-table">
+    <thead><tr>
+      <th>Listing</th><th>Type</th><th>Requestor IP</th><th>Attempts</th>
+      <th>Last seen</th><th>Listing lock</th><th class="wt-rc-abuse-actcol"></th>
+    </tr></thead>
+    <tbody>
+      {% for r in rc_abuse %}
+      <tr>
+        <td>
+          <div class="wt-rc-abuse-name">{{ r.entry_name or '—' }}</div>
+          {% if r.entry_email %}<div class="muted small mono">{{ r.entry_email }}</div>{% endif %}
+        </td>
+        <td>
+          {% if r.kind == 'disavowed' %}
+          <span class="badge badge-danger">Disavowed</span>
+          {% else %}
+          <span class="badge badge-warning">Rate-limited</span>
+          {% endif %}
+        </td>
+        <td class="mono">{{ r.ip or '—' }}{% if r.blocked %} <span class="badge badge-danger">blocked</span>{% endif %}</td>
+        <td>{{ r.attempts }}</td>
+        <td class="muted small">{{ r.last_attempt.strftime('%b %d, %H:%M') if r.last_attempt else '—' }}</td>
+        <td class="muted small">
+          {% if r.locked %}Locked until {{ r.locked_until.strftime('%b %d') }}{% else %}—{% endif %}
+        </td>
+        <td class="wt-rc-abuse-actions">
+          {% if r.ip %}
+            {% if r.blocked %}
+            <form method="post" action="{{ url_for('main.watchtower_unban_ip', bid=r.block_id) }}" style="display:inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="return_url" value="{{ url_for('main.watchtower') }}#wt-rc-abuse">
+              <button class="btn btn-sm btn-secondary">Unblock IP</button>
+            </form>
+            {% else %}
+            <form method="post" action="{{ url_for('main.watchtower_ban_ip') }}" style="display:inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="ip" value="{{ r.ip }}">
+              <input type="hidden" name="reason" value="Malicious Recovery Contacts {{ r.kind }} request ({{ r.entry_name }})">
+              <input type="hidden" name="ttl_hours" value="0">
+              <input type="hidden" name="return_url" value="{{ url_for('main.watchtower') }}#wt-rc-abuse">
+              <button class="btn btn-sm btn-danger">Block IP</button>
+            </form>
+            {% endif %}
+          {% endif %}
+          <form method="post" action="{{ url_for('main.watchtower_rc_abuse_resolve', aid=r.id) }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="return_url" value="{{ url_for('main.watchtower') }}#wt-rc-abuse">
+            <button class="btn btn-sm btn-secondary">Resolve</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
 </section>
 {% endif %}
 

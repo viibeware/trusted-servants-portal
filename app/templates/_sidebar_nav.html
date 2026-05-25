@@ -33,6 +33,7 @@
        class="{% if it.active %}active{% endif %}{% if it.is_action %} sidebar-action{% endif %}">
       {{ it.label }}{% if it.is_external %} ↗{% endif %}
       {%- if it.key == 'watchtower' and pending_access_count %}<span class="nav-badge" title="Pending access requests">{{ pending_access_count }}</span>{% endif -%}
+      {%- if it.key == 'watchtower' and recovery_contacts_abuse_count %}<span class="nav-badge nav-badge-danger" title="Flagged Recovery Contacts requests — review in Watchtower">{{ recovery_contacts_abuse_count }}</span>{% endif -%}
       {%- if it.key == 'contact_form' and unread_contact_count %}<span class="nav-badge" title="Unread contact-form messages">{{ unread_contact_count }}</span>{% endif -%}
       {%- if it.key == 'posts' and pending_posts_count %}<span class="nav-badge" title="Submissions awaiting review">{{ pending_posts_count }}</span>{% endif -%}
       {%- if it.key == 'stories' and pending_stories_count %}<span class="nav-badge" title="Story submissions awaiting review">{{ pending_stories_count }}</span>{% endif -%}

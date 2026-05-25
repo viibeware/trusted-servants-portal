@@ -128,7 +128,7 @@
         {% endif %}
       {% endif %}
       {% if current_user.is_admin() %}
-      {%- set _watchtower_total = (pending_access_count or 0) + (locked_accounts_count or 0) -%}
+      {%- set _watchtower_total = (pending_access_count or 0) + (locked_accounts_count or 0) + (recovery_contacts_abuse_count or 0) -%}
       <a class="sidebar-quicknav-btn sidebar-quicknav-watchtower{% if request.endpoint and 'watchtower' in request.endpoint %} is-active{% endif %}"
          href="{{ url_for('main.watchtower') }}"
          title="Watchtower — security, access requests, deletions, and user activity">
@@ -136,6 +136,9 @@
         <span class="sidebar-quicknav-label">Watchtower</span>
         {% if _watchtower_total %}
         <span class="sidebar-quicknav-chips" aria-label="{{ _watchtower_total }} item{{ 's' if _watchtower_total != 1 else '' }} need attention">
+          {% if recovery_contacts_abuse_count %}
+          <span class="nav-badge nav-badge-danger" title="{{ recovery_contacts_abuse_count }} flagged Recovery Contacts request{{ 's' if recovery_contacts_abuse_count != 1 else '' }}">{{ recovery_contacts_abuse_count }}</span>
+          {% endif %}
           {% if pending_access_count %}
           <span class="nav-badge nav-badge-warn" title="{{ pending_access_count }} pending access request{{ 's' if pending_access_count != 1 else '' }}">{{ pending_access_count }}</span>
           {% endif %}

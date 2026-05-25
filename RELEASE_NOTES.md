@@ -7,7 +7,18 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.7.0 — 2026-05-25 (latest) — Recovery Contacts: a self-service member directory
+## 2.7.1 — 2026-05-25 (latest) — Recovery Contacts: abuse protection + polish
+
+Builds on the new **Recovery Contacts** directory with protection against malicious "update" and "remove" requests, plus a round of refinements.
+
+- **No more spammed listing owners.** Someone can only request an update to a listing **once every 24 hours** — a second attempt is turned away and never applied. The form now tells people about this limit.
+- **"I didn't submit this."** Every update/removal confirmation email now has a second link for the listing's owner to click if they didn't make the request. One click throws the request away and **locks that listing against any changes for 7 days**.
+- **A new Watchtower view.** Flagged requests show up on the Watchtower **Overview** with the requestor's IP address and one-click **Block IP** + **Resolve** buttons, a red alert badge on the Watchtower button so you notice right away, and **Flagged / Locked** markers on the affected listings in the Recovery Contacts page.
+- **Form refinements:** the "let people contact me by email through the site" option is now on by default (and stays on automatically if someone hides both their phone and email), a **"Need help?"** link sits at the bottom of the form, and the layout/copy got small clarity tweaks.
+- **PDF:** listings reachable only through the site now print a tidy, clickable link to your contact page (the printed text drops the `https://` but the link still works).
+- **Fixed:** the directory's live search now properly hides the entries that don't match what you've typed.
+
+## 2.7.0 — 2026-05-25 — Recovery Contacts: a self-service member directory
 
 A new **Recovery Contacts** module lets members add themselves to a shared directory and reach each other directly — turn it on under **Web Frontend → Forms → Recovery Contacts**. Once enabled, your public page lives at **`/contactlist`** and you manage entries under **Recovery Contacts** in the dashboard.
 

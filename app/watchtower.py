@@ -23,7 +23,7 @@ from sqlalchemy import func, or_
 
 from .models import (db, User, ActivityLog, LoginSession, LoginFailure,
                      VisitorEvent, NotFoundEvent, DeletedFile, AccessRequest,
-                     IPBlock)
+                     IPBlock, RecoveryContactAbuse)
 
 
 # ─── KPI tiles ───────────────────────────────────────────────────
@@ -288,6 +288,16 @@ def anomaly_signals():
             "detail": f"{int(top[1])} failed login attempts from a single IP in the last 24 hours.",
         })
 
+    rc_abuse = recovery_contact_abuse_count()
+    if rc_abuse:
+        out.append({
+            "level": "warn",
+            "title": "Flagged Recovery Contacts requests",
+            "detail": (f"{rc_abuse} suspicious update/removal request"
+                       f"{'s' if rc_abuse != 1 else ''} flagged — review and block below."),
+            "anchor": "wt-rc-abuse",
+        })
+
     return out
 
 
@@ -357,6 +367,67 @@ def blocked_ips(active_only=True):
         q = q.filter(or_(IPBlock.expires_at.is_(None),
                          IPBlock.expires_at > now))
     return q.order_by(IPBlock.blocked_at.desc()).all()
+
+
+# ─── Recovery Contacts abuse (self-service update/removal flow) ───
+def recovery_contact_abuse_count():
+    """Number of unresolved Recovery Contacts abuse flags — drives the
+    overview panel header and the Watchtower sidebar chip. Read-only and
+    cheap (indexed ``resolved`` column), safe to call per request."""
+    try:
+        return int(db.session.query(func.count(RecoveryContactAbuse.id))
+                   .filter(RecoveryContactAbuse.resolved.is_(False)).scalar() or 0)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def recovery_contact_abuse(active_only=True, limit=50):
+    """Flagged update/removal requests for the overview panel. Each row is
+    joined with the IP blocklist so the panel knows whether the requestor's
+    IP is already blocked. Newest activity first. Returns a list of dicts."""
+    q = RecoveryContactAbuse.query
+    if active_only:
+        q = q.filter(RecoveryContactAbuse.resolved.is_(False))
+    rows = (q.order_by(RecoveryContactAbuse.last_attempt_at.desc().nullslast(),
+                       RecoveryContactAbuse.created_at.desc())
+            .limit(limit).all())
+    if not rows:
+        return []
+    now = datetime.utcnow()
+    ips = [r.ip_address for r in rows if r.ip_address]
+    blocks = ({b.ip: b for b in IPBlock.query.filter(IPBlock.ip.in_(ips)).all()}
+              if ips else {})
+    out = []
+    for r in rows:
+        blk = blocks.get(r.ip_address)
+        active = bool(blk and (blk.expires_at is None or blk.expires_at > now))
+        out.append({
+            "id": r.id,
+            "kind": r.kind,
+            "entry_name": r.entry_name,
+            "entry_email": r.entry_email,
+            "ip": r.ip_address,
+            "detail": r.detail,
+            "attempts": int(r.attempt_count or 1),
+            "last_attempt": r.last_attempt_at or r.created_at,
+            "locked_until": r.locked_until,
+            "locked": bool(r.locked_until and r.locked_until > now),
+            "blocked": active,
+            "block_id": blk.id if blk else None,
+        })
+    return out
+
+
+def resolve_rc_abuse(abuse_id, user_id):
+    """Mark a Recovery Contacts abuse flag handled. Returns True on change."""
+    row = db.session.get(RecoveryContactAbuse, int(abuse_id))
+    if row is None or row.resolved:
+        return False
+    row.resolved = True
+    row.resolved_at = datetime.utcnow()
+    row.resolved_by = user_id
+    db.session.commit()
+    return True
 
 
 # ─── State-mutating actions ──────────────────────────────────────
