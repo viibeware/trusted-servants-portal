@@ -68,7 +68,7 @@
               <a href="{{ url_for('main.index') }}"
                  class="fe-megamenu-block-btn fe-megamenu-block-btn-{{ _btn_style }} fe-megamenu-block-btn--admin-auth">
                 <span class="fe-megamenu-icon"{{ _icon_style(link.icon_before_color, link.icon_before_size)|safe }}>{{ icon(link.icon_before or 'layout-grid') }}</span>
-                <span>Back to TS Pro dashboard</span>
+                <span>Return to dashboard</span>
               </a>
               <a href="{{ url_for('auth.logout', next=url_for('frontend.index')) }}"
                  class="fe-megamenu-block-btn fe-megamenu-block-btn-{{ _btn_style }} fe-megamenu-block-btn--admin-auth fe-megamenu-block-btn--logout">

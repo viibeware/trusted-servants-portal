@@ -100,7 +100,7 @@
                      the footer's `layout-grid` chip so both surfaces read
                      the same when the picker is empty. #}
                   <span class="fe-megamenu-classic-icon"{{ _icon_style(link.icon_before_color, link.icon_before_size)|safe }}>{{ icon(link.icon_before or 'layout-grid') }}</span>
-                  <span>Back to TS Pro dashboard</span>
+                  <span>Return to dashboard</span>
                   {% if link.icon_after %}<span class="fe-megamenu-classic-icon"{{ _icon_style(link.icon_after_color, link.icon_after_size)|safe }}>{{ icon(link.icon_after) }}</span>{% endif %}
                 </a>
                 <a href="{{ url_for('auth.logout', next=url_for('frontend.index')) }}"

@@ -11,7 +11,7 @@
   {% if current_user.is_authenticated %}
   <div class="fe-footer-admin-login-row">
     <a class="fe-footer-admin-login" href="{{ url_for('main.index') }}">
-      {{ icon('layout-grid') }}<span>Back to TS Pro dashboard</span>
+      {{ icon('layout-grid') }}<span>Return to dashboard</span>
     </a>
     <a class="fe-footer-admin-login fe-footer-admin-login--logout"
        href="{{ url_for('auth.logout', next=url_for('frontend.index')) }}">

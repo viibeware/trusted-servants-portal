@@ -4411,6 +4411,11 @@ def recovery_contacts_submit():
                     "against further changes for 7 days:", "",
                     disavow_url]
             send_mail(site, email, subj, "\n".join(msg))
+        # NOTE: removal requests do NOT email the admin at submission time.
+        # The admin is only notified once the person clicks the confirmation
+        # link (see recovery_contacts_confirm) — so a bad actor can't get
+        # someone removed, or even prompt the admin to act, without the real
+        # owner confirming. Gated by the removal-alerts toggle there.
         if wants_removal:
             success_msg = ("Thanks — we've emailed you a confirmation link. Click it to confirm, "
                            "and you'll be removed from the list automatically.")

@@ -6,6 +6,13 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.7.2] — 2026-05-25
+
+### Changed
+
+- **Signed-in admin button renamed to "Return to dashboard"** (was "Back to TS Pro dashboard") across all three mega-menu variants (`classic`, `recovery-blue`, `themed`) and the footer admin block. The admin nav-link editor help text was updated to match.
+- **Recovery Contacts form settings** — added a 1 rem gap between the two toggle rows in the "Admin email alerts" section, and clarified the removal-alerts toggle copy to make explicit that the admin is emailed **only after** the person clicks the confirmation link (so you're never asked to remove someone who hasn't confirmed they want off the list — no behaviour change from 2.7.1).
+
 ## [2.7.1] — 2026-05-25
 
 ### Added — Recovery Contacts: anti-abuse on self-service update/removal

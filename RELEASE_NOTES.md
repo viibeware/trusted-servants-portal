@@ -7,7 +7,12 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.7.1 — 2026-05-25 (latest) — Recovery Contacts: abuse protection + polish
+## 2.7.2 — 2026-05-25 (latest) — Small refinements
+
+- The signed-in admin button in your menus and footer now reads **"Return to dashboard"** (instead of "Back to TS Pro dashboard").
+- Tidier spacing between the two email-alert switches on the **Recovery Contacts** form settings, and clearer wording confirming the admin is emailed about a removal **only after** the person clicks their confirmation link — so a bad actor can never get someone taken off the list.
+
+## 2.7.1 — 2026-05-25 — Recovery Contacts: abuse protection + polish
 
 Builds on the new **Recovery Contacts** directory with protection against malicious "update" and "remove" requests, plus a round of refinements.
 
