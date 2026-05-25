@@ -1,0 +1,422 @@
+{% extends "frontend/base.html" %}
+{%- set _heading = (site.recovery_contacts_heading if site else None) or 'Recovery Contacts' -%}
+{%- set _subheading = (site.recovery_contacts_subheading if site else None)
+    or 'Add yourself to the directory and reach other members directly.' -%}
+{%- set _intro = (site.recovery_contacts_intro if site else None) -%}
+{%- set _submit_label = (site.recovery_contacts_submit_label if site else None) or 'Add me to the list' -%}
+{% block title %}{{ _heading }} · {{ frontend_title }}{% endblock %}
+{% block content %}
+{# Recovery Contacts — a public directory of names + phone/email that visitors
+   add themselves. Two-column shell inside the shared dynbg section (so
+   dark-mode + design tokens flow through automatically): the LEFT column
+   carries the page header (chip / title / subheading) above the member
+   directory; the RIGHT column carries the optional intro + the submission
+   form. The left column is first in source, so the <h1> leads the
+   document. Entries only render once an admin has approved them, and each
+   entry's public_phone / public_email properties already honour the
+   per-entry display toggles. The page 404s when the module is off
+   (handled in the route). #}
+{%- set _cwmode = (site.recovery_contacts_width_mode if site else None) or 'boxed' -%}
+{%- if _cwmode not in ('boxed', 'full') %}{%- set _cwmode = 'boxed' %}{%- endif -%}
+{%- set _cwmax  = (site.recovery_contacts_max_width   if site else 1160) -%}
+{%- set _cwpad  = (site.recovery_contacts_padding_pct if site else 5) -%}
+<section class="fe-section fe-rc-section fe-dynbg-host fe-mlist--w-{{ _cwmode }}">
+  {% with dynbg_key='aurora-blobs' %}{% include "frontend/_dynbg.html" %}{% endwith %}
+  <div class="{% if _cwmode == 'boxed' %}fe-container{% else %}fe-mlist-fullwrap{% endif %} fe-contact-container"
+       {% if _cwmode == 'boxed' %}style="max-width: {{ _cwmax }}px;"
+       {%- elif _cwpad %}style="padding-left: {{ _cwpad }}vw; padding-right: {{ _cwpad }}vw;"{% endif %}>
+    <div class="fe-rc-grid">
+
+      {# ── Left column: page header (chip / title / subheading) above the
+         member directory. First in source so the <h1> leads the document. #}
+      <div class="fe-rc-main">
+        <span class="fe-contact-eyebrow">Directory</span>
+        <h1 class="fe-contact-title">{{ _heading }}</h1>
+        <p class="fe-contact-blurb">{{ _subheading }}</p>
+
+        {% if entries %}
+        {# Toolbar: live client-side search + PDF download. The search
+           filters the cards below; Download PDF hits the WeasyPrint
+           /contactlist.pdf endpoint (its href picks up the active search
+           term so a filtered PDF matches the screen). #}
+        <div class="fe-rc-toolbar" role="search">
+          <div class="fe-rc-search">
+            <span class="fe-rc-search-icon" aria-hidden="true">{{ icon('search') }}</span>
+            <input type="search" id="fe-rc-search-input" class="fe-rc-search-input"
+                   placeholder="Search name, phone, email — or type “sponsor”…"
+                   autocomplete="off" aria-label="Search the directory">
+          </div>
+          <div class="fe-rc-actions">
+            <a class="btn fe-rc-action" id="fe-rc-pdf"
+               href="{{ url_for('frontend.recovery_contacts_pdf') }}"
+               title="Download the list as a PDF">
+              <span aria-hidden="true">{{ icon('download') }}</span><span>PDF</span>
+            </a>
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="fe-rc-main-head">
+          <h2 class="fe-rc-main-title">Members</h2>
+          <span class="fe-rc-count" id="fe-rc-count" data-total="{{ entries|length }}">{{ entries|length }} listed</span>
+        </div>
+        {% if entries %}
+        <ul class="fe-rc-item-list" role="list" id="fe-rc-list">
+          {% for e in entries %}
+          <li class="fe-rc-item-card" data-search="{{ (e.name ~ ' ' ~ (e.public_phone or '') ~ ' ' ~ (e.public_email or '') ~ (' sponsor' if e.available_to_sponsor else ''))|lower }}">
+            <div class="fe-rc-item-name">{{ e.name }}</div>
+            {% if e.available_to_sponsor %}
+            <span class="fe-rc-item-sponsor"><span class="fe-rc-item-sponsor-icon" aria-hidden="true">{{ icon('heart') }}</span>Available to sponsor</span>
+            {% endif %}
+            {% if e.public_phone or e.public_email %}
+            <div class="fe-rc-item-contacts">
+              {% if e.public_phone %}
+              <a class="fe-rc-item-contact" href="tel:{{ e.public_phone }}">
+                <span class="fe-rc-item-contact-icon" aria-hidden="true">{{ icon('phone') }}</span>
+                <span class="fe-rc-item-contact-val">{{ e.public_phone }}</span>
+              </a>
+              {% endif %}
+              {% if e.public_email %}
+              <a class="fe-rc-item-contact" href="mailto:{{ e.public_email }}">
+                <span class="fe-rc-item-contact-icon" aria-hidden="true">{{ icon('mail') }}</span>
+                <span class="fe-rc-item-contact-val">{{ e.public_email }}</span>
+              </a>
+              {% endif %}
+            </div>
+            {% endif %}
+            {% if e.contact_enabled and e.email %}
+            <button type="button" class="fe-rc-contact-btn" data-rc-contact
+                    data-eid="{{ e.id }}" data-name="{{ e.name }}">
+              <span class="fe-rc-contact-btn-icon" aria-hidden="true">{{ icon('mail') }}</span>Contact me
+            </button>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        <div class="fe-rc-noresults" id="fe-rc-noresults" hidden>
+          <span class="fe-rc-item-empty-icon" aria-hidden="true">{{ icon('search') }}</span>
+          <p>No contacts match your search.</p>
+        </div>
+        {% else %}
+        <div class="fe-rc-item-empty">
+          <span class="fe-rc-item-empty-icon" aria-hidden="true">{{ icon('phone') }}</span>
+          <p>No one has been added yet — be the first to join the list.</p>
+        </div>
+        {% endif %}
+      </div>
+
+      {# ── Right column: optional intro + the submission form. #}
+      <aside class="fe-contact-aside fe-rc-aside">
+        {% if _intro %}
+        <div class="fe-contact-intro">{{ _intro|markdown }}</div>
+        {% endif %}
+
+        <div class="fe-contact-card fe-rc-card">
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="fe-submission-flashes fe-contact-flashes">
+              {% for cat, msg in messages %}<div class="flash flash-{{ cat }}">{{ msg }}</div>{% endfor %}
+            </div>
+            {% endif %}
+          {% endwith %}
+
+          <form method="post" action="{{ url_for('frontend.recovery_contacts_submit') }}"
+                class="form fe-submission-form fe-contact-form" id="rc-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {# Honeypot — hidden from real users; any value flags a bot. #}
+            <div class="fe-contact-honeypot" aria-hidden="true">
+              <label>Leave this field empty
+                <input type="text" name="website" tabindex="-1" autocomplete="off">
+              </label>
+            </div>
+
+            <label>
+              <span>Your name <span class="req">*</span></span>
+              <input name="name" type="text" maxlength="200" required autocomplete="name">
+            </label>
+
+            <div class="fe-submission-grid-2">
+              <label>
+                <span>Phone <span class="muted smaller">(optional)</span></span>
+                <input name="phone" type="tel" maxlength="64" autocomplete="tel">
+              </label>
+              <label>
+                <span>Email <span class="req">*</span></span>
+                <input name="email" type="email" maxlength="255" required autocomplete="email">
+              </label>
+            </div>
+            <p class="muted smaller fe-rc-hint">Email is required; phone is optional.</p>
+
+            <fieldset class="fe-rc-prefs">
+              <legend>What should we show on the public list?</legend>
+              <label class="fe-rc-check">
+                <input type="checkbox" name="show_phone" value="1" checked>
+                <span>Display my phone number</span>
+              </label>
+              <label class="fe-rc-check">
+                <input type="checkbox" name="show_email" value="1" checked>
+                <span>Display my email address</span>
+              </label>
+              <p class="muted smaller">Your name is always shown. Uncheck a box to keep that detail private — an admin can adjust this later too.</p>
+            </fieldset>
+
+            <fieldset class="fe-rc-prefs">
+              <label class="fe-rc-check" id="rc-contact-label">
+                <input type="checkbox" name="contact_enabled" value="1" id="rc-contact-enabled" checked>
+                <span>Let people contact me by email through the site</span>
+              </label>
+              <p class="muted smaller">Adds a <b>Contact me</b> button to your listing. Messages are emailed to you privately — your address is never shown — and you can reply directly. Great if you'd rather not post your phone or email publicly.</p>
+              <p class="muted smaller fe-rc-contact-locked-note" id="rc-contact-locked-note" hidden>Kept on because your phone and email are both hidden — this leaves members a way to reach you.</p>
+            </fieldset>
+
+            <fieldset class="fe-rc-prefs fe-rc-sponsor">
+              <label class="fe-rc-check">
+                <input type="checkbox" name="available_to_sponsor" value="1">
+                <span>I'm available to sponsor</span>
+              </label>
+              <p class="muted smaller">Adds an “Available to sponsor” badge to your listing so members looking for a sponsor can find you.</p>
+            </fieldset>
+
+            <fieldset class="fe-rc-prefs fe-rc-update">
+              <label class="fe-rc-check">
+                <input type="checkbox" name="wants_update" value="1">
+                <span>I'm updating my existing entry</span>
+              </label>
+              <p class="muted smaller">Already on the list? Use <b>the email on your current listing</b> and check this — we'll send you a confirmation link. <b>Click it and your listing updates automatically</b>, no admin approval needed.</p>
+            </fieldset>
+
+            <fieldset class="fe-rc-prefs fe-rc-remove">
+              <label class="fe-rc-check">
+                <input type="checkbox" name="wants_removal" value="1">
+                <span>Remove me from the list</span>
+              </label>
+              <p class="muted smaller">We'll <b>match you by your email</b> and send a confirmation link — <b>click it to confirm and you'll be removed automatically</b>, no admin approval. Use the email from your listing.</p>
+            </fieldset>
+
+            {% if site and site.turnstile_enabled and site.turnstile_site_key %}
+            <div class="cf-turnstile fe-submission-turnstile"
+                 data-sitekey="{{ site.turnstile_site_key }}"
+                 data-theme="auto"
+                 data-size="flexible"></div>
+            {% endif %}
+
+            <div class="fe-submission-actions fe-contact-actions">
+              <button class="btn btn-primary fe-submission-submit" type="submit"
+                      id="rc-submit-btn" data-default-label="{{ _submit_label }}">{{ _submit_label }}</button>
+            </div>
+            <p class="muted smaller fe-submission-fineprint fe-contact-fineprint">
+              Entries appear once an admin approves them. Required fields are marked <span class="req">*</span>.
+            </p>
+          </form>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+</section>
+
+{# Contact-a-member modal. One shared dialog; the "Contact me" buttons set
+   the target entry id + name via JS. The message is relayed server-side to
+   the person's email (Reply-To = sender) so their address stays private. #}
+<div class="rc-contact-modal" id="rc-contact-modal" hidden aria-hidden="true"
+     {% if site and site.turnstile_enabled and site.turnstile_site_key %}data-ts-sitekey="{{ site.turnstile_site_key }}"{% endif %}>
+  <div class="rc-contact-backdrop" data-rc-close></div>
+  <div class="rc-contact-panel" role="dialog" aria-modal="true" aria-labelledby="rc-contact-title">
+    <button type="button" class="rc-contact-x" data-rc-close aria-label="Close">{{ icon('x') }}</button>
+    <h2 class="rc-contact-title" id="rc-contact-title">Contact <span id="rc-contact-name">this member</span></h2>
+    <p class="rc-contact-lead muted smaller">Your message is emailed to them privately — their address stays hidden. They'll see your email as the reply-to so they can respond directly.</p>
+    <form method="post" action="{{ url_for('frontend.recovery_contacts_contact') }}"
+          class="form fe-submission-form rc-contact-form" id="rc-contact-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="eid" id="rc-contact-eid" value="">
+      <div class="fe-contact-honeypot" aria-hidden="true">
+        <label>Leave this field empty<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+      </div>
+      <label><span>Your name <span class="req">*</span></span>
+        <input name="name" type="text" maxlength="200" required autocomplete="name"></label>
+      <label><span>Your email <span class="req">*</span></span>
+        <input name="email" type="email" maxlength="255" required autocomplete="email"></label>
+      <label><span>Message <span class="req">*</span></span>
+        <textarea name="message" rows="5" maxlength="5000" required></textarea></label>
+      {% if site and site.turnstile_enabled and site.turnstile_site_key %}
+      <div id="rc-contact-ts" class="fe-submission-turnstile"></div>
+      {% endif %}
+      <div class="fe-submission-actions">
+        <button class="btn btn-primary fe-submission-submit" type="submit">Send message</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if site and site.turnstile_enabled and site.turnstile_site_key %}
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+{% endif %}
+
+<script>
+(function () {
+  var input = document.getElementById('fe-rc-search-input');
+  if (!input) return;  // no entries → no toolbar
+  var list = document.getElementById('fe-rc-list');
+  var cards = list ? Array.prototype.slice.call(list.querySelectorAll('.fe-rc-item-card')) : [];
+  var countEl = document.getElementById('fe-rc-count');
+  var noResults = document.getElementById('fe-rc-noresults');
+  var pdfLink = document.getElementById('fe-rc-pdf');
+  var total = cards.length;
+  var pdfBase = pdfLink ? pdfLink.getAttribute('href') : null;
+
+  function apply() {
+    var q = input.value.trim().toLowerCase();
+    var shown = 0;
+    cards.forEach(function (c) {
+      var hit = !q || (c.getAttribute('data-search') || '').indexOf(q) !== -1;
+      c.hidden = !hit;
+      if (hit) shown++;
+    });
+    if (countEl) {
+      countEl.textContent = q ? (shown + ' of ' + total + ' shown') : (total + ' listed');
+    }
+    if (noResults) noResults.hidden = shown !== 0;
+    // Keep the PDF download in sync with the active search.
+    if (pdfLink && pdfBase) {
+      pdfLink.setAttribute('href', q ? (pdfBase + '?q=' + encodeURIComponent(q)) : pdfBase);
+    }
+  }
+  input.addEventListener('input', apply);
+})();
+</script>
+
+<script>
+// Re-label the submit button to match the chosen action. Removal takes
+// priority over update; otherwise the configured default label is used.
+(function () {
+  var form = document.getElementById('rc-form');
+  if (!form) return;
+  var btn = document.getElementById('rc-submit-btn');
+  if (!btn) return;
+  var upd = form.querySelector('input[name="wants_update"]');
+  var rem = form.querySelector('input[name="wants_removal"]');
+  var defaultLabel = btn.getAttribute('data-default-label') || btn.textContent;
+  function sync() {
+    if (rem && rem.checked) btn.textContent = 'Submit Remove Request';
+    else if (upd && upd.checked) btn.textContent = 'Submit update';
+    else btn.textContent = defaultLabel;
+  }
+  if (upd) upd.addEventListener('change', sync);
+  if (rem) rem.addEventListener('change', sync);
+  sync();
+})();
+</script>
+
+<script>
+// A member can't keep phone hidden, email hidden, AND opt out of site
+// contact — that would leave no way to reach them. When both display
+// boxes are unchecked, force "contact me by email" on and lock it (greyed).
+(function () {
+  var form = document.getElementById('rc-form');
+  if (!form) return;
+  var showPhone = form.querySelector('input[name="show_phone"]');
+  var showEmail = form.querySelector('input[name="show_email"]');
+  var contact = document.getElementById('rc-contact-enabled');
+  if (!showPhone || !showEmail || !contact) return;
+  var label = document.getElementById('rc-contact-label');
+  var note = document.getElementById('rc-contact-locked-note');
+  function sync() {
+    var bothHidden = !showPhone.checked && !showEmail.checked;
+    if (bothHidden) {
+      contact.checked = true;
+      contact.disabled = true;
+    } else {
+      contact.disabled = false;
+    }
+    if (label) label.classList.toggle('is-locked', bothHidden);
+    if (note) note.hidden = !bothHidden;
+  }
+  // A disabled checkbox isn't posted — re-enable on submit so the forced-on
+  // value still reaches the server.
+  form.addEventListener('submit', function () { contact.disabled = false; });
+  showPhone.addEventListener('change', sync);
+  showEmail.addEventListener('change', sync);
+  // Exposed so the removal-lock below can re-apply the proper state after it
+  // re-enables the fields it greyed out.
+  window.__rcContactSync = sync;
+  sync();
+})();
+</script>
+
+<script>
+// "Remove me from the list" is a clean exit — we only need to match the
+// member by name + email. When it's checked, grey out and disable every
+// other field/checkbox (phone, display prefs, contact, sponsor, update) so
+// it's clear nothing else applies; unchecking restores them.
+(function () {
+  var form = document.getElementById('rc-form');
+  if (!form) return;
+  var rem = form.querySelector('input[name="wants_removal"]');
+  if (!rem) return;
+  var phone = form.querySelector('input[name="phone"]');
+  var phoneLabel = phone ? phone.closest('label') : null;
+  // Every prefs fieldset except the remove block itself.
+  var blocks = Array.prototype.slice.call(form.querySelectorAll('.fe-rc-prefs'))
+    .filter(function (fs) { return !fs.classList.contains('fe-rc-remove'); });
+
+  function setLocked(locked) {
+    blocks.forEach(function (fs) {
+      fs.classList.toggle('is-removal-locked', locked);
+      Array.prototype.forEach.call(fs.querySelectorAll('input'), function (inp) {
+        inp.disabled = locked;
+      });
+    });
+    if (phone) phone.disabled = locked;
+    if (phoneLabel) phoneLabel.classList.toggle('is-removal-locked', locked);
+  }
+  rem.addEventListener('change', function () {
+    setLocked(rem.checked);
+    // On unlock, re-apply the contact-enabled lock (it may need to force on).
+    if (!rem.checked && window.__rcContactSync) window.__rcContactSync();
+  });
+  // Disabled fields aren't posted, but removal only needs name + email, so
+  // that's fine. Re-enable phone on submit isn't required.
+  setLocked(rem.checked);
+})();
+</script>
+
+<script>
+// "Contact me" modal — one shared dialog; buttons set the target id/name.
+(function () {
+  var modal = document.getElementById('rc-contact-modal');
+  if (!modal) return;
+  var nameEl = document.getElementById('rc-contact-name');
+  var eidEl = document.getElementById('rc-contact-eid');
+  var sk = modal.getAttribute('data-ts-sitekey');
+  var tsId = null;
+  function open(eid, name) {
+    eidEl.value = eid;
+    if (nameEl) nameEl.textContent = name || 'this member';
+    modal.hidden = false; modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('rc-modal-open');
+    // Turnstile is rendered explicitly on open (it lives in a hidden
+    // modal, so auto-render is skipped); reset on subsequent opens.
+    if (sk && window.turnstile) {
+      var holder = document.getElementById('rc-contact-ts');
+      if (holder) {
+        try {
+          if (tsId === null) tsId = window.turnstile.render(holder, {sitekey: sk, theme: 'auto', size: 'flexible'});
+          else window.turnstile.reset(tsId);
+        } catch (e) {}
+      }
+    }
+    var firstInput = modal.querySelector('input[name="name"]');
+    if (firstInput) firstInput.focus();
+  }
+  function close() {
+    modal.hidden = true; modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('rc-modal-open');
+  }
+  document.querySelectorAll('[data-rc-contact]').forEach(function (b) {
+    b.addEventListener('click', function () { open(b.getAttribute('data-eid'), b.getAttribute('data-name')); });
+  });
+  modal.querySelectorAll('[data-rc-close]').forEach(function (x) { x.addEventListener('click', close); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) close(); });
+})();
+</script>
+{% endblock %}

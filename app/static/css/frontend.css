@@ -9957,6 +9957,449 @@ body.fe-frontend-force-dark .fe-contact-eyebrow {
   background: color-mix(in srgb, var(--fe-accent, #60a5fa) 24%, transparent);
 }
 
+/* ── Phone List (public /phonelist) ─────────────────────────────
+   Two-column shell reusing the contact-page card + aside chrome:
+   intro + submission form in the left rail, the member directory in
+   the wider right column. The directory cards + form prefs get their
+   own tokens, with the same per-element dark-mode overrides the
+   contact card uses (resolving --fe-dm-* on <html> falls back to
+   blue, so they're set on the actual elements). */
+.fe-rc-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: clamp(2rem, 4vw, 3.5rem);
+  align-items: start;
+}
+@media (max-width: 880px) {
+  .fe-rc-grid { grid-template-columns: 1fr; gap: 2rem; }
+}
+/* Left column (.fe-rc-main) = page header + member directory;
+   right column (.fe-rc-aside) = optional intro + submission form.
+   DOM order matches visual order, so the <h1> leads the document. */
+.fe-rc-aside { padding-top: 0.5rem; }
+.fe-rc-card { margin-top: 1.5rem; }
+.fe-rc-hint { margin: -0.25rem 0 0.25rem; }
+
+.fe-rc-prefs {
+  border: 1px solid var(--fe-color-border, rgba(0, 0, 0, 0.08));
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  text-align: left;
+}
+.fe-rc-prefs legend {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0 0.35rem;
+  text-align: left;
+  color: var(--fe-color-text, #0a0a0a);
+}
+/* Specificity bump so the global `.form label` block rule doesn't win and
+   re-center the checkbox rows — keep them left-aligned and inline. */
+.fe-rc-prefs .fe-rc-check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
+.fe-rc-prefs .fe-rc-check input { width: auto; margin: 0; flex: 0 0 auto; }
+.fe-rc-prefs p { margin: 0.15rem 0 0; }
+
+/* Locked "contact me" row — forced on when both phone + email are hidden. */
+.fe-rc-prefs .fe-rc-check.is-locked { cursor: not-allowed; opacity: 0.7; }
+.fe-rc-prefs .fe-rc-check.is-locked input { cursor: not-allowed; }
+.fe-rc-contact-locked-note { font-style: italic; }
+
+.fe-rc-main { min-width: 0; }
+.fe-rc-main-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1.1rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--fe-color-border, rgba(0, 0, 0, 0.08));
+}
+.fe-rc-main-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--fe-color-text, #0a0a0a);
+}
+.fe-rc-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fe-color-text-muted, #64748b);
+  white-space: nowrap;
+}
+
+/* Toolbar — live search + print / PDF actions above the directory. */
+.fe-rc-toolbar {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0 0 1.1rem;
+}
+.fe-rc-search { position: relative; flex: 1 1 220px; min-width: 0; }
+.fe-rc-search-icon {
+  position: absolute;
+  left: 12px; top: 50%; transform: translateY(-50%);
+  display: grid; place-items: center;
+  color: var(--fe-color-text-muted, #64748b);
+  pointer-events: none;
+}
+.fe-rc-search-icon .icon { width: 16px; height: 16px; }
+.fe-rc-search-input {
+  width: 100%;
+  padding: 0.6rem 0.8rem 0.6rem 2.25rem;
+  font-size: 0.95rem;
+  border: 1px solid var(--fe-color-border, rgba(0, 0, 0, 0.12));
+  border-radius: 10px;
+  background: var(--fe-color-surface, #fff);
+  color: var(--fe-color-text, #0a0a0a);
+}
+.fe-rc-search-input:focus {
+  outline: none;
+  border-color: var(--fe-accent, #0b5cff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fe-accent, #0b5cff) 18%, transparent);
+}
+.fe-rc-actions { display: flex; gap: 0.5rem; flex: 0 0 auto; }
+.fe-rc-action { display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
+.fe-rc-action .icon { width: 16px; height: 16px; }
+
+.fe-rc-noresults {
+  text-align: center;
+  padding: 2.25rem 1rem;
+  color: var(--fe-color-text-muted, #64748b);
+  border: 1px dashed var(--fe-color-border, rgba(0, 0, 0, 0.12));
+  border-radius: 14px;
+}
+.fe-rc-noresults .icon { width: 38px; height: 38px; opacity: 0.6; margin-bottom: 0.5rem; }
+.fe-rc-noresults p { margin: 0; }
+
+/* "I'm updating my existing entry" block — pale green to set it apart as
+   an edit action. Dark mode swaps to a muted green-tinted surface. */
+.fe-rc-update {
+  background: color-mix(in srgb, #30a46c 8%, #fff);
+  border-color: color-mix(in srgb, #30a46c 28%, transparent);
+}
+html[data-theme="dark"] .fe-rc-update,
+body.fe-frontend-force-dark .fe-rc-update {
+  background: color-mix(in srgb, #30a46c 16%, var(--fe-dm-surface));
+  border-color: color-mix(in srgb, #30a46c 32%, var(--fe-dm-border));
+}
+
+/* "Remove me from the list" block — pale pink to set it apart as a
+   destructive action. Dark mode swaps to a muted red-tinted surface. */
+.fe-rc-remove {
+  background: color-mix(in srgb, #e5484d 7%, #fff);
+  border-color: color-mix(in srgb, #e5484d 28%, transparent);
+}
+html[data-theme="dark"] .fe-rc-remove,
+body.fe-frontend-force-dark .fe-rc-remove {
+  background: color-mix(in srgb, #e5484d 16%, var(--fe-dm-surface));
+  border-color: color-mix(in srgb, #e5484d 32%, var(--fe-dm-border));
+}
+
+/* When "Remove me from the list" is checked, every other field/checkbox is
+   disabled and greyed out — only Name + Email stay active. */
+.fe-rc-prefs.is-removal-locked,
+label.is-removal-locked {
+  opacity: 0.45;
+  transition: opacity 160ms ease;
+}
+.fe-rc-prefs.is-removal-locked .fe-rc-check,
+.fe-rc-prefs.is-removal-locked .fe-rc-check input,
+label.is-removal-locked,
+label.is-removal-locked input { cursor: not-allowed; }
+
+/* "Contact me" button on entry cards + the contact modal. */
+.fe-rc-contact-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  align-self: flex-start; margin-top: 0.15rem;
+  font-size: 0.85rem; font-weight: 600;
+  padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  color: var(--fe-accent, #0b5cff);
+  border: 1px solid color-mix(in srgb, var(--fe-accent, #0b5cff) 35%, transparent);
+  background: color-mix(in srgb, var(--fe-accent, #0b5cff) 10%, transparent);
+  transition: background 120ms ease;
+}
+.fe-rc-contact-btn:hover { background: color-mix(in srgb, var(--fe-accent, #0b5cff) 18%, transparent); }
+.fe-rc-contact-btn-icon { display: inline-grid; place-items: center; }
+.fe-rc-contact-btn-icon .icon { width: 14px; height: 14px; }
+
+body.rc-modal-open { overflow: hidden; }
+.rc-contact-modal[hidden] { display: none; }
+.rc-contact-modal {
+  position: fixed; inset: 0; z-index: 1200;
+  display: flex; align-items: center; justify-content: center; padding: 1rem;
+}
+.rc-contact-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+}
+.rc-contact-panel {
+  position: relative; width: 100%; max-width: 480px;
+  max-height: 90vh; overflow-y: auto;
+  background: var(--fe-color-surface, #fff);
+  border: 1px solid var(--fe-color-border, rgba(0, 0, 0, 0.08));
+  border-radius: 16px; padding: clamp(1.5rem, 4vw, 2rem);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.3);
+}
+.rc-contact-x {
+  position: absolute; top: 12px; right: 12px;
+  display: grid; place-items: center; width: 34px; height: 34px;
+  border-radius: 8px; border: 0; background: transparent; cursor: pointer;
+  color: var(--fe-color-text-muted, #64748b);
+}
+.rc-contact-x:hover { background: color-mix(in srgb, var(--fe-color-text, #0a0a0a) 8%, transparent); }
+.rc-contact-x .icon { width: 18px; height: 18px; }
+.rc-contact-title {
+  margin: 0 0 0.4rem; font-size: 1.3rem; font-weight: 800;
+  padding-right: 2rem; color: var(--fe-color-text, #0a0a0a);
+}
+.rc-contact-lead { margin: 0 0 1rem; }
+html[data-theme="dark"] .rc-contact-panel,
+body.fe-frontend-force-dark .rc-contact-panel {
+  background: var(--fe-dm-surface); border-color: var(--fe-dm-border); color: var(--fe-dm-text);
+}
+html[data-theme="dark"] .rc-contact-title,
+body.fe-frontend-force-dark .rc-contact-title { color: var(--fe-dm-text-strong); }
+
+/* Confirmation landing page — 75vh tall with the card centered both ways. */
+.fe-rc-confirm-section {
+  min-height: 75vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+}
+.fe-rc-confirm-wrap { width: 100%; max-width: 640px; }
+.fe-rc-confirm-card { text-align: center; padding: clamp(2rem, 5vw, 3.25rem); }
+.fe-rc-confirm-icon {
+  display: inline-grid; place-items: center;
+  width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 1.1rem;
+}
+.fe-rc-confirm-icon .icon { width: 32px; height: 32px; }
+.fe-rc-confirm-ok {
+  background: color-mix(in srgb, var(--fe-accent, #0b5cff) 14%, transparent);
+  color: var(--fe-accent, #0b5cff);
+}
+.fe-rc-confirm-warn {
+  background: color-mix(in srgb, #e5484d 14%, transparent);
+  color: #e5484d;
+}
+.fe-rc-confirm-title {
+  font-size: clamp(1.5rem, 1rem + 2vw, 2.1rem); font-weight: 800;
+  margin: 0 0 0.6rem; color: var(--fe-color-text, #0a0a0a);
+}
+.fe-rc-confirm-msg {
+  color: var(--fe-color-text-muted, #475569); line-height: 1.6;
+  max-width: 46ch; margin: 0 auto 1.5rem;
+}
+/* The frontend .btn-primary colours text with the accent (for ghost
+   buttons); force white so the label shows on the solid accent fill. */
+.fe-rc-confirm-cta,
+.fe-rc-confirm-cta:hover,
+.fe-rc-confirm-cta:visited { color: #fff !important; }
+html[data-theme="dark"] .fe-rc-confirm-title,
+body.fe-frontend-force-dark .fe-rc-confirm-title { color: var(--fe-dm-text-strong); }
+html[data-theme="dark"] .fe-rc-confirm-msg,
+body.fe-frontend-force-dark .fe-rc-confirm-msg { color: var(--fe-dm-text-muted); }
+
+html[data-theme="dark"] .fe-rc-search-input,
+body.fe-frontend-force-dark .fe-rc-search-input {
+  background: var(--fe-dm-surface);
+  border-color: var(--fe-dm-border);
+  color: var(--fe-dm-text);
+}
+html[data-theme="dark"] .fe-rc-search-icon,
+body.fe-frontend-force-dark .fe-rc-search-icon,
+html[data-theme="dark"] .fe-rc-noresults,
+body.fe-frontend-force-dark .fe-rc-noresults {
+  color: var(--fe-dm-text-muted);
+}
+html[data-theme="dark"] .fe-rc-noresults,
+body.fe-frontend-force-dark .fe-rc-noresults {
+  border-color: var(--fe-dm-border);
+}
+
+/* Print — strip the page down to just the directory list. Hides every
+   body-level chrome element (header, footer, utility bar, modals) except
+   the page content, then within the page drops the form column, toolbar,
+   and animated background. Scoped via :has() so other pages are
+   unaffected. The on-screen search filters by hiding cards, so a printed
+   page reflects the current filter. */
+@media print {
+  body:has(.fe-rc-section) > *:not(#fe-page) { display: none !important; }
+  body:has(.fe-rc-section) .fe-rc-aside,
+  body:has(.fe-rc-section) .fe-rc-toolbar { display: none !important; }
+  .fe-rc-section .fe-dynbg,
+  .fe-rc-section .fe-dynbg-overlay { display: none !important; }
+  .fe-rc-section { padding: 0 !important; }
+  .fe-rc-grid { display: block !important; }
+  .fe-rc-item-card {
+    break-inside: avoid;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+}
+
+.fe-rc-item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+.fe-rc-item-card {
+  /* Surface + border read from the Primary card design tokens (same as
+     meeting / submission cards) so the directory cards inherit the
+     operator's primary-card look. Shadow, transition and hover lift are
+     normalised by the shared `.fe-card-primary` aggregator near the
+     bottom of this file (this card is listed there). */
+  background: var(--fe-color-card-primary-bg, var(--fe-color-surface, #fff));
+  border: var(--fe-card-primary-border-width, 1px) solid var(--fe-color-card-primary-border, var(--fe-accent));
+  border-radius: 14px;
+  padding: 1.1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+/* Live search hides non-matching cards. `display: flex` above outranks the
+   UA [hidden] rule, so force it off explicitly when the search excludes a card. */
+.fe-rc-item-card[hidden] { display: none !important; }
+.fe-rc-item-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--fe-color-text, #0a0a0a);
+  word-break: break-word;
+}
+.fe-rc-item-sponsor {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: flex-start;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: var(--fe-accent, #0b5cff);
+  background: color-mix(in srgb, var(--fe-accent, #0b5cff) 12%, transparent);
+}
+.fe-rc-item-sponsor-icon { display: inline-grid; place-items: center; }
+/* Solid red heart — CSS fill/stroke override Lucide's fill="none"
+   stroke="currentColor" presentation attributes, so the outline heart
+   renders filled-in red regardless of the chip's accent text colour. */
+.fe-rc-item-sponsor-icon .icon { width: 14px; height: 14px; fill: #e5484d; stroke: #e5484d; }
+.fe-rc-sponsor { margin-top: -0.25rem; }
+
+.fe-rc-item-contacts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.fe-rc-item-contact {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  text-decoration: none;
+  color: var(--fe-color-text-muted, #475569);
+  font-size: 0.95rem;
+  transition: color 120ms ease;
+  word-break: break-word;
+}
+.fe-rc-item-contact:hover { color: var(--fe-accent, #0b5cff); }
+.fe-rc-item-contact-icon {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--fe-accent, #0b5cff) 12%, transparent);
+  color: var(--fe-accent, #0b5cff);
+}
+.fe-rc-item-contact-icon .icon { width: 15px; height: 15px; }
+.fe-rc-item-contact-val { min-width: 0; }
+
+.fe-rc-item-empty {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--fe-color-text-muted, #64748b);
+  border: 1px dashed var(--fe-color-border, rgba(0, 0, 0, 0.12));
+  border-radius: 14px;
+}
+.fe-rc-item-empty-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  margin-bottom: 0.65rem;
+  background: color-mix(in srgb, var(--fe-accent, #0b5cff) 12%, transparent);
+  color: var(--fe-accent, #0b5cff);
+}
+.fe-rc-item-empty p { margin: 0; }
+
+html[data-theme="dark"] .fe-rc-item-card,
+body.fe-frontend-force-dark .fe-rc-item-card {
+  background: var(--fe-color-card-primary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-primary-border-dark, #1f2a44);
+  color: var(--fe-dm-text);
+}
+html[data-theme="dark"] .fe-rc-item-name,
+body.fe-frontend-force-dark .fe-rc-item-name,
+html[data-theme="dark"] .fe-rc-main-title,
+body.fe-frontend-force-dark .fe-rc-main-title {
+  color: var(--fe-dm-text-strong);
+}
+html[data-theme="dark"] .fe-rc-item-contact,
+body.fe-frontend-force-dark .fe-rc-item-contact,
+html[data-theme="dark"] .fe-rc-count,
+body.fe-frontend-force-dark .fe-rc-count {
+  color: var(--fe-dm-text-muted);
+}
+html[data-theme="dark"] .fe-rc-item-contact-icon,
+body.fe-frontend-force-dark .fe-rc-item-contact-icon,
+html[data-theme="dark"] .fe-rc-item-empty-icon,
+body.fe-frontend-force-dark .fe-rc-item-empty-icon,
+html[data-theme="dark"] .fe-rc-item-sponsor,
+body.fe-frontend-force-dark .fe-rc-item-sponsor {
+  background: color-mix(in srgb, var(--fe-accent, #60a5fa) 22%, transparent);
+}
+html[data-theme="dark"] .fe-rc-item-empty,
+body.fe-frontend-force-dark .fe-rc-item-empty {
+  color: var(--fe-dm-text-muted);
+  border-color: var(--fe-dm-border);
+}
+html[data-theme="dark"] .fe-rc-main-head,
+body.fe-frontend-force-dark .fe-rc-main-head {
+  border-bottom-color: var(--fe-dm-border);
+}
+html[data-theme="dark"] .fe-rc-prefs,
+body.fe-frontend-force-dark .fe-rc-prefs {
+  border-color: var(--fe-dm-border);
+}
+html[data-theme="dark"] .fe-rc-prefs legend,
+body.fe-frontend-force-dark .fe-rc-prefs legend {
+  color: var(--fe-dm-text);
+}
+
 /* ── Dynamic backgrounds library ────────────────────────────────
    Eight CSS-only backdrops that any frontend surface (page, hero,
    section, container block, etc.) can opt into via the .fe-dynbg
@@ -11007,6 +11450,7 @@ html[data-theme="dark"] .fe-mlist-sort select option {
 .fe-fellowships-card,
 .fe-library-item,
 .fe-submission-card,
+.fe-rc-item-card,
 .fe-card-primary {
   box-shadow: var(--fe-card-primary-shadow, none);
   transition:
@@ -11029,6 +11473,7 @@ html[data-theme="dark"] .fe-mlist-sort select option {
 .fe-fellowships-card:hover,
 .fe-library-item:hover,
 .fe-submission-card:hover,
+.fe-rc-item-card:hover,
 .fe-card-primary:hover {
   box-shadow: var(--fe-card-primary-hover-shadow, 0 8px 28px rgba(15, 23, 42, 0.10));
   transform: var(--fe-card-primary-hover-transform, translateY(-2px));
@@ -11085,6 +11530,7 @@ html[data-theme="dark"] .fe-announcements-card,
 html[data-theme="dark"] .fe-fellowships-card,
 html[data-theme="dark"] .fe-library-item,
 html[data-theme="dark"] .fe-submission-card,
+html[data-theme="dark"] .fe-rc-item-card,
 html[data-theme="dark"] .fe-card-primary {
   box-shadow: var(--fe-card-primary-shadow-dark, var(--fe-card-primary-shadow, none));
 }
@@ -11102,6 +11548,7 @@ html[data-theme="dark"] .fe-announcements-card:hover,
 html[data-theme="dark"] .fe-fellowships-card:hover,
 html[data-theme="dark"] .fe-library-item:hover,
 html[data-theme="dark"] .fe-submission-card:hover,
+html[data-theme="dark"] .fe-rc-item-card:hover,
 html[data-theme="dark"] .fe-card-primary:hover {
   box-shadow: var(--fe-card-primary-hover-shadow-dark,
                   var(--fe-card-primary-hover-shadow, 0 8px 28px rgba(15, 23, 42, 0.10)));

@@ -71,7 +71,7 @@
           Templates
         </option>
         <option value="{{ url_for('main.frontend_forms') }}"
-                {% if request.endpoint in ('main.frontend_forms', 'main.frontend_form_submission', 'main.frontend_custom_form_edit') %}selected{% endif %}>
+                {% if request.endpoint in ('main.frontend_forms', 'main.frontend_form_submission', 'main.frontend_form_story', 'main.frontend_form_contact', 'main.frontend_form_recovery_contacts', 'main.frontend_custom_form_edit') %}selected{% endif %}>
           Forms
         </option>
         <option value="{{ url_for('main.frontend_404') }}"
@@ -161,7 +161,7 @@
          form's individual settings page so the Forms entry stays
          visually selected while editing one. #}
       <a href="{{ url_for('main.frontend_forms') }}"
-         class="fe-subnav-link {% if request.endpoint in ('main.frontend_forms', 'main.frontend_form_submission', 'main.frontend_custom_form_edit') %}active{% endif %}">
+         class="fe-subnav-link {% if request.endpoint in ('main.frontend_forms', 'main.frontend_form_submission', 'main.frontend_form_story', 'main.frontend_form_contact', 'main.frontend_form_recovery_contacts', 'main.frontend_custom_form_edit') %}active{% endif %}">
         {{ icon('send') }}<span>Forms</span>
       </a>
       <a href="{{ url_for('main.frontend_404') }}"

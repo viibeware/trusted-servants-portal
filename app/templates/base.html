@@ -1009,6 +1009,23 @@
           </li>
           <li class="special-page-row">
             <div class="special-page-info">
+              <div class="u-name">Recovery Contacts</div>
+              <p class="muted small">Public directory at <code>/contactlist</code> where visitors submit their name, phone, and email. Submissions stay hidden until an admin approves them from the <b>Recovery Contacts</b> sidebar section, where each entry has per-field toggles to show the phone, the email, or both. Bot submissions are blocked by a hidden honeypot plus Cloudflare Turnstile (when configured). The role gate below decides who can review and approve entries.</p>
+            </div>
+            {{ module_role_picker('recovery_contacts', site.recovery_contacts_required_role if site else 'admin') }}
+            <form method="post" action="{{ url_for('main.recovery_contacts_toggle') }}" class="special-page-toggle-form" data-refresh-sidebar="1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label class="mode-toggle" title="Enable Recovery Contacts">
+                <input type="checkbox" name="recovery_contacts_enabled" value="1"
+                       onchange="this.form.submit()"
+                       {% if site and site.recovery_contacts_enabled %}checked{% endif %}>
+                <span class="mode-track"><span class="mode-thumb"></span></span>
+              </label>
+              <noscript><button class="btn btn-sm btn-primary">Save</button></noscript>
+            </form>
+          </li>
+          <li class="special-page-row">
+            <div class="special-page-info">
               <div class="u-name">Blog</div>
               <p class="muted small">Long-form editorial blog at <code>/blog</code> and <code>/blog/&lt;slug&gt;</code>, with categories, tags, featured images, author bylines, and Markdown body. Page block can scope a list to a single category or tag — host multiple committee / group blogs from a single Posts table. When off, the sidebar entry disappears and the public + admin routes return 404; existing posts are kept and reappear when re-enabled.</p>
             </div>

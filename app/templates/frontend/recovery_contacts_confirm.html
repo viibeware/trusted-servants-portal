@@ -1,0 +1,37 @@
+{% extends "frontend/base.html" %}
+{%- set _ok = (status in ('confirmed', 'already')) -%}
+{%- set _title = ('Removal confirmed' if (status == 'confirmed' and kind == 'removal')
+                  else 'Listing updated' if (status == 'confirmed' and kind == 'update')
+                  else 'Already confirmed' if status == 'already'
+                  else 'Link not found') -%}
+{% block title %}{{ _title }} · {{ frontend_title }}{% endblock %}
+{% block content %}
+{# Landing page for the email confirmation link. The route already
+   auto-applied the update / removal; this just shows the outcome. The
+   section is 75vh with the card centered both ways. #}
+<section class="fe-section fe-rc-confirm-section fe-dynbg-host">
+  {% with dynbg_key='aurora-blobs' %}{% include "frontend/_dynbg.html" %}{% endwith %}
+  <div class="fe-rc-confirm-wrap">
+    <div class="fe-contact-card fe-rc-confirm-card">
+      {% if _ok %}
+      <span class="fe-rc-confirm-icon fe-rc-confirm-ok" aria-hidden="true">{{ icon('check-circle') }}</span>
+      {% else %}
+      <span class="fe-rc-confirm-icon fe-rc-confirm-warn" aria-hidden="true">{{ icon('x') }}</span>
+      {% endif %}
+      <h1 class="fe-rc-confirm-title">{{ _title }}</h1>
+      <p class="fe-rc-confirm-msg">
+        {% if status == 'confirmed' and kind == 'removal' %}
+          Thanks{% if confirm_name %}, {{ confirm_name }}{% endif %} — you've been removed from the {{ frontend_title }} contact list. No further action is needed.
+        {% elif status == 'confirmed' and kind == 'update' %}
+          Thanks{% if confirm_name %}, {{ confirm_name }}{% endif %} — your {{ frontend_title }} listing has been updated and is live. No further action is needed.
+        {% elif status == 'already' %}
+          This confirmation link was already used — your {{ 'removal' if kind == 'removal' else 'update' }} has already been processed.
+        {% else %}
+          This confirmation link is invalid or has already been used. If you still need to make a change, please submit the form again.
+        {% endif %}
+      </p>
+      <a class="btn btn-primary fe-rc-confirm-cta" href="{{ url_for('frontend.recovery_contacts') }}">Back to the list</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

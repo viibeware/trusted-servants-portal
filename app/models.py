@@ -1288,6 +1288,37 @@ class SiteSetting(db.Model):
     contact_form_max_width = db.Column(db.Integer, nullable=False, default=1160)
     contact_form_padding_pct = db.Column(db.Integer, nullable=False, default=5)
 
+    # ── Recovery Contacts module (public /contactlist page) ─────────────────
+    # A public directory of names + phone/email that visitors submit
+    # themselves; entries stay hidden until an admin approves them.
+    # Module toggle + role gate mirror the other module pairs (Stories,
+    # Blog, Trusted Servants). The page-config columns below drive the
+    # public page chrome; per-entry rows live in ``RecoveryContact``.
+    # Turnstile + the hidden honeypot guard the public submission form.
+    recovery_contacts_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    recovery_contacts_required_role = db.Column(db.String(32), nullable=False, default="admin")
+    recovery_contacts_heading = db.Column(db.String(200))
+    recovery_contacts_subheading = db.Column(db.String(500))
+    recovery_contacts_intro = db.Column(db.Text)
+    recovery_contacts_success_message = db.Column(db.String(500))
+    recovery_contacts_submit_label = db.Column(db.String(100))
+    # Optional recipient(s) emailed when a new entry is submitted —
+    # comma-separated, falls back to ``access_request_to`` so the admin
+    # gets a heads-up that something's waiting to be approved.
+    recovery_contacts_to = db.Column(db.String(500))
+    # Admin email-alert toggles. New submissions always surface as a chip
+    # in the admin panel; these decide whether an email is *also* sent.
+    # ``email_alerts`` covers new entries + update requests; removal
+    # alerts fire only after the submitter confirms via the emailed link.
+    # Both default off so the portal stays quiet unless the admin opts in.
+    recovery_contacts_email_alerts = db.Column(db.Boolean, nullable=False, default=False)
+    recovery_contacts_removal_alerts = db.Column(db.Boolean, nullable=False, default=False)
+    # Container width — same boxed/full + max-width + side-padding shape
+    # every other public list surface uses (contact_form, events_list…).
+    recovery_contacts_width_mode = db.Column(db.String(16), nullable=False, default="boxed")
+    recovery_contacts_max_width = db.Column(db.Integer, nullable=False, default=1160)
+    recovery_contacts_padding_pct = db.Column(db.Integer, nullable=False, default=5)
+
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -1529,6 +1560,119 @@ class ContactSubmission(db.Model):
     email_sent = db.Column(db.Boolean, nullable=False, default=False)
     email_error = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class RecoveryContact(db.Model):
+    """A single entry on the public Recovery Contacts directory.
+
+    Visitors submit their name plus a phone number and/or email via the
+    public ``/contactlist`` page. New rows land with ``approved=False`` and
+    are invisible to the public until an admin approves them from the
+    Recovery Contacts admin section. ``name`` always renders on the public list;
+    ``show_phone`` / ``show_email`` give per-entry granular control over
+    whether the phone, the email, or both are displayed — the submitter
+    picks a starting preference on the form and the admin can override
+    either one at any time. Mirrors ``ContactSubmission``'s audit shape
+    (ip_address + created_at) plus an ``approved_at`` stamp."""
+    __tablename__ = "recovery_contact"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    email = db.Column(db.String(255))
+    phone = db.Column(db.String(64))
+    # Per-entry public display gates. Name is always shown; these decide
+    # whether the matching contact field renders on the public list.
+    show_phone = db.Column(db.Boolean, nullable=False, default=True)
+    show_email = db.Column(db.Boolean, nullable=False, default=True)
+    # When True, the entry advertises that the person is open to
+    # sponsoring. Set on the public form (a checkbox) and editable by the
+    # admin; rendered as a badge on the public list. No separate show
+    # toggle — it's a yes/no attribute rather than contact info.
+    available_to_sponsor = db.Column(db.Boolean, nullable=False, default=False)
+    # "Contact me through the site" opt-in. When True (and an email is on
+    # file), a Contact button shows on the public list; the visitor's
+    # message is relayed to ``email`` server-side with Reply-To set to the
+    # sender, so the address is never exposed. Lets people who hide their
+    # phone/email stay reachable. ``contact_count`` tracks how many times
+    # they've been contacted this way (shown as a chip in the admin).
+    contact_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    contact_count = db.Column(db.Integer, nullable=False, default=0)
+    # Approval workflow. False = pending review (hidden from public);
+    # True = approved (rendered on the public directory).
+    approved = db.Column(db.Boolean, nullable=False, default=False)
+    # Update-request workflow. When the submitter ticks "I'm updating my
+    # existing entry" on the public form, ``wants_update`` is set and the
+    # submit handler cross-references the directory by email/phone. If a
+    # match is found, ``matched_entry_id`` points at the existing
+    # (approved) entry so the admin sees the submission is *both* a new
+    # row AND a proposed update to an existing one, and can apply it.
+    wants_update = db.Column(db.Boolean, nullable=False, default=False)
+    # Set when the submitter ticks "Remove me from the list" — a pending
+    # request (matched to the existing entry by name) that an admin
+    # actions by deleting the matched entry. A confirmation email is sent
+    # to the submitter when the request is filed.
+    wants_removal = db.Column(db.Boolean, nullable=False, default=False)
+    # Double opt-in for BOTH update and removal requests (kept on these
+    # legacy ``removal_*`` columns). The token powers the confirmation
+    # link emailed to the submitter; clicking it auto-applies the change
+    # (update overwrites the matched entry / removal deletes it) — no
+    # admin approval. ``removal_confirmed_at`` is stamped at that point.
+    # Until then the request shows in the admin panel so an admin can
+    # apply it by hand if the person never confirms.
+    removal_token = db.Column(db.String(64))
+    removal_confirmed_at = db.Column(db.DateTime)
+    matched_entry_id = db.Column(db.Integer,
+                                 db.ForeignKey("recovery_contact.id", ondelete="SET NULL"))
+    # Admin-only note (e.g. why an entry was held). Never public.
+    note = db.Column(db.Text)
+    ip_address = db.Column(db.String(64))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    approved_at = db.Column(db.DateTime)
+
+    # Self-referential link to the existing entry a pending update matched.
+    matched_entry = db.relationship("RecoveryContact", remote_side=[id],
+                                    foreign_keys=[matched_entry_id])
+
+    @property
+    def public_phone(self):
+        """Phone number to render publicly, or None when the entry has
+        no phone or the admin hid it."""
+        return self.phone if (self.phone and self.show_phone) else None
+
+    @property
+    def public_email(self):
+        """Email to render publicly, or None when the entry has no email
+        or the admin hid it."""
+        return self.email if (self.email and self.show_email) else None
+
+
+class RecoveryContactLog(db.Model):
+    """Audit trail for the Recovery Contacts module: public submissions,
+    update/removal requests + their confirmation emails, the email-link
+    confirmations, relayed "Contact me" messages, and admin actions
+    (approve, edit, apply, remove, …). ``entry_name`` is a snapshot so the
+    log stays readable after the underlying entry is deleted."""
+    __tablename__ = "recovery_contact_log"
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    event = db.Column(db.String(40), nullable=False)   # machine key (drives the icon/colour)
+    message = db.Column(db.Text, nullable=False)        # human-readable line
+    entry_name = db.Column(db.String(200))             # snapshot of who it concerns
+    actor = db.Column(db.String(120))                  # 'Visitor', 'admin: jdoe', 'System'
+    ip_address = db.Column(db.String(64))
+
+
+def log_recovery_contact(event, message, entry_name=None, actor=None, ip_address=None):
+    """Append a Recovery Contacts audit-log row and commit. Best-effort —
+    a logging failure must never break the action it's recording."""
+    try:
+        db.session.add(RecoveryContactLog(
+            event=event, message=message,
+            entry_name=(entry_name or None),
+            actor=(actor or None),
+            ip_address=(ip_address or None)))
+        db.session.commit()
+    except Exception:  # noqa: BLE001
+        db.session.rollback()
 
 
 class NotificationDismissal(db.Model):

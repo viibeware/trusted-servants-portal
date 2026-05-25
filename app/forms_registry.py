@@ -86,6 +86,21 @@ def all_forms():
             "public_url_endpoint": "frontend.contact",
             "enabled_setting": "contact_form_enabled",
         },
+        {
+            "key": "recovery_contacts",
+            "name": "Recovery Contacts",
+            "description": (
+                "Public directory at /contactlist where visitors submit "
+                "their name, phone, and email (and whether they're "
+                "available to sponsor). Entries stay hidden until an "
+                "admin approves them on the Recovery Contacts admin "
+                "section; each entry has per-field show/hide toggles."
+            ),
+            "icon": "phone",
+            "settings_endpoint": "main.frontend_form_recovery_contacts",
+            "public_url_endpoint": "frontend.recovery_contacts",
+            "enabled_setting": "recovery_contacts_enabled",
+        },
     ]
 
 

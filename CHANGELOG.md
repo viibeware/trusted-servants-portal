@@ -6,6 +6,27 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.7.0] — 2026-05-25
+
+### Added — Recovery Contacts module
+
+A new self-service member directory: visitors add themselves (name + phone + email), pick exactly what shows publicly, and reach each other directly. Public page served at **`/contactlist`**; admin management lives at **TS Pro → Recovery Contacts**; settings live under **Web Frontend → Forms → Recovery Contacts**. Off by default and 404s when disabled, like every other module surface.
+
+- **Public directory + submission form** (`app/frontend.py`, `templates/frontend/recovery_contacts.html`). Two-column layout inside the shared dynbg section so themes + dark mode flow through automatically: the member list (with header chip/title/subheading) on the left, the submission form on the right. Email is required; phone is optional. Entries appear only after an admin approves them.
+- **Per-entry display control** — each member chooses to show their phone, email, both, or neither (`show_phone` / `show_email`, surfaced via the `public_phone` / `public_email` model properties). An admin can adjust visibility per row afterward.
+- **"Available to sponsor"** opt-in adds a red-heart badge to the listing so members seeking a sponsor can spot them.
+- **Private "Contact me" relay** — opting into *Let people contact me by email through the site* adds a **Contact me** button that opens a modal; the message is emailed to the member with **Reply-To set to the sender** so their address is never exposed (`_send_with_reply_to`). Honeypot + Turnstile protected. The backend shows a contact-count chip per member. This box is **checked by default**, and is **forced on + locked** whenever the member hides both phone and email — so there's always a way to reach them.
+- **Double opt-in update & removal** — checking *I'm updating my existing entry* or *Remove me from the list* matches the member **by email** and sends a confirmation link. Clicking the link **applies the change automatically** (update overwrites the matched entry; removal deletes it) with **no admin approval** (`/contactlist/confirm/<token>`). Unconfirmed requests still surface to the admin to action manually. The removal block greys out and disables every other field except Name + Email; the update block is tinted pale green, the removal block pale pink.
+- **Live search** filters the directory as you type (name / phone / email, plus the keyword **"sponsor"**) and hides non-matching cards until cleared.
+- **Branded PDF** of the directory via WeasyPrint at **`/contactlist.pdf`** — honours the active `?q=` filter, stacks the logo over the public URL, centres the title, and downloads as `<Site-Name>-Recovery-Contacts_<yyyymmdd>.pdf`. Listings reachable only through the site (phone + email both hidden) note **"Contact through the site — https://<site>/contactlist"** in place of empty phone/email cells.
+- **Admin backend** (`app/routes.py`, `templates/recovery_contacts.html`): pending-review table with per-request match panels (Apply update / Approve as new / Remove / Dismiss), a published table with inline visibility toggles + per-row edit, a **manual add** modal, and an **Activity log** (audit trail) of submissions, email confirmations, relayed contacts, and every admin action — each row carrying the actor (visitor vs named admin), timestamp, and IP.
+- **Integrations** — sidebar entry with a pending-count badge, inclusion in the dashboard **Forms** widget, an entry in **Web Frontend → Forms** (`app/forms_registry.py`), and **admin email alerts** (toggleable for new entries and for removals).
+- **Data model** (`app/models.py`) — new `RecoveryContact` table (display flags, sponsor/contact opt-ins, contact count, shared confirmation token for update+removal, self-referential `matched_entry_id`) and `RecoveryContactLog` table for the audit log, plus a `log_recovery_contact()` helper. New `recovery_contacts_*` columns on `SiteSetting`. Tables are created by `db.create_all()`; all additive columns are patched in via `_migrate_sqlite()` (race-tolerant for the 2-worker gunicorn setup). Legacy `/phonelist` 302-redirects to `/contactlist`.
+
+### Changed — Directory cards adopt the Primary card design tokens
+
+The Recovery Contacts list cards now read surface + border from the Primary card tokens (`--fe-color-card-primary-bg` / `--fe-color-card-primary-border`, with the `-dark` variants) and join the shared `.fe-card-primary` shadow/hover/transition aggregator, so they match meeting/submission cards in every theme and dark mode.
+
 ## [2.6.1] — 2026-05-24
 
 ### Added — Neobrutal theme

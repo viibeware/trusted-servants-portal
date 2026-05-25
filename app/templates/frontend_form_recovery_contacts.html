@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block heading %}Recovery Contacts{% endblock %}
+{% block heading_help %}Configures the public Recovery Contacts directory at <code>/contactlist</code>. Visitors submit their name, phone, and email (and whether they're available to sponsor); entries stay hidden until an admin approves them. This page is for the page's configuration — the entries themselves are reviewed and approved on the <a href="{{ url_for('main.recovery_contacts') }}">Recovery Contacts</a> admin section.{% endblock %}
+{% block top_actions %}
+<a class="btn" href="{{ url_for('main.frontend_forms') }}">← All forms</a>
+<a class="btn" href="{{ url_for('frontend.recovery_contacts') }}" target="_blank" rel="noopener">Preview /contactlist ↗</a>
+<a class="btn" href="{{ url_for('main.recovery_contacts') }}">Review entries</a>
+{% endblock %}
+{% block content %}
+<div class="fe-admin-layout">
+  {% include "_frontend_subnav.html" %}
+  <div class="fe-admin-main">
+
+    <form class="form" method="post" action="{{ url_for('main.frontend_form_recovery_contacts') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Visibility</h2>
+          <span class="muted smaller">Off-switch for Recovery Contacts site-wide. When off, <code>/contactlist</code> returns 404, the sidebar section disappears, and any nav link pointed at the form falls back to its URL. Existing entries and the settings below are preserved when off.</span>
+        </div>
+        <li class="special-page-row" style="list-style:none; padding: 1rem;">
+          <div class="special-page-info">
+            <div class="u-name">Recovery Contacts enabled</div>
+            <p class="muted small">Hard off-switch. Entries and settings are preserved when off.</p>
+          </div>
+          <label class="mode-toggle">
+            <input type="checkbox" name="recovery_contacts_enabled" value="1"
+                   {% if site.recovery_contacts_enabled %}checked{% endif %}>
+            <span class="mode-track"><span class="mode-thumb"></span></span>
+          </label>
+        </li>
+        <p class="muted small" style="margin: 0.5rem 1rem 0;">
+          Who can review &amp; approve entries is set on <a href="{{ url_for('main.index') }}">Settings → Modules</a> (the Recovery Contacts access role).
+        </p>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Admin email alerts</h2>
+          <span class="muted smaller">New submissions always appear as a chip in the <a href="{{ url_for('main.recovery_contacts') }}">Recovery Contacts</a> admin panel. These toggles decide whether you also get an email — both off by default.</span>
+        </div>
+        <li class="special-page-row" style="list-style:none; padding: 0.75rem 1rem;">
+          <div class="special-page-info">
+            <div class="u-name">Email me about new submissions</div>
+            <p class="muted small">Covers new entries and update requests. The admin-panel chip always shows regardless of this setting.</p>
+          </div>
+          <label class="mode-toggle" title="Email on new submissions">
+            <input type="checkbox" name="recovery_contacts_email_alerts" value="1"
+                   {% if site.recovery_contacts_email_alerts %}checked{% endif %}>
+            <span class="mode-track"><span class="mode-thumb"></span></span>
+          </label>
+        </li>
+        <li class="special-page-row" style="list-style:none; padding: 0.75rem 1rem;">
+          <div class="special-page-info">
+            <div class="u-name">Email me about removal requests</div>
+            <p class="muted small">Sent only after the person clicks the confirmation link we email them. The pending request still appears in the admin panel right away.</p>
+          </div>
+          <label class="mode-toggle" title="Email on confirmed removal requests">
+            <input type="checkbox" name="recovery_contacts_removal_alerts" value="1"
+                   {% if site.recovery_contacts_removal_alerts %}checked{% endif %}>
+            <span class="mode-track"><span class="mode-thumb"></span></span>
+          </label>
+        </li>
+        <label style="margin-top: 0.5rem;">Alert recipient(s)
+          <input type="text" name="recovery_contacts_to" maxlength="500"
+                 value="{{ site.recovery_contacts_to or '' }}"
+                 placeholder="{{ site.access_request_to or 'admin@example.com' }}">
+        </label>
+        <p class="muted small">Comma-separated for multiple recipients. Falls back to your access-request recipients (<code>{{ site.access_request_to or '(not set)' }}</code>) when blank.</p>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Page copy</h2>
+          <span class="muted smaller">Heading, subheading, and intro shown above the directory + form. Leave a field blank to use its built-in default.</span>
+        </div>
+        <label>Page heading
+          <input type="text" name="recovery_contacts_heading" maxlength="200"
+                 value="{{ site.recovery_contacts_heading or '' }}" placeholder="Recovery Contacts">
+        </label>
+        <label>Subheading
+          <input type="text" name="recovery_contacts_subheading" maxlength="500"
+                 value="{{ site.recovery_contacts_subheading or '' }}"
+                 placeholder="Add yourself to the directory and reach other members directly.">
+        </label>
+        <label>Intro <span class="muted smaller">(Markdown supported)</span>
+          <textarea name="recovery_contacts_intro" rows="3"
+                    placeholder="Optional paragraph shown above the form.">{{ site.recovery_contacts_intro or '' }}</textarea>
+        </label>
+        <label>Submit button label
+          <input type="text" name="recovery_contacts_submit_label" maxlength="100"
+                 value="{{ site.recovery_contacts_submit_label or '' }}" placeholder="Add me to the list">
+        </label>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Confirmation</h2>
+          <span class="muted smaller">Shown to the visitor after a successful submission.</span>
+        </div>
+        <label>Success message
+          <textarea name="recovery_contacts_success_message" rows="2" maxlength="500"
+                    placeholder="Thanks — your entry has been submitted and will appear once an admin approves it.">{{ site.recovery_contacts_success_message or '' }}</textarea>
+        </label>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Layout</h2>
+          <span class="muted smaller">Container width for the public page. <b>Boxed</b> caps the content at a max width and centers it; <b>Full width</b> spans the viewport with side padding.</span>
+        </div>
+        <div class="rc-settings-grid">
+          <label>Container width
+            <select name="recovery_contacts_width_mode">
+              <option value="boxed" {% if (site.recovery_contacts_width_mode or 'boxed') == 'boxed' %}selected{% endif %}>Boxed</option>
+              <option value="full" {% if site.recovery_contacts_width_mode == 'full' %}selected{% endif %}>Full width</option>
+            </select>
+          </label>
+          <label>Max width (px, boxed)
+            <input type="number" name="recovery_contacts_max_width" min="640" max="2400" step="10"
+                   value="{{ site.recovery_contacts_max_width or 1160 }}">
+          </label>
+          <label>Side padding (%, full)
+            <input type="number" name="recovery_contacts_padding_pct" min="0" max="20" step="1"
+                   value="{{ site.recovery_contacts_padding_pct if site.recovery_contacts_padding_pct is not none else 5 }}">
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Bot protection</h2>
+          <span class="muted smaller">A hidden honeypot field traps simple form-fillers automatically. Cloudflare Turnstile rides on the existing site-wide setting — when it's on, it's on for this form too.</span>
+        </div>
+        <p class="muted small" style="margin: 0;">
+          Turnstile is currently
+          {% if site.turnstile_enabled and site.turnstile_site_key %}<b>enabled</b>{% else %}<b>disabled</b>{% endif %}.
+          Configure it on <a href="{{ url_for('main.index') }}">Settings → Login &amp; security</a>.
+        </p>
+      </section>
+
+      <div class="form-actions">
+        <button class="btn btn-primary">Save Recovery Contacts settings</button>
+      </div>
+    </form>
+
+  </div>
+</div>
+{% endblock %}

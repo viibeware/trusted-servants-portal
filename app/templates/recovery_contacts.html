@@ -1,0 +1,393 @@
+{% extends "base.html" %}
+{% block heading %}Recovery Contacts{% endblock %}
+{% block heading_help %}Review entries people submit on the public <code>/contactlist</code> page. New submissions arrive under <b>Pending review</b> and stay hidden from the public until you approve them. Each approved entry has per-field toggles so you decide whether its phone, email, or both are displayed.{% endblock %}
+{% block top_actions %}
+<a class="btn" href="{{ url_for('main.frontend_form_recovery_contacts') }}">{{ icon('settings') }} Form settings</a>
+<a class="btn" href="{{ url_for('frontend.recovery_contacts') }}" target="_blank" rel="noopener">
+  {{ icon('external-link') }} Preview public page ↗
+</a>
+{% endblock %}
+{% block content %}
+
+<div class="ts-page-wrap rc-page-wrap">
+
+  <div class="ts-page-toolbar">
+    <button type="button" class="btn" data-open-modal="rc-add-modal">{{ icon('user-plus') }} Add manually</button>
+  </div>
+
+  {# ── Pending review ──────────────────────────────────────────── #}
+  <section class="card data-card">
+    <div class="data-card-head">
+      {{ icon('clock') }}
+      <span>Pending review</span>
+      <div class="data-card-head-actions muted smaller">
+        {{ pending|length }} waiting
+      </div>
+    </div>
+    <p class="muted small data-card-lead">
+      Entries submitted on the public page. Approve to publish them on the directory, or remove to discard. The “requested display” shows what the submitter asked to share — you can change it after approving.
+    </p>
+    {% if pending %}
+    <table class="tbl rc-tbl">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Phone</th>
+          <th>Email</th>
+          <th>Requested display</th>
+          <th>Submitted</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in pending %}
+        <tr {% if e.wants_update or e.wants_removal %}class="rc-row-update"{% endif %}>
+          <td data-label="Name">
+            {{ e.name }}
+            {% if e.wants_removal %}
+              {% if e.removal_confirmed_at %}<span class="rc-badge rc-badge-remove">{{ icon('trash') }} Removal · confirmed</span>
+              {% else %}<span class="rc-badge rc-badge-pending">{{ icon('clock') }} Removal · awaiting confirmation</span>{% endif %}
+            {% elif e.wants_update %}<span class="rc-badge rc-badge-pending">{{ icon('clock') }} Update · awaiting confirmation</span>{% endif %}
+          </td>
+          <td data-label="Phone">{{ e.phone or '—' }}</td>
+          <td data-label="Email">{% if e.email %}<a href="mailto:{{ e.email }}">{{ e.email }}</a>{% else %}—{% endif %}</td>
+          <td data-label="Requested display">
+            {% if e.wants_removal %}
+            {% if e.removal_confirmed_at %}<span class="rc-badge rc-badge-remove">Confirmed removal</span>
+            {% else %}<span class="rc-badge rc-badge-pending">Awaiting confirmation</span>{% endif %}
+            {% else %}
+            <span class="rc-badge {% if e.show_phone %}rc-badge-on{% else %}rc-badge-off{% endif %}">Phone {{ 'shown' if e.show_phone else 'hidden' }}</span>
+            <span class="rc-badge {% if e.show_email %}rc-badge-on{% else %}rc-badge-off{% endif %}">Email {{ 'shown' if e.show_email else 'hidden' }}</span>
+            {% if e.available_to_sponsor %}<span class="rc-badge rc-badge-sponsor">Available to sponsor</span>{% endif %}
+            {% endif %}
+          </td>
+          <td data-label="Submitted" class="muted smaller">{{ e.created_at.strftime('%b %-d, %Y') if e.created_at else '—' }}</td>
+          <td class="rc-row-actions">
+            {% if e.wants_removal %}
+              {% if e.matched_entry %}
+              <form method="post" action="{{ url_for('main.recovery_contacts_apply_removal', eid=e.id) }}"
+                    onsubmit="return confirm('Remove “{{ e.matched_entry.name }}” from the list? This deletes their entry.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-danger" title="Delete the matched entry and clear this request">{{ icon('trash') }} Remove from list</button>
+              </form>
+              {% endif %}
+              <form method="post" action="{{ url_for('main.recovery_contacts_delete', eid=e.id) }}"
+                    onsubmit="return confirm('Dismiss this removal request? The entry stays on the list.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm" title="Dismiss the request, keep the entry">Dismiss</button>
+              </form>
+            {% elif e.wants_update and e.matched_entry %}
+            <form method="post" action="{{ url_for('main.recovery_contacts_apply_update', eid=e.id) }}"
+                  onsubmit="return confirm('Overwrite the existing entry “{{ e.matched_entry.name }}” with this submission?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-primary" title="Overwrite the matched entry with this submission">{{ icon('rotate-cw') }} Apply update</button>
+            </form>
+            <form method="post" action="{{ url_for('main.recovery_contacts_approve', eid=e.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm" title="Publish this as a separate new entry instead">Approve as new</button>
+            </form>
+            <button type="button" class="btn btn-sm" data-open-modal="rc-edit-{{ e.id }}" title="Edit before approving">{{ icon('pencil') }}</button>
+            <form method="post" action="{{ url_for('main.recovery_contacts_delete', eid=e.id) }}"
+                  onsubmit="return confirm('Remove {{ e.name }}?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-danger" title="Remove submission">{{ icon('trash') }}</button>
+            </form>
+            {% else %}
+            <form method="post" action="{{ url_for('main.recovery_contacts_approve', eid=e.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-primary" title="Approve & publish">{{ icon('check-circle') }} Approve</button>
+            </form>
+            <button type="button" class="btn btn-sm" data-open-modal="rc-edit-{{ e.id }}" title="Edit before approving">{{ icon('pencil') }}</button>
+            <form method="post" action="{{ url_for('main.recovery_contacts_delete', eid=e.id) }}"
+                  onsubmit="return confirm('Remove {{ e.name }}?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-danger" title="Remove submission">{{ icon('trash') }}</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% if e.wants_update or e.wants_removal %}
+        <tr class="rc-update-detail">
+          <td colspan="6">
+            {% if e.wants_removal %}
+              {% if e.matched_entry %}
+              <div class="rc-match {{ 'rc-match-remove' if e.removal_confirmed_at else 'rc-match-pending' }}">
+                {% if e.removal_confirmed_at %}
+                <span class="rc-match-title">{{ icon('trash') }} Removal request — <b>confirmed</b> by the submitter on {{ e.removal_confirmed_at.strftime('%b %-d, %Y') }}. Remove the matched entry, or dismiss to keep it.</span>
+                {% else %}
+                <span class="rc-match-title">{{ icon('clock') }} Removal request — <b>awaiting confirmation</b>. We emailed the submitter a link; no admin alert is sent until they click it. You can remove now or wait.</span>
+                {% endif %}
+                <div class="rc-match-grid">
+                  <div class="rc-match-col">
+                    <span class="rc-match-label">Entry to remove</span>
+                    <div class="rc-match-name">{{ e.matched_entry.name }}</div>
+                    <div class="muted smaller">{{ e.matched_entry.phone or 'no phone' }} · {{ e.matched_entry.email or 'no email' }}</div>
+                  </div>
+                </div>
+              </div>
+              {% else %}
+              <div class="rc-match rc-match-nomatch">
+                {{ icon('trash') }} Removal request{% if not e.removal_confirmed_at %} (awaiting confirmation){% endif %} — but no existing entry matched their email. Dismiss it, or remove the right entry by hand from the published list.
+              </div>
+              {% endif %}
+            {% elif e.matched_entry %}
+            <div class="rc-match rc-match-pending">
+              <span class="rc-match-title">{{ icon('clock') }} Update request — <b>awaiting confirmation</b>. We emailed the submitter a link; clicking it applies the update automatically. Apply it now to confirm on their behalf, or wait.</span>
+              <div class="rc-match-grid">
+                <div class="rc-match-col">
+                  <span class="rc-match-label">Existing entry</span>
+                  <div class="rc-match-name">{{ e.matched_entry.name }}</div>
+                  <div class="muted smaller">{{ e.matched_entry.phone or 'no phone' }} · {{ e.matched_entry.email or 'no email' }}{% if e.matched_entry.available_to_sponsor %} · sponsor{% endif %}</div>
+                </div>
+                <div class="rc-match-arrow" aria-hidden="true">{{ icon('arrow-right') }}</div>
+                <div class="rc-match-col">
+                  <span class="rc-match-label">New submission</span>
+                  <div class="rc-match-name">{{ e.name }}</div>
+                  <div class="muted smaller">{{ e.phone or 'no phone' }} · {{ e.email or 'no email' }}{% if e.available_to_sponsor %} · sponsor{% endif %}</div>
+                </div>
+              </div>
+            </div>
+            {% else %}
+            <div class="rc-match rc-match-nomatch">
+              {{ icon('rotate-cw') }} Update request — no existing entry matched their email. Approve it as a new entry, or wait for them to confirm (which will publish it).
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">Nothing waiting — new submissions from the public page will appear here.</p>
+    {% endif %}
+  </section>
+
+  {# ── Approved (live on the public directory) ─────────────────── #}
+  <section class="card data-card">
+    <div class="data-card-head">
+      {{ icon('phone') }}
+      <span>Published entries</span>
+      <div class="data-card-head-actions muted smaller">
+        {{ approved|length }} live
+      </div>
+    </div>
+    <p class="muted small data-card-lead">
+      These show on the public Recovery Contacts page. Flip a toggle to show or hide that entry's phone or email instantly — the name always shows.
+    </p>
+    {% if approved %}
+    <table class="tbl rc-tbl">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Phone</th>
+          <th>Show phone</th>
+          <th>Email</th>
+          <th>Show email</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in approved %}
+        <tr>
+          <td data-label="Name">{{ e.name }}{% if e.available_to_sponsor %} <span class="rc-badge rc-badge-sponsor">Sponsor</span>{% endif %}{% if e.contact_enabled %} <span class="rc-badge rc-badge-contact" title="Contacted {{ e.contact_count }} time{{ '' if e.contact_count == 1 else 's' }} via the site">{{ icon('mail') }} {{ e.contact_count }}</span>{% endif %}</td>
+          <td data-label="Phone" class="{% if not (e.phone and e.show_phone) %}muted{% endif %}">{{ e.phone or '—' }}</td>
+          <td data-label="Show phone">
+            {% if e.phone %}
+            <form method="post" action="{{ url_for('main.recovery_contacts_visibility', eid=e.id, field='phone') }}" class="rc-vis-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label class="mode-toggle" title="Show phone on the public list">
+                <input type="checkbox" name="value" value="1" onchange="this.form.submit()" {% if e.show_phone %}checked{% endif %}>
+                <span class="mode-track"><span class="mode-thumb"></span></span>
+              </label>
+            </form>
+            {% else %}<span class="muted smaller">no phone</span>{% endif %}
+          </td>
+          <td data-label="Email" class="{% if not (e.email and e.show_email) %}muted{% endif %}">
+            {% if e.email %}<a href="mailto:{{ e.email }}">{{ e.email }}</a>{% else %}—{% endif %}
+          </td>
+          <td data-label="Show email">
+            {% if e.email %}
+            <form method="post" action="{{ url_for('main.recovery_contacts_visibility', eid=e.id, field='email') }}" class="rc-vis-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label class="mode-toggle" title="Show email on the public list">
+                <input type="checkbox" name="value" value="1" onchange="this.form.submit()" {% if e.show_email %}checked{% endif %}>
+                <span class="mode-track"><span class="mode-thumb"></span></span>
+              </label>
+            </form>
+            {% else %}<span class="muted smaller">no email</span>{% endif %}
+          </td>
+          <td class="rc-row-actions">
+            <button type="button" class="btn btn-sm" data-open-modal="rc-edit-{{ e.id }}" title="Edit entry">{{ icon('pencil') }}</button>
+            <form method="post" action="{{ url_for('main.recovery_contacts_unapprove', eid=e.id) }}" title="Move back to pending">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm" title="Unpublish (back to pending)">{{ icon('eye-off') }}</button>
+            </form>
+            <form method="post" action="{{ url_for('main.recovery_contacts_delete', eid=e.id) }}"
+                  onsubmit="return confirm('Remove {{ e.name }} from the list?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-danger" title="Remove from list">{{ icon('trash') }}</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No published entries yet — approve a submission above to add the first one.</p>
+    {% endif %}
+    <p class="muted small data-card-lead" style="margin-top: 1rem;">
+      Page copy, the notification recipient, and layout for the public page live on the <a href="{{ url_for('main.frontend_form_recovery_contacts') }}">Recovery Contacts form settings</a> (Web Frontend → Forms).
+    </p>
+  </section>
+
+  {# ── Activity log ───────────────────────────────────────────── #}
+  <section class="card data-card">
+    <div class="data-card-head">
+      {{ icon('history') }}
+      <span>Activity log</span>
+      <div class="data-card-head-actions muted smaller">{{ logs|length }} recent</div>
+    </div>
+    <p class="muted small data-card-lead">
+      Submissions, email confirmations, relayed “Contact me” messages, and admin actions — newest first.
+    </p>
+    {% if logs %}
+    {%- set _log_cat = {
+      'submitted':'new', 'manual_add':'new',
+      'update_requested':'update', 'update_confirmed':'update', 'update_applied':'update', 'edited':'update',
+      'removal_requested':'removal', 'removal_confirmed':'removal', 'removal_applied':'removal',
+      'dismissed':'removal', 'deleted':'removal',
+      'approved':'ok', 'unapproved':'muted', 'visibility':'muted', 'contacted':'contact'} -%}
+    {%- set _log_icon = {
+      'submitted':'user-plus', 'manual_add':'user-plus',
+      'update_requested':'rotate-cw', 'update_confirmed':'rotate-cw', 'update_applied':'rotate-cw', 'edited':'pencil',
+      'removal_requested':'trash', 'removal_confirmed':'trash', 'removal_applied':'trash',
+      'dismissed':'x', 'deleted':'trash',
+      'approved':'check-circle', 'unapproved':'eye-off', 'visibility':'eye', 'contacted':'mail'} -%}
+    <ul class="rc-log">
+      {% for l in logs %}
+      <li class="rc-log-row">
+        <span class="rc-log-icon rc-log-cat-{{ _log_cat.get(l.event, 'muted') }}" aria-hidden="true">{{ icon(_log_icon.get(l.event, 'circle')) }}</span>
+        <div class="rc-log-body">
+          <div class="rc-log-msg">{% if l.entry_name %}<b>{{ l.entry_name }}</b> — {% endif %}{{ l.message }}</div>
+          <div class="rc-log-meta muted smaller">
+            {% if l.created_at %}{{ l.created_at|fmt_site_local("%b %-d, %Y · %-I:%M %p %Z") }}{% endif %}{% if l.actor %} · {{ l.actor }}{% endif %}{% if l.ip_address %} · {{ l.ip_address }}{% endif %}
+          </div>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">No activity yet — submissions and admin actions will show up here.</p>
+    {% endif %}
+  </section>
+</div>
+
+{# Add manually — admin-entered entry. Published immediately (no review
+   step) since the admin is entering trusted info directly. #}
+<div class="modal" id="rc-add-modal" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true">
+    <form method="post" action="{{ url_for('main.recovery_contacts_manual_add') }}" class="form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-head">
+        <h2>Add a person</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">{{ icon('x') }}</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted small" style="margin: 0 0 1rem;">
+          Add someone to the directory yourself. Manually-added entries are published immediately — no approval step. You can edit or remove them anytime.
+        </p>
+        <label>Full name <span class="muted smaller">(required)</span>
+          <input type="text" name="name" required maxlength="200" placeholder="e.g. Jane D.">
+        </label>
+        <label>Phone <span class="muted smaller">(optional)</span>
+          <input type="tel" name="phone" maxlength="64">
+        </label>
+        <label>Email <span class="muted smaller">(optional)</span>
+          <input type="email" name="email" maxlength="255">
+        </label>
+        <p class="muted smaller" style="margin: 0 0 0.5rem;">Add a phone number, an email, or both.</p>
+        <div class="rc-modal-toggles">
+          <label class="rc-modal-check">
+            <input type="checkbox" name="show_phone" value="1" checked>
+            Show phone on the public list
+          </label>
+          <label class="rc-modal-check">
+            <input type="checkbox" name="show_email" value="1" checked>
+            Show email on the public list
+          </label>
+          <label class="rc-modal-check">
+            <input type="checkbox" name="available_to_sponsor" value="1">
+            Available to sponsor
+          </label>
+          <label class="rc-modal-check">
+            <input type="checkbox" name="contact_enabled" value="1">
+            Allow email contact through the site
+          </label>
+        </div>
+        <label>Admin note <span class="muted smaller">(never shown publicly)</span>
+          <textarea name="note" rows="2"></textarea>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Add to list</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# Per-row edit modals — fix a typo, adjust contact fields, or set the
+   display toggles for any entry (pending or published). #}
+{% for e in (pending + approved) %}
+<div class="modal" id="rc-edit-{{ e.id }}" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true">
+    <form method="post" action="{{ url_for('main.recovery_contacts_update', eid=e.id) }}" class="form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-head">
+        <h2>Edit {{ e.name }}</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">{{ icon('x') }}</button>
+      </div>
+      <div class="modal-body">
+        <label>Full name
+          <input type="text" name="name" required maxlength="200" value="{{ e.name }}">
+        </label>
+        <label>Phone <span class="muted smaller">(optional)</span>
+          <input type="tel" name="phone" maxlength="64" value="{{ e.phone or '' }}">
+        </label>
+        <label>Email <span class="muted smaller">(optional)</span>
+          <input type="email" name="email" maxlength="255" value="{{ e.email or '' }}">
+        </label>
+        <div class="rc-modal-toggles">
+          <label class="rc-modal-check">
+            <input type="checkbox" name="show_phone" value="1" {% if e.show_phone %}checked{% endif %}>
+            Show phone on the public list
+          </label>
+          <label class="rc-modal-check">
+            <input type="checkbox" name="show_email" value="1" {% if e.show_email %}checked{% endif %}>
+            Show email on the public list
+          </label>
+          <label class="rc-modal-check">
+            <input type="checkbox" name="available_to_sponsor" value="1" {% if e.available_to_sponsor %}checked{% endif %}>
+            Available to sponsor
+          </label>
+          <label class="rc-modal-check">
+            <input type="checkbox" name="contact_enabled" value="1" {% if e.contact_enabled %}checked{% endif %}>
+            Allow email contact through the site{% if e.contact_count %} <span class="muted smaller">· contacted {{ e.contact_count }}×</span>{% endif %}
+          </label>
+        </div>
+        <label>Admin note <span class="muted smaller">(never shown publicly)</span>
+          <textarea name="note" rows="2">{{ e.note or '' }}</textarea>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Save changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

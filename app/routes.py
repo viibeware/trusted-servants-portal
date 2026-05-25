@@ -15,7 +15,7 @@ from .models import (db, User, Meeting, MeetingFile, MeetingSchedule, MeetingSch
                      Post, Story, BlogPost, BlogCategory, BlogTag,
                      ZoomAccount, ZoomOtpEmail, Location, Library, LibraryItem,
                      LibraryCategory, MediaItem, NavLink, SiteSetting,
-                     IntergroupAccount, IntergroupOfficer, AccessRequest, ContactSubmission, PasswordResetToken,
+                     IntergroupAccount, IntergroupOfficer, AccessRequest, ContactSubmission, RecoveryContact, log_recovery_contact, PasswordResetToken,
                      FrontendNavItem, UrlRedirect, EntitySlugHistory, Page,
                      FrontendNavColumn, FrontendNavLink, FILE_CATEGORIES,
                      DAYS_OF_WEEK, INTERGROUP_LIBRARY_NAMES,
@@ -265,6 +265,7 @@ def inject_globals():
     locked_accounts_count = 0
     pending_posts_count = 0
     pending_stories_count = 0
+    pending_recovery_contacts_count = 0
     try:
         if current_user.is_authenticated and current_user.is_admin():
             pending_access_count = AccessRequest.query.filter_by(
@@ -298,12 +299,22 @@ def inject_globals():
             pending_stories_count = Story.query.filter(
                 Story.is_pending_review.is_(True),
                 Story.is_archived.is_(False)).count()
+        # Pending Recovery Contacts entries chip. Gated by the module's own
+        # admin role (who can approve entries) rather than the editor
+        # gate, since the Recovery Contacts section defaults to admin-tier.
+        if (current_user.is_authenticated
+                and site and getattr(site, "recovery_contacts_enabled", False)):
+            from .permissions import user_meets_role
+            if user_meets_role(current_user,
+                               getattr(site, "recovery_contacts_required_role", "admin") or "admin"):
+                pending_recovery_contacts_count = RecoveryContact.query.filter_by(approved=False).count()
     except Exception:
         pending_access_count = 0
         unread_contact_count = 0
         locked_accounts_count = 0
         pending_posts_count = 0
         pending_stories_count = 0
+        pending_recovery_contacts_count = 0
     try:
         otp = _get_otp_email()
     except Exception:
@@ -325,6 +336,7 @@ def inject_globals():
             "locked_accounts_count": locked_accounts_count,
             "pending_posts_count": pending_posts_count,
             "pending_stories_count": pending_stories_count,
+            "pending_recovery_contacts_count": pending_recovery_contacts_count,
             "notifications_count": notifications_count, "otp": otp}
 
 
@@ -611,6 +623,25 @@ def _forms_widget_data():
             "total": total,
             "last_at": last.created_at if last else None,
             "enabled": bool(getattr(s, "contact_form_enabled", True)),
+        })
+    # Recovery Contacts — directory entries awaiting approval. Only listed when
+    # the module is enabled; attention = entries still pending review.
+    if s is not None and getattr(s, "recovery_contacts_enabled", False):
+        pending = RecoveryContact.query.filter_by(approved=False).count()
+        total = RecoveryContact.query.count()
+        last = (RecoveryContact.query
+                .order_by(RecoveryContact.created_at.desc()).first())
+        rows.append({
+            "key": "recovery_contacts",
+            "name": "Recovery Contacts",
+            "subtitle": "Directory entries",
+            "icon": "phone",
+            "url": url_for("main.recovery_contacts"),
+            "attention": pending,
+            "attention_label": "pending review",
+            "total": total,
+            "last_at": last.created_at if last else None,
+            "enabled": True,
         })
     # Every CustomForm row. New custom forms surface here automatically;
     # the link routes through the form-submissions index pre-filtered to
@@ -2669,6 +2700,7 @@ def module_role_save():
         "blog":              "blog_required_role",
         "frontend_module":   "frontend_module_required_role",
         "trusted_servants":  "trusted_servants_required_role",
+        "recovery_contacts":        "recovery_contacts_required_role",
     }
     col = columns.get(module)
     if col and role in ROLE_TIER_KEYS:
@@ -2780,6 +2812,237 @@ def trusted_servants_delete(sid):
     db.session.commit()
     flash(f"Removed {name} from the Trusted Servants list.", "info")
     return redirect(url_for("main.trusted_servants_list"))
+
+
+# ---------------------------------------------------------------------------
+# Recovery Contacts — admin management surface.
+# Public visitors submit name + phone/email via /contactlist; rows arrive
+# unapproved and stay hidden from the public directory until an admin
+# approves them here. Each approved row has per-field display toggles so
+# the admin controls whether the phone, the email, or both are shown.
+# ---------------------------------------------------------------------------
+@bp.route("/settings/recovery-contacts-toggle", methods=["POST"])
+@admin_required
+def recovery_contacts_toggle():
+    s = _get_site_setting()
+    s.recovery_contacts_enabled = request.form.get("recovery_contacts_enabled") == "1"
+    db.session.commit()
+    flash("Recovery Contacts " + ("enabled" if s.recovery_contacts_enabled else "disabled"), "success")
+    return redirect(_safe_referrer() or url_for("main.index"))
+
+
+def _require_recovery_contacts_admin():
+    """Gate the Recovery Contacts admin surface. Module must be enabled AND the
+    user must clear the admin-tunable role gate (defaults to ``admin``).
+    The public /contactlist submit route doesn't go through this — any
+    visitor can submit an entry; this gate only governs who can review,
+    approve, and remove entries."""
+    from .permissions import user_meets_role
+    s = _get_site_setting()
+    if not getattr(s, "recovery_contacts_enabled", False):
+        abort(404)
+    if not user_meets_role(current_user, getattr(s, "recovery_contacts_required_role", "admin") or "admin"):
+        abort(404)
+
+
+@bp.route("/recovery-contacts")
+@login_required
+def recovery_contacts():
+    _require_recovery_contacts_admin()
+    from .models import RecoveryContactLog
+    s = _get_site_setting()
+    pending = (RecoveryContact.query.filter_by(approved=False)
+               .order_by(RecoveryContact.created_at.desc()).all())
+    approved = (RecoveryContact.query.filter_by(approved=True)
+                .order_by(RecoveryContact.name.asc()).all())
+    logs = (RecoveryContactLog.query
+            .order_by(RecoveryContactLog.created_at.desc(), RecoveryContactLog.id.desc())
+            .limit(60).all())
+    return render_template("recovery_contacts.html", site=s,
+                           pending=pending, approved=approved, logs=logs)
+
+
+@bp.route("/recovery-contacts/add", methods=["POST"])
+@login_required
+def recovery_contacts_manual_add():
+    """Admin-entered Recovery Contacts entry. Unlike public submissions, a
+    manually-added entry is published immediately (approved=True) — the
+    admin is entering trusted info directly, so there's no review step.
+    Requires a name plus at least one contact method."""
+    _require_recovery_contacts_admin()
+    name = (request.form.get("name") or "").strip()[:200]
+    email = (request.form.get("email") or "").strip()[:255] or None
+    phone = (request.form.get("phone") or "").strip()[:64] or None
+    if not name:
+        flash("A name is required.", "danger")
+        return redirect(url_for("main.recovery_contacts"))
+    if not email and not phone:
+        flash("Add a phone number, an email, or both.", "danger")
+        return redirect(url_for("main.recovery_contacts"))
+    e = RecoveryContact(
+        name=name, email=email, phone=phone,
+        show_phone=request.form.get("show_phone") == "1",
+        show_email=request.form.get("show_email") == "1",
+        available_to_sponsor=request.form.get("available_to_sponsor") == "1",
+        contact_enabled=request.form.get("contact_enabled") == "1",
+        note=(request.form.get("note") or "").strip() or None,
+        approved=True, approved_at=datetime.utcnow(),
+    )
+    db.session.add(e)
+    db.session.commit()
+    log_recovery_contact("manual_add", "Added manually by admin",
+                         entry_name=name, actor=f"admin: {current_user.username}")
+    flash(f"Added {name} to Recovery Contacts.", "success")
+    return redirect(url_for("main.recovery_contacts"))
+
+
+@bp.route("/recovery-contacts/<int:eid>/approve", methods=["POST"])
+@login_required
+def recovery_contacts_approve(eid):
+    _require_recovery_contacts_admin()
+    e = db.session.get(RecoveryContact, eid) or abort(404)
+    e.approved = True
+    e.approved_at = datetime.utcnow()
+    db.session.commit()
+    log_recovery_contact("approved", "Approved and published by admin",
+                         entry_name=e.name, actor=f"admin: {current_user.username}")
+    flash(f"Approved {e.name} — now visible on the public Recovery Contacts page.", "success")
+    return redirect(url_for("main.recovery_contacts"))
+
+
+@bp.route("/recovery-contacts/<int:eid>/apply-update", methods=["POST"])
+@login_required
+def recovery_contacts_apply_update(eid):
+    """Apply a pending 'update my entry' submission onto the existing
+    entry it matched: overwrite the existing (approved) row's fields with
+    the submitted values, keep it published, and delete the submission.
+    No-op with a warning when the submission isn't matched to anything."""
+    _require_recovery_contacts_admin()
+    sub = db.session.get(RecoveryContact, eid) or abort(404)
+    target = sub.matched_entry
+    if target is None:
+        flash("That submission isn't matched to an existing entry — approve it as a new entry instead.", "danger")
+        return redirect(url_for("main.recovery_contacts"))
+    target.name = sub.name
+    target.phone = sub.phone
+    target.email = sub.email
+    target.show_phone = sub.show_phone
+    target.show_email = sub.show_email
+    target.available_to_sponsor = sub.available_to_sponsor
+    target.contact_enabled = sub.contact_enabled
+    target.approved = True
+    target.approved_at = datetime.utcnow()
+    db.session.delete(sub)
+    db.session.commit()
+    log_recovery_contact("update_applied", "Update applied to the listing by admin",
+                         entry_name=target.name, actor=f"admin: {current_user.username}")
+    flash(f"Updated {target.name} from the submission.", "success")
+    return redirect(url_for("main.recovery_contacts"))
+
+
+@bp.route("/recovery-contacts/<int:eid>/apply-removal", methods=["POST"])
+@login_required
+def recovery_contacts_apply_removal(eid):
+    """Action a pending 'Remove me from the list' request: delete the
+    matched (published) entry and the request row. If the request never
+    matched an entry, this just clears the request."""
+    _require_recovery_contacts_admin()
+    sub = db.session.get(RecoveryContact, eid) or abort(404)
+    sub_name = sub.name
+    target = sub.matched_entry
+    db.session.delete(sub)
+    if target is not None:
+        name = target.name
+        # Clear any other requests pointing at this entry so nothing dangles.
+        RecoveryContact.query.filter_by(matched_entry_id=target.id).update(
+            {"matched_entry_id": None})
+        db.session.delete(target)
+        db.session.commit()
+        log_recovery_contact("removal_applied", "Removed from the list by admin (removal request)",
+                             entry_name=name, actor=f"admin: {current_user.username}")
+        flash(f"Removed {name} from the list per their request.", "success")
+    else:
+        db.session.commit()
+        log_recovery_contact("dismissed", "Removal request dismissed by admin (no matching entry)",
+                             entry_name=sub_name, actor=f"admin: {current_user.username}")
+        flash("Dismissed the removal request — no matching entry was found.", "info")
+    return redirect(url_for("main.recovery_contacts"))
+
+
+@bp.route("/recovery-contacts/<int:eid>/unapprove", methods=["POST"])
+@login_required
+def recovery_contacts_unapprove(eid):
+    _require_recovery_contacts_admin()
+    e = db.session.get(RecoveryContact, eid) or abort(404)
+    e.approved = False
+    e.approved_at = None
+    db.session.commit()
+    log_recovery_contact("unapproved", "Moved back to pending by admin",
+                         entry_name=e.name, actor=f"admin: {current_user.username}")
+    flash(f"Moved {e.name} back to pending review.", "info")
+    return redirect(url_for("main.recovery_contacts"))
+
+
+@bp.route("/recovery-contacts/<int:eid>/visibility", methods=["POST"])
+@login_required
+def recovery_contacts_visibility(eid):
+    """One-click per-field display toggle from the admin list. ``field``
+    (in the URL) is 'phone' or 'email'; the checkbox submits value=1 when
+    on and nothing when off, so an absent value reads as hidden."""
+    _require_recovery_contacts_admin()
+    e = db.session.get(RecoveryContact, eid) or abort(404)
+    field = (request.form.get("field") or "").strip()
+    on = request.form.get("value") == "1"
+    if field == "phone":
+        e.show_phone = on
+    elif field == "email":
+        e.show_email = on
+    db.session.commit()
+    if field in ("phone", "email"):
+        log_recovery_contact("visibility",
+                             f"Set {field} {'shown' if on else 'hidden'} by admin",
+                             entry_name=e.name, actor=f"admin: {current_user.username}")
+    return redirect(url_for("main.recovery_contacts"))
+
+
+@bp.route("/recovery-contacts/<int:eid>/update", methods=["POST"])
+@login_required
+def recovery_contacts_update(eid):
+    _require_recovery_contacts_admin()
+    e = db.session.get(RecoveryContact, eid) or abort(404)
+    name = (request.form.get("name") or "").strip()[:200]
+    if name:
+        e.name = name
+    e.email = (request.form.get("email") or "").strip()[:255] or None
+    e.phone = (request.form.get("phone") or "").strip()[:64] or None
+    e.show_phone = request.form.get("show_phone") == "1"
+    e.show_email = request.form.get("show_email") == "1"
+    e.available_to_sponsor = request.form.get("available_to_sponsor") == "1"
+    e.contact_enabled = request.form.get("contact_enabled") == "1"
+    e.note = (request.form.get("note") or "").strip() or None
+    db.session.commit()
+    log_recovery_contact("edited", "Edited by admin",
+                         entry_name=e.name, actor=f"admin: {current_user.username}")
+    flash(f"Updated {e.name}.", "success")
+    return redirect(url_for("main.recovery_contacts"))
+
+
+@bp.route("/recovery-contacts/<int:eid>/delete", methods=["POST"])
+@login_required
+def recovery_contacts_delete(eid):
+    _require_recovery_contacts_admin()
+    e = db.session.get(RecoveryContact, eid) or abort(404)
+    name = e.name
+    # Clear any pending update-submissions that pointed at this entry so
+    # they don't dangle (SQLite doesn't enforce the ON DELETE SET NULL).
+    RecoveryContact.query.filter_by(matched_entry_id=e.id).update(
+        {"matched_entry_id": None})
+    db.session.delete(e)
+    db.session.commit()
+    log_recovery_contact("deleted", "Deleted by admin",
+                         entry_name=name, actor=f"admin: {current_user.username}")
+    flash(f"Removed {name} from Recovery Contacts.", "info")
+    return redirect(url_for("main.recovery_contacts"))
 
 
 @bp.route("/email-list/blast")
@@ -8256,6 +8519,42 @@ def frontend_form_contact():
                                s.contact_form_blocks_json,
                                _default_contact_form_blocks),
                            field_types=sorted(_FORM_FIELD_TYPES))
+
+
+@bp.route("/frontend/forms/recovery-contacts", methods=["GET", "POST"])
+@admin_required
+def frontend_form_recovery_contacts():
+    """Settings page for the public Recovery Contacts form. GET renders the
+    config form; POST persists the recovery_contacts_* SiteSetting columns that
+    drive the public page (visibility, notification recipient, page copy,
+    confirmation, and container width). The entries themselves are
+    reviewed/approved on the dedicated Recovery Contacts admin section
+    (``main.recovery_contacts``) — this page is configuration only."""
+    s = _get_site_setting()
+    if request.method == "POST":
+        s.recovery_contacts_enabled = request.form.get("recovery_contacts_enabled") == "1"
+        s.recovery_contacts_email_alerts = request.form.get("recovery_contacts_email_alerts") == "1"
+        s.recovery_contacts_removal_alerts = request.form.get("recovery_contacts_removal_alerts") == "1"
+        s.recovery_contacts_to = (request.form.get("recovery_contacts_to") or "").strip()[:500] or None
+        s.recovery_contacts_heading = (request.form.get("recovery_contacts_heading") or "").strip()[:200] or None
+        s.recovery_contacts_subheading = (request.form.get("recovery_contacts_subheading") or "").strip()[:500] or None
+        s.recovery_contacts_intro = (request.form.get("recovery_contacts_intro") or "").strip() or None
+        s.recovery_contacts_submit_label = (request.form.get("recovery_contacts_submit_label") or "").strip()[:100] or None
+        s.recovery_contacts_success_message = (request.form.get("recovery_contacts_success_message") or "").strip()[:500] or None
+        mode = (request.form.get("recovery_contacts_width_mode") or "boxed").strip()
+        s.recovery_contacts_width_mode = mode if mode in ("boxed", "full") else "boxed"
+        try:
+            s.recovery_contacts_max_width = max(640, min(2400, int(request.form.get("recovery_contacts_max_width") or 1160)))
+        except (ValueError, TypeError):
+            s.recovery_contacts_max_width = 1160
+        try:
+            s.recovery_contacts_padding_pct = max(0, min(20, int(request.form.get("recovery_contacts_padding_pct") or 5)))
+        except (ValueError, TypeError):
+            s.recovery_contacts_padding_pct = 5
+        db.session.commit()
+        flash("Recovery Contacts settings saved", "success")
+        return redirect(url_for("main.frontend_form_recovery_contacts"))
+    return render_template("frontend_form_recovery_contacts.html", site=s)
 
 
 @bp.route("/frontend/contact-template/save", methods=["POST"])

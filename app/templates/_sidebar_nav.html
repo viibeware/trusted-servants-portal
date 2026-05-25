@@ -36,6 +36,7 @@
       {%- if it.key == 'contact_form' and unread_contact_count %}<span class="nav-badge" title="Unread contact-form messages">{{ unread_contact_count }}</span>{% endif -%}
       {%- if it.key == 'posts' and pending_posts_count %}<span class="nav-badge" title="Submissions awaiting review">{{ pending_posts_count }}</span>{% endif -%}
       {%- if it.key == 'stories' and pending_stories_count %}<span class="nav-badge" title="Story submissions awaiting review">{{ pending_stories_count }}</span>{% endif -%}
+      {%- if it.key == 'recovery_contacts' and pending_recovery_contacts_count %}<span class="nav-badge" title="Recovery Contacts entries awaiting review">{{ pending_recovery_contacts_count }}</span>{% endif -%}
       {%- if it.key == 'web_frontend' and site and not site.frontend_enabled %} <span class="nav-badge nav-badge-muted" title="Public access is off — only signed-in admins and frontend editors can preview">Off</span>{% endif -%}
     </a>
   {% endfor %}

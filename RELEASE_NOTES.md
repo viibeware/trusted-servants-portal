@@ -7,7 +7,20 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.6.1 — 2026-05-24 (latest) — Neobrutal theme
+## 2.7.0 — 2026-05-25 (latest) — Recovery Contacts: a self-service member directory
+
+A new **Recovery Contacts** module lets members add themselves to a shared directory and reach each other directly — turn it on under **Web Frontend → Forms → Recovery Contacts**. Once enabled, your public page lives at **`/contactlist`** and you manage entries under **Recovery Contacts** in the dashboard.
+
+- **Members add themselves.** A simple form takes their name, phone, and email, and they choose exactly what shows publicly — phone, email, both, or neither. You approve each entry before it appears, and can adjust anyone's visibility later.
+- **"Available to sponsor"** puts a red-heart badge on a listing so people looking for a sponsor can find them at a glance.
+- **Stay reachable without exposing your details.** Members can switch on a **Contact me** button — visitors send them a message through the site and the email is relayed privately (the member's address is never shown, and they can just hit reply). It's on by default, and it's kept on automatically for anyone who hides both their phone and email, so there's always a way to reach them.
+- **Self-service updates and removals.** When a member updates their listing or asks to be removed, we email them a confirmation link; one click applies the change automatically — no admin action needed. (You can still action requests yourself from the dashboard if someone never clicks.)
+- **Find anyone fast.** Live search filters the list as you type — by name, phone, or email — and you can type **"sponsor"** to show only members available to sponsor.
+- **Print or share a PDF.** One click downloads a clean, branded PDF of the directory (it respects whatever you've searched for). Members who are reachable only through the site show a note pointing to your `/contactlist` page instead of a blank phone/email.
+- **A full activity log.** The dashboard keeps an audit trail of everything — new entries, confirmed updates and removals, relayed "Contact me" messages, and every admin action — each with who did it and when.
+- Plus: a pending-count badge in the sidebar, an entry in your dashboard Forms widget, optional **email alerts** when someone joins or asks to be removed, and built-in bot protection (Turnstile).
+
+## 2.6.1 — 2026-05-24 — Neobrutal theme
 
 A bold new **Neobrutal** theme joins the lineup under **Web Frontend → Design → Theme**.
 

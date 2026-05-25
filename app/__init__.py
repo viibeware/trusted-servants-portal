@@ -578,6 +578,22 @@ def create_app():
         # The loser sees "table already exists" — tolerate it rather than
         # crashing.
         from sqlalchemy.exc import OperationalError
+        # Pre-create_all: rename the legacy ``phone_list_entry`` table to
+        # ``recovery_contact`` BEFORE create_all runs, so create_all never
+        # makes an empty ``recovery_contact`` that would then need dropping
+        # (dropping it is a data-loss hazard under the two-worker boot
+        # race). Rename only — never drop — and tolerate the race (the
+        # loser sees "no such table" / "already exists"). No-op once
+        # migrated and on fresh installs.
+        from sqlalchemy import text as _text
+        try:
+            with db.engine.begin() as _c:
+                _names = {r[0] for r in _c.execute(_text(
+                    "SELECT name FROM sqlite_master WHERE type='table'"))}
+                if "phone_list_entry" in _names and "recovery_contact" not in _names:
+                    _c.execute(_text("ALTER TABLE phone_list_entry RENAME TO recovery_contact"))
+        except OperationalError:
+            pass
         try:
             db.create_all()
         except OperationalError as e:
@@ -1259,6 +1275,37 @@ def _migrate_sqlite(app):
             except OperationalError as e:
                 if "duplicate column" not in str(e).lower():
                     raise
+
+        # ── Recovery Contacts rename (dev-era) ───────────────────────
+        # The module shipped as "Phone List": ``site_setting.phone_list_*``
+        # columns (and table ``phone_list_entry``, renamed to
+        # ``recovery_contact`` pre-create_all in create_app). Rename the
+        # columns to ``recovery_contacts_*`` in place. Race-tolerant: with
+        # two workers booting, the loser's RENAME raises "no such column" /
+        # "duplicate" after the winner committed — caught and treated as
+        # already-done (RENAME COLUMN never loses data). No-op once
+        # migrated and on fresh installs.
+        def rename_col(table, old, new):
+            cols = {r[1] for r in conn.execute(text(f"PRAGMA table_info({table})"))}
+            if old in cols and new not in cols:
+                try:
+                    conn.execute(text(f'ALTER TABLE {table} RENAME COLUMN {old} TO {new}'))
+                except OperationalError:
+                    pass
+        for _old, _new in (
+                ("phone_list_enabled", "recovery_contacts_enabled"),
+                ("phone_list_required_role", "recovery_contacts_required_role"),
+                ("phone_list_heading", "recovery_contacts_heading"),
+                ("phone_list_subheading", "recovery_contacts_subheading"),
+                ("phone_list_intro", "recovery_contacts_intro"),
+                ("phone_list_success_message", "recovery_contacts_success_message"),
+                ("phone_list_submit_label", "recovery_contacts_submit_label"),
+                ("phone_list_to", "recovery_contacts_to"),
+                ("phone_list_width_mode", "recovery_contacts_width_mode"),
+                ("phone_list_max_width", "recovery_contacts_max_width"),
+                ("phone_list_padding_pct", "recovery_contacts_padding_pct")):
+            rename_col("site_setting", _old, _new)
+
         for col, ddl in (("zoom_meeting_id", "VARCHAR(64)"),
                          ("zoom_passcode", "VARCHAR(128)"),
                          ("zoom_opens_time", "VARCHAR(16)"),
@@ -1738,6 +1785,20 @@ def _migrate_sqlite(app):
                          ("contact_form_width_mode",   "VARCHAR(16) NOT NULL DEFAULT 'boxed'"),
                          ("contact_form_max_width",    "INTEGER NOT NULL DEFAULT 1160"),
                          ("contact_form_padding_pct",  "INTEGER NOT NULL DEFAULT 5"),
+                         # Recovery Contacts module (public /contactlist directory).
+                         ("recovery_contacts_enabled",        "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("recovery_contacts_required_role",  "VARCHAR(32) NOT NULL DEFAULT 'admin'"),
+                         ("recovery_contacts_heading",        "VARCHAR(200)"),
+                         ("recovery_contacts_subheading",     "VARCHAR(500)"),
+                         ("recovery_contacts_intro",          "TEXT"),
+                         ("recovery_contacts_success_message", "VARCHAR(500)"),
+                         ("recovery_contacts_submit_label",   "VARCHAR(100)"),
+                         ("recovery_contacts_to",             "VARCHAR(500)"),
+                         ("recovery_contacts_width_mode",     "VARCHAR(16) NOT NULL DEFAULT 'boxed'"),
+                         ("recovery_contacts_max_width",      "INTEGER NOT NULL DEFAULT 1160"),
+                         ("recovery_contacts_padding_pct",    "INTEGER NOT NULL DEFAULT 5"),
+                         ("recovery_contacts_email_alerts",   "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("recovery_contacts_removal_alerts", "BOOLEAN NOT NULL DEFAULT 0"),
                          ("frontend_meetings_list_bg_dynamic_key", "VARCHAR(64)"),
                          ("frontend_events_list_bg_dynamic_key", "VARCHAR(64)"),
                          ("frontend_announcements_list_bg_dynamic_key", "VARCHAR(64)"),
@@ -1776,6 +1837,19 @@ def _migrate_sqlite(app):
                          ("media_cache_version", "INTEGER NOT NULL DEFAULT 1"),
                          ("media_cache_cleared_at", "DATETIME")):
             add("site_setting", col, ddl)
+        # Recovery Contacts entries — columns added after the table shipped, so
+        # existing installs need them patched on (fresh installs get them
+        # from db.create_all()). matched_entry_id is a self-referential FK
+        # used by the public "update my entry" flow.
+        for col, ddl in (("available_to_sponsor", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("wants_update", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("wants_removal", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("removal_token", "VARCHAR(64)"),
+                         ("removal_confirmed_at", "DATETIME"),
+                         ("contact_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("contact_count", "INTEGER NOT NULL DEFAULT 0"),
+                         ("matched_entry_id", "INTEGER REFERENCES recovery_contact(id) ON DELETE SET NULL")):
+            add("recovery_contact", col, ddl)
         for col, ddl in (("kind", "VARCHAR(16) NOT NULL DEFAULT 'link'"),
                          ("button_style", "VARCHAR(16) NOT NULL DEFAULT 'pill'"),
                          ("open_in_new_tab", "BOOLEAN NOT NULL DEFAULT 0"),

@@ -4151,6 +4151,424 @@ def contact_submit():
     return redirect(url_for("frontend.contact"))
 
 
+@bp.route("/contactlist")
+@bp.route("/contactlist.pdf", endpoint="recovery_contacts_pdf")
+@public_section("Recovery Contacts", gate=lambda s: bool(getattr(s, "recovery_contacts_enabled", False)))
+def recovery_contacts():
+    """Public Recovery Contacts directory. Renders the approved entries
+    plus a submission form. Honors the ``recovery_contacts_enabled`` toggle —
+    returns 404 when the module is off, like every other admin-gated
+    surface. (Internal identifiers keep the legacy ``recovery_contacts`` name.)
+
+    Two endpoints share this view (mirrors the printlist pattern):
+      * ``/contactlist``     — the themed page (directory + search + form).
+      * ``/contactlist.pdf`` — a clean, branded WeasyPrint render of the
+                               directory for download/printing. Honors an
+                               optional ``?q=`` filter so a PDF of a
+                               searched view matches what's on screen."""
+    from .models import RecoveryContact
+    site = _site()
+    gate = _frontend_gate(site)
+    if gate is not None:
+        return gate
+    if not site or not getattr(site, "recovery_contacts_enabled", False):
+        abort(404)
+    entries = (RecoveryContact.query
+               .filter_by(approved=True)
+               .order_by(RecoveryContact.name.asc())
+               .all())
+
+    if request.endpoint == "frontend.recovery_contacts_pdf":
+        # Optional search filter, matching the on-screen client-side search
+        # (name / public phone / public email, case-insensitive).
+        q = (request.args.get("q") or "").strip().lower()
+        if q:
+            def _hit(e):
+                hay = " ".join(filter(None, [e.name, e.public_phone, e.public_email])).lower()
+                return q in hay
+            entries = [e for e in entries if _hit(e)]
+        from .timezone import now_in
+        import re as _re
+        heading = (getattr(site, "recovery_contacts_heading", None) or "Recovery Contacts")
+        site_title = (site.frontend_title if site else None) or "Trusted Servants"
+        # Public URL shown on the PDF header, with the scheme + trailing
+        # slash stripped (e.g. "riverside.org"). Falls back to the request
+        # host when no canonical Site URL is configured.
+        _purl = (getattr(site, "site_url", None) or "").strip() or request.url_root
+        display_url = _re.sub(r"^https?://", "", _purl).rstrip("/")
+        # Full canonical URL of the public directory page, e.g.
+        # "https://riverside.org/contactlist" — shown on listings that are
+        # reachable only via the site's "Contact me" button.
+        _base = _purl.rstrip("/")
+        if not _re.match(r"^https?://", _base):
+            _base = "https://" + _base
+        contact_url = _base + url_for("frontend.recovery_contacts")
+        generated_at = now_in(site)
+        html = render_template("frontend/recovery_contacts_pdf.html",
+                               site=site, entries=entries, heading=heading,
+                               frontend_title=site_title, display_url=display_url,
+                               contact_url=contact_url,
+                               query=q, generated_at=generated_at)
+        from weasyprint import HTML
+        from flask import current_app
+        pdf_bytes = HTML(string=html, base_url=request.url_root).write_pdf()
+        # Filename convention: <site-name-hyphenated>-Recovery-Contacts_<yyyymmdd>.pdf
+        name_slug = _re.sub(r"[^A-Za-z0-9]+", "-", site_title).strip("-") or "Site"
+        filename = f"{name_slug}-Recovery-Contacts_{generated_at.strftime('%Y%m%d')}.pdf"
+        resp = current_app.make_response(pdf_bytes)
+        resp.headers["Content-Type"] = "application/pdf"
+        resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return resp
+
+    ctx = _frontend_context(site)
+    return render_template("frontend/recovery_contacts.html", entries=entries, **ctx)
+
+
+@bp.route("/phonelist")
+def recovery_contacts_legacy_redirect():
+    """The page moved from /phonelist to /contactlist — keep any old
+    links / bookmarks / nav items working by redirecting."""
+    return redirect(url_for("frontend.recovery_contacts"))
+
+
+@bp.route("/contactlist/submit", methods=["POST"])
+def recovery_contacts_submit():
+    """Process a public Recovery Contacts submission.
+
+    Runs the honeypot + Turnstile guards, then writes an UNAPPROVED
+    ``RecoveryContact`` row (invisible to the public until an admin
+    approves it) and optionally emails the configured recipients so the
+    admin knows there's an entry awaiting review. The submitter picks a
+    starting phone/email display preference; the admin can override it.
+    """
+    from flask import flash
+    from .auth import _verify_turnstile
+    from .mail import send_mail
+    from .models import db as _db, RecoveryContact, log_recovery_contact
+
+    site = _site()
+    gate = _frontend_gate(site)
+    if gate is not None:
+        return gate
+    if not site or not getattr(site, "recovery_contacts_enabled", False):
+        abort(404)
+
+    success_msg = (getattr(site, "recovery_contacts_success_message", None)
+                   or "Thanks — your entry has been submitted and will appear once an admin approves it.")
+
+    f = request.form
+    # Honeypot — a non-empty hidden field means a bot. Silently flash the
+    # success message so it can't tell it was rejected; no row written.
+    if (f.get("website") or "").strip():
+        flash(success_msg, "success")
+        return redirect(url_for("frontend.recovery_contacts"))
+
+    name = (f.get("name") or "").strip()[:200]
+    email = (f.get("email") or "").strip()[:255]
+    phone = (f.get("phone") or "").strip()[:64]
+    # Submitter's starting display preference. The public form always
+    # renders both checkboxes pre-checked, so an unchecked box arrives
+    # as an ABSENT field — read absence as "hide", which both honours
+    # the visitor's choice and is the privacy-preserving default.
+    show_phone = f.get("show_phone") == "1"
+    show_email = f.get("show_email") == "1"
+    available_to_sponsor = f.get("available_to_sponsor") == "1"
+    contact_enabled = f.get("contact_enabled") == "1"
+    wants_update = f.get("wants_update") == "1"
+    wants_removal = f.get("wants_removal") == "1"
+
+    if not name:
+        flash("Your name is required.", "danger")
+        return redirect(url_for("frontend.recovery_contacts"))
+    # Email is mandatory — it's how the removal confirmation is sent and
+    # how the admin reaches the person.
+    if not email:
+        flash("An email address is required.", "danger")
+        return redirect(url_for("frontend.recovery_contacts"))
+    if "@" not in email or "." not in email.split("@", 1)[-1]:
+        flash("That email address doesn't look quite right — double-check it?", "danger")
+        return redirect(url_for("frontend.recovery_contacts"))
+
+    if site.turnstile_enabled:
+        token = f.get("cf-turnstile-response", "")
+        ok, err = _verify_turnstile(site, token, request.remote_addr)
+        if not ok:
+            flash(err or "Security check failed — please try again.", "danger")
+            return redirect(url_for("frontend.recovery_contacts"))
+
+    # Update + removal requests are matched to the existing listing by
+    # EMAIL (case-insensitive). Email is mandatory, and it's the stable
+    # key the confirmation link is tied to.
+    needs_confirm = wants_update or wants_removal
+    matched_id = None
+    if needs_confirm:
+        email_n = email.strip().lower()
+        if email_n:
+            for cand in RecoveryContact.query.filter_by(approved=True).all():
+                if (cand.email or "").strip().lower() == email_n:
+                    matched_id = cand.id
+                    break
+
+    # Update + removal are both double opt-in: stash a confirmation token
+    # and email the submitter a link. Clicking it auto-applies the change
+    # (no admin approval). The request still shows in the admin panel so
+    # an admin can apply it manually if the person never confirms.
+    confirm_token = None
+    if needs_confirm:
+        import secrets
+        confirm_token = secrets.token_urlsafe(32)
+
+    entry = RecoveryContact(
+        name=name, email=email or None, phone=phone or None,
+        show_phone=show_phone, show_email=show_email,
+        available_to_sponsor=available_to_sponsor,
+        contact_enabled=contact_enabled,
+        wants_update=wants_update, wants_removal=wants_removal,
+        removal_token=confirm_token,
+        matched_entry_id=matched_id,
+        approved=False, ip_address=(request.remote_addr or "")[:64],
+    )
+    _db.session.add(entry)
+    _db.session.commit()
+
+    site_label = (site.frontend_title or "Trusted Servants")
+
+    if needs_confirm:
+        # Email the submitter a confirmation link (the opt-in mechanism).
+        if site.smtp_host and email:
+            try:
+                confirm_url = url_for("frontend.recovery_contacts_confirm",
+                                      token=confirm_token, _external=True)
+            except Exception:  # noqa: BLE001
+                confirm_url = (request.url_root.rstrip("/")
+                               + "/contactlist/confirm/" + confirm_token)
+            if wants_removal:
+                subj = "Confirm your removal request"
+                msg = [f"Hi {name},", "",
+                       f"We received a request to remove you from the {site_label} Recovery Contacts list.",
+                       "Click the link below to confirm — you'll be removed automatically:", "",
+                       confirm_url, "",
+                       "If you didn't request this, you can ignore this email — nothing will change."]
+            else:
+                subj = "Confirm your listing update"
+                msg = [f"Hi {name},", "",
+                       f"We received an update to your {site_label} Recovery Contacts listing.",
+                       "Click the link below to confirm — your listing updates automatically:", "",
+                       confirm_url, "",
+                       "If you didn't request this, you can ignore this email — nothing will change."]
+            send_mail(site, email, subj, "\n".join(msg))
+        if wants_removal:
+            success_msg = ("Thanks — we've emailed you a confirmation link. Click it to confirm, "
+                           "and you'll be removed from the list automatically.")
+        else:
+            success_msg = ("Thanks — we've emailed you a confirmation link. Click it to confirm, "
+                           "and your listing updates automatically.")
+    else:
+        # Brand-new entry. Surfaces as a chip in the admin panel; only
+        # send an admin email when the new-submission alert is on.
+        recipients = (getattr(site, "recovery_contacts_to", None)
+                      or getattr(site, "access_request_to", None) or "").strip()
+        if getattr(site, "recovery_contacts_email_alerts", False) and site.smtp_host and recipients:
+            subject_line = f"New Recovery Contacts entry from {name}"
+            lines = [f"A new Recovery Contacts entry has been submitted on the public {site_label} site.",
+                     "It is awaiting your approval and is not yet visible to the public.",
+                     "", f"Name:  {name}"]
+            if phone:
+                lines.append(f"Phone: {phone}" + ("" if show_phone else "  (submitter asked to hide)"))
+            if email:
+                lines.append(f"Email: {email}" + ("" if show_email else "  (submitter asked to hide)"))
+            if available_to_sponsor:
+                lines.append("Available to sponsor: yes")
+            try:
+                lines += ["", f"Review: {url_for('main.recovery_contacts', _external=True)}"]
+            except Exception:  # noqa: BLE001
+                pass
+            send_mail(site, recipients, subject_line, "\n".join(lines))
+
+    # Audit log.
+    _ip = (request.remote_addr or "")[:64]
+    _sent = " — confirmation link sent" if (site.smtp_host and email) else ""
+    if wants_removal:
+        log_recovery_contact("removal_requested", f"Removal requested{_sent}",
+                             entry_name=name, actor="Visitor", ip_address=_ip)
+    elif wants_update:
+        log_recovery_contact("update_requested", f"Update requested{_sent}",
+                             entry_name=name, actor="Visitor", ip_address=_ip)
+    else:
+        log_recovery_contact("submitted", "New listing submitted",
+                             entry_name=name, actor="Visitor", ip_address=_ip)
+
+    flash(success_msg, "success")
+    return redirect(url_for("frontend.recovery_contacts"))
+
+
+@bp.route("/contactlist/confirm/<token>")
+@bp.route("/contactlist/confirm-removal/<token>", endpoint="recovery_contacts_confirm_removal")
+def recovery_contacts_confirm(token):
+    """Landing page for the confirmation link emailed to the submitter for
+    an update or a removal. Clicking it **auto-applies** the change — no
+    admin approval: a removal deletes the matched entry, an update writes
+    the submitted values onto the matched entry (or publishes the request
+    as a new listing if nothing matched). The request row is then cleared.
+    Until confirmed, the request stays visible in the admin panel so an
+    admin can apply it by hand if the person never clicks."""
+    from datetime import datetime as _dt
+    from .models import db as _db, RecoveryContact, log_recovery_contact
+    from .mail import send_mail
+    site = _site()
+    if not site:
+        abort(404)
+    entry = RecoveryContact.query.filter_by(removal_token=token).first() if token else None
+    if entry is None or not (entry.wants_update or entry.wants_removal):
+        return _render_rc_confirm(site, status="invalid", kind=None, name=None)
+
+    is_removal = bool(entry.wants_removal)
+    kind = "removal" if is_removal else "update"
+    name = entry.name
+    if entry.removal_confirmed_at:
+        return _render_rc_confirm(site, status="already", kind=kind, name=name)
+
+    entry.removal_confirmed_at = _dt.utcnow()
+    target = entry.matched_entry
+
+    if is_removal:
+        # Auto-remove: delete the matched entry + the request row.
+        _db.session.delete(entry)
+        if target is not None:
+            RecoveryContact.query.filter_by(matched_entry_id=target.id).update(
+                {"matched_entry_id": None})
+            _db.session.delete(target)
+        _db.session.commit()
+        log_recovery_contact("removal_confirmed",
+                             "Removal confirmed via email link — entry deleted automatically",
+                             entry_name=name, actor="Visitor")
+        # Optional admin FYI that the removal went through.
+        recipients = (getattr(site, "recovery_contacts_to", None)
+                      or getattr(site, "access_request_to", None) or "").strip()
+        if getattr(site, "recovery_contacts_removal_alerts", False) and site.smtp_host and recipients:
+            site_label = (site.frontend_title or "Trusted Servants")
+            send_mail(site, recipients,
+                      f"Recovery Contacts removal confirmed — {name}",
+                      "\n".join([f"{name} confirmed their removal from the {site_label} "
+                                 "Recovery Contacts list and has been taken off it automatically.",
+                                 "", "No action needed."]))
+    else:
+        # Auto-apply update onto the matched entry (or publish as new).
+        if target is not None:
+            target.name = entry.name
+            target.phone = entry.phone
+            target.email = entry.email
+            target.show_phone = entry.show_phone
+            target.show_email = entry.show_email
+            target.available_to_sponsor = entry.available_to_sponsor
+            target.contact_enabled = entry.contact_enabled
+            target.approved = True
+            target.approved_at = _dt.utcnow()
+            _db.session.delete(entry)
+            _db.session.commit()
+            log_recovery_contact("update_confirmed",
+                                 "Listing update confirmed via email link — applied automatically",
+                                 entry_name=name, actor="Visitor")
+        else:
+            # Nothing matched — confirming publishes it as a new listing.
+            entry.wants_update = False
+            entry.removal_token = None
+            entry.approved = True
+            entry.approved_at = _dt.utcnow()
+            _db.session.commit()
+            log_recovery_contact("update_confirmed",
+                                 "Update confirmed via email link — no match, published as a new listing",
+                                 entry_name=name, actor="Visitor")
+
+    return _render_rc_confirm(site, status="confirmed", kind=kind, name=name)
+
+
+def _render_rc_confirm(site, status, kind, name):
+    ctx = _frontend_context(site)
+    return render_template("frontend/recovery_contacts_confirm.html",
+                           status=status, kind=kind, confirm_name=name, **ctx)
+
+
+@bp.route("/contactlist/contact", methods=["POST"])
+def recovery_contacts_contact():
+    """Relay a visitor's message to a listed person who opted into
+    email contact. The recipient's address is never exposed — the email
+    is sent server-side to ``entry.email`` with Reply-To set to the
+    sender, so the person can reply directly. Bumps ``contact_count``."""
+    from flask import flash
+    from .auth import _verify_turnstile
+    from .mail import send_mail
+    from .models import db as _db, RecoveryContact, log_recovery_contact
+
+    site = _site()
+    gate = _frontend_gate(site)
+    if gate is not None:
+        return gate
+    if not site or not getattr(site, "recovery_contacts_enabled", False):
+        abort(404)
+    back = redirect(url_for("frontend.recovery_contacts"))
+    f = request.form
+
+    # Honeypot — silently accept so a bot can't tell.
+    if (f.get("website") or "").strip():
+        flash("Thanks — your message has been sent.", "success")
+        return back
+
+    try:
+        eid = int(f.get("eid") or 0)
+    except (ValueError, TypeError):
+        eid = 0
+    entry = RecoveryContact.query.filter_by(id=eid, approved=True).first() if eid else None
+    if entry is None or not entry.contact_enabled or not entry.email:
+        flash("Sorry — that person isn't reachable through the site.", "danger")
+        return back
+
+    vname = (f.get("name") or "").strip()[:200]
+    vemail = (f.get("email") or "").strip()[:255]
+    vmsg = (f.get("message") or "").strip()[:5000]
+    if not vname or not vemail or not vmsg:
+        flash("Please include your name, email, and a message.", "danger")
+        return back
+    if "@" not in vemail or "." not in vemail.split("@", 1)[-1]:
+        flash("That email address doesn't look quite right — double-check it?", "danger")
+        return back
+
+    if site.turnstile_enabled:
+        ok, err = _verify_turnstile(site, f.get("cf-turnstile-response", ""), request.remote_addr)
+        if not ok:
+            flash(err or "Security check failed — please try again.", "danger")
+            return back
+
+    if not site.smtp_host:
+        flash("Contact isn't available right now — please try again later.", "danger")
+        return back
+
+    site_label = (site.frontend_title or "Trusted Servants")
+    subject = f"{vname} would like to connect with you"
+    body = "\n".join([
+        f"Someone reached out to you through the {site_label} contact list.",
+        "Reply directly to this email to respond — it goes straight to them.",
+        "",
+        f"From: {vname} <{vemail}>",
+        "", "─" * 56, "", vmsg, "", "─" * 56,
+    ])
+    ok, err = _send_with_reply_to(site, entry.email, subject, body,
+                                  reply_to=vemail, reply_to_name=vname)
+    if not ok:
+        ok, err = send_mail(site, entry.email, subject, body)
+    if not ok:
+        flash("Sorry — we couldn't send your message. Please try again later.", "danger")
+        return back
+
+    entry.contact_count = (entry.contact_count or 0) + 1
+    _db.session.commit()
+    log_recovery_contact("contacted", f"Contacted via the site by {vname} <{vemail}>",
+                         entry_name=entry.name, actor="Visitor",
+                         ip_address=(request.remote_addr or "")[:64])
+    flash(f"Thanks — your message has been sent to {entry.name}.", "success")
+    return back
+
+
 def _render_custom_form(cf, ctx, errors=None, values=None, success_message=None):
     """Render a CustomForm through the shared "Forms" template chrome —
     the same dispatcher (``frontend/submission.html``) the events /
