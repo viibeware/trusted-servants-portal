@@ -94,8 +94,14 @@
   <div class="card-head">
     <h2>Traffic over time</h2>
     <div class="vm-legend">
-      <span class="vm-legend-item"><span class="vm-legend-swatch vm-swatch-uniques"></span>Unique visitors</span>
-      <span class="vm-legend-item"><span class="vm-legend-swatch vm-swatch-views"></span>Hits</span>
+      <span class="vm-legend-item"
+            title="Unique visitors — {{ '{:,}'.format(summary.uniques_window) }} in this window">
+        <span class="vm-legend-swatch vm-swatch-uniques"></span>Unique visitors
+      </span>
+      <span class="vm-legend-item"
+            title="Hits — {{ '{:,}'.format(summary.views_window) }} in this window">
+        <span class="vm-legend-swatch vm-swatch-views"></span>Hits
+      </span>
     </div>
   </div>
   {% if daily %}
@@ -253,13 +259,19 @@
         {% for it in items %}
           {% set frac = it.count / _total %}
           {% set arc_len = (frac * 100) %}
+          {% set pct = (frac * 100)|round(1) %}
           {% set color = palette[loop.index0 % palette|length] %}
+          {# Native <title> children give the browser's free tooltip
+             on hover. Same tooltip text on the matching legend row
+             below so either surface gives the admin the same number. #}
           <circle cx="80" cy="80" r="58" fill="none"
                   stroke="{{ color }}" stroke-width="22"
                   stroke-dasharray="{{ arc_len }} 100"
                   stroke-dashoffset="-{{ ns.angle }}"
                   pathLength="100"
-                  transform="rotate(-90 80 80)"/>
+                  transform="rotate(-90 80 80)">
+            <title>{{ it.label }} — {{ '{:,}'.format(it.count) }} {{ units }} ({{ pct }}%)</title>
+          </circle>
           {% set ns.angle = ns.angle + arc_len %}
         {% endfor %}
         <text x="80" y="78" text-anchor="middle" class="vm-donut-total">{{ '{:,}'.format(_total) }}</text>
@@ -268,10 +280,11 @@
       <ul class="vm-legend-list">
         {% for it in items %}
           {% set color = palette[loop.index0 % palette|length] %}
-          <li>
+          {% set pct = ((it.count / _total) * 100)|round(1) %}
+          <li title="{{ it.label }} — {{ '{:,}'.format(it.count) }} {{ units }} ({{ pct }}%)">
             <span class="vm-legend-swatch" style="background: {{ color }};"></span>
             <span class="vm-legend-label">{{ it.label }}</span>
-            <span class="vm-legend-count muted smaller">{{ it.count }}</span>
+            <span class="vm-legend-count muted smaller">{{ '{:,}'.format(it.count) }} · {{ pct }}%</span>
           </li>
         {% endfor %}
       </ul>

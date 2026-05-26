@@ -11711,8 +11711,14 @@ input.be-container-color-text.is-invalid {
   display: inline-block; width: 10px; height: 10px; border-radius: 3px;
   background: currentColor;
 }
-.vm-swatch-views   { background: var(--brand); }
-.vm-swatch-uniques { background: linear-gradient(90deg, #9333ea, #06b6d4); }
+/* Legend swatches for the Traffic chart. Colors mirror the actual
+   stroke colors used in the SVG paths so the chip reads as the
+   same series — solid blue for Hits, solid green for Unique
+   visitors. (The original gradient swatch for uniques predated
+   the green/blue chart palette and would read as blue-purple
+   against the green line.) */
+.vm-swatch-views   { background: rgb(59, 130, 246); }
+.vm-swatch-uniques { background: rgb(16, 185, 129); }
 
 .vm-tooltip {
   position: absolute; z-index: 5; pointer-events: none;
@@ -11725,14 +11731,19 @@ input.be-container-color-text.is-invalid {
 .vm-tt-row { display: flex; align-items: center; gap: 6px; }
 .vm-tt-row b { margin-left: auto; font-variant-numeric: tabular-nums; }
 
-/* Two-column grids for the lower section */
+/* Lower-section grids — auto-fit so the donut cards stretch to fill
+   the available width regardless of how many are visible (the
+   Watchtower visitors page shows 3 cards per metric mode; the legacy
+   visitor-metrics page shows 4). 280px minimum keeps each card
+   readable; the grid collapses to fewer columns naturally on narrow
+   viewports without needing breakpoints. */
 .vm-grid {
-  display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px; margin-bottom: 18px;
 }
 .vm-grid-2 { grid-template-columns: 1fr 1fr; }
-@media (max-width: 1080px) { .vm-grid    { grid-template-columns: 1fr 1fr; }
-                              .vm-grid-2  { grid-template-columns: 1fr; } }
-@media (max-width: 640px)  { .vm-grid    { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .vm-grid-2 { grid-template-columns: 1fr; } }
 
 /* Hourly bars */
 .vm-hourly { display: grid; grid-template-columns: repeat(24, 1fr); gap: 4px; height: 220px; align-items: end; }
