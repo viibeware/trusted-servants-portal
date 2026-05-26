@@ -7,7 +7,33 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.7.4 — 2026-05-26 (latest) — Recovery Contacts page styling + save-bar tidy-up
+## 2.8.1 — 2026-05-26 (latest) — See who's hitting 404s and block them in one click
+
+- **The 404s tab now shows who's actually hitting each dead URL.** Every row in **Top missing URLs** has a small "route" icon that opens an inline panel listing the IP addresses hitting that URL, how many times each, and when they last tried. The **Recent 404s** table got a **Source IP** column too.
+- **One-click block.** Beside each IP — both in the inline panel and in the Recent 404s table — there's a **Block** button that adds the IP to your Watchtower blocklist permanently. The ban reason auto-fills with the 404 path so it's obvious in the log later why you blocked them. Already-blocked IPs show a red "Blocked" chip instead of the button.
+- New 404s capture the IP automatically — older entries (from before this update) show "—" in the IP column.
+
+## 2.8.0 — 2026-05-26 — Cookie Compliance + unified Watchtower visitor metrics
+
+- **New: Cookie Compliance module** under **Web Frontend → Setup**. Turn it on with a single toggle and the public site shows a privacy banner until visitors make a choice — their answer is remembered in their browser for a year by default.
+  - Three quick-start presets you can apply with one click: **GDPR / UK GDPR**, **CCPA / CPRA (California)**, or **Generic notice** — each one sets best-practice defaults for the prompt mode, wording, and position.
+  - Three prompt modes to choose: **Notice** (just a heads-up), **Consent** (Accept / Reject buttons), or **Strict opt-in** (the GDPR-compliant version).
+  - **Auto-adapt to visitor region.** When on, EU/UK visitors automatically see the strict GDPR flow and California visitors see the CCPA flow — your chosen mode is the minimum; auto only escalates.
+  - **Generate a starter privacy policy in one click.** Pick GDPR, CCPA, or Generic and a fresh policy page is created and linked as your privacy policy — you just need to fill in a few placeholders (organisation name, contact email, retention periods) before publishing.
+  - Banner copy is fully editable: title, body, button labels, position (bottom bar, corner, or modal).
+- **New: Privacy & cookies footer block** — drag it into your footer from the builder palette. It adds a "Privacy policy" link plus a "Cookie settings" button visitors can click any time to revisit their cookie choice.
+- **Visitor metrics moved to Watchtower.** The Web Frontend "Visitor Metrics" page has been folded into the **Watchtower → Visitors** tab — same charts, same data, one place. The old URL still works (it just redirects), and every link that used to point there now goes to Watchtower.
+- **Unique visitors is now the default headline number** on the visitor metrics tab, with a clear pill toggle to flip to "Hits" (every page load). The choice sticks in your browser. The dashboard widgets that show traffic also lead with unique visitors now — more useful for "how many real people".
+- **Fixed:** the Web / View / Watchtower pills at the top of the sidebar no longer get an underline when you hover them.
+
+## 2.7.5 — 2026-05-26 — Turn 404s into redirects without leaving the page
+
+- **The 404s tab can now create redirects in one click.** Beside every row in **Top missing URLs** and **Recent 404s**, a **Redirect** button opens a small dialog already filled in with the missing URL — just type the destination and save. The row instantly shows a green "redirected" chip so you know which ones you've handled, and you can keep working through the list without ever leaving the page.
+- **Wildcard redirects.** Source paths ending in `/*` (e.g. `/swag/*`) now match every URL under that prefix and land them all on the same target. Exact-match rules always win, and the matcher is boundary-safe (so `/swag/*` doesn't accidentally catch `/swagger`). The dialog has a **Use `/*`** helper that turns the clicked 404 into a parent-prefix wildcard for you.
+- **Show more 404s at once.** The **Top missing URLs** and **Top referrers** cards (on both the 404s and Visitors tabs) now show 30 rows by default and have a **Show 30 more** button to keep expanding — handy when you've got a long tail of broken links to triage.
+- **Fixed:** the **Hour of day** chart on Watchtower → Visitors was rendering as 24 flat lines even when there was real traffic — it now shows the actual bar heights again. Hour labels now appear under every column, not just every fourth.
+
+## 2.7.4 — 2026-05-26 — Recovery Contacts page styling + save-bar tidy-up
 
 - **Style the Recovery Contacts page from the Templates screen.** The public `/contactlist` page now shows up in **Web Frontend → Templates** like every other page, with its own appearance controls: heading, subheading, intro, container width, and the background/fonts/sizes Customize panel. These moved out of the Forms settings, which now focus on the form's plumbing — on/off, email alerts, button label, confirmation message, and bot protection.
 - **One save bar, not two.** Editing a template in its pop-up no longer shows a duplicate "Unsaved changes" bar inside the dialog — you'll just see the usual yellow save bar at the bottom of the screen, and the dialog stays open after you save.
