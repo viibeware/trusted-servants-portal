@@ -11294,16 +11294,35 @@ def _page_active_tree(page):
         # cell receives a `flex_direction` flag so the template / CSS
         # can flow pills in the configured direction inside it.
         cells = [[] for _ in range(n_cols)]
-        # Round-robin distribution mirrors CSS grid's default
-        # `grid-auto-flow: row` (item i lands in column `i mod n_cols`),
-        # so 6 items in a 3-col grid stack as col0:[0,3], col1:[1,4],
-        # col2:[2,5] in the editor instead of dumping everything past
-        # the column count into the last cell. Flex containers (n_cols=1)
-        # land every child in the single cell preserving source order.
-        for i, child in enumerate(kids):
-            node = _block_node(child)
-            if node is not None:
-                cells[i % n_cols].append(node)
+        cell_lengths = d.get("cell_lengths")
+        if (isinstance(cell_lengths, list)
+                and len(cell_lengths) == n_cols
+                and all(isinstance(x, int) and x >= 0 for x in cell_lengths)
+                and sum(cell_lengths) == len(kids)):
+            # Cell-aware — kids are stored concatenated by cell with
+            # explicit per-cell counts. Restore each cell exactly so an
+            # unequal split (e.g. 2 left + 3 right) survives the round
+            # trip. The public renderer uses the same `cell_lengths` to
+            # wrap each cell's children in a flex-column sub-wrapper.
+            cursor = 0
+            for ci, n in enumerate(cell_lengths):
+                for child in kids[cursor:cursor + n]:
+                    node = _block_node(child)
+                    if node is not None:
+                        cells[ci].append(node)
+                cursor += n
+        else:
+            # Legacy / equal-bucket — round-robin distribution mirrors
+            # CSS grid's default `grid-auto-flow: row` (item i lands in
+            # column `i mod n_cols`), so 6 items in a 3-col grid stack
+            # as col0:[0,3], col1:[1,4], col2:[2,5] in the editor instead
+            # of dumping everything past the column count into the last
+            # cell. Flex containers (n_cols=1) land every child in the
+            # single cell preserving source order.
+            for i, child in enumerate(kids):
+                node = _block_node(child)
+                if node is not None:
+                    cells[i % n_cols].append(node)
         return {
             "type": "columns",
             "block_id": b.get("id") or "",
@@ -11429,6 +11448,27 @@ def frontend_page_edit(page_id):
     s = _get_site_setting()
     page = Page.query.get_or_404(page_id)
     layouts = _page_layouts_for_picker()
+    # Pending-draft overlay — when the page has a stashed `draft_json`,
+    # the edit screen loads from it instead of the published columns so
+    # the admin picks up their in-progress changes. The page object is
+    # detached from the session before applying overrides so autoflushes
+    # during the rest of this view (e.g. layout lookups) can't
+    # accidentally persist the draft values to the live row.
+    draft_active = False
+    draft_saved_at = None
+    if page.draft_json and page.is_published:
+        try:
+            draft_data = _json.loads(page.draft_json)
+        except (ValueError, TypeError):
+            draft_data = None
+        if isinstance(draft_data, dict):
+            draft_saved_at = page.draft_saved_at
+            db.session.expunge(page)
+            for key, val in draft_data.items():
+                if hasattr(page, key):
+                    try: setattr(page, key, val)
+                    except Exception: pass
+            draft_active = True
     active_layout = _page_active_layout(page, layouts)
     tree_data = _page_active_tree(page)
     # Per-block hover-preview payloads, keyed by block id. Built once
@@ -11479,7 +11519,9 @@ def frontend_page_edit(page_id):
                            meetings_modal_vals=meetings_modal_vals,
                            events_modal_vals=events_modal_vals,
                            features_modal_vals=features_modal_vals,
-                           faq_modal_vals=faq_modal_vals)
+                           faq_modal_vals=faq_modal_vals,
+                           draft_active=draft_active,
+                           draft_saved_at=draft_saved_at)
 
 
 @bp.route("/frontend/pages/<int:page_id>/layout", methods=["POST"])
@@ -11899,6 +11941,72 @@ def _slugify_page(value):
 PAGE_BG_EXTS = {"png", "jpg", "jpeg", "webp", "gif", "svg"}
 
 
+# Columns captured in a PageRevision snapshot. Listed explicitly so a
+# future Page schema change doesn't accidentally start capturing
+# server-internal fields (`id`, `created_at`, `updated_at`, the draft
+# columns themselves). Restore walks this list and `setattr`s each key
+# present in the saved snapshot back onto the page, so adding a column
+# here is the only step needed to extend revision coverage to new
+# fields.
+_PAGE_SNAPSHOT_FIELDS = (
+    "title", "slug", "template",
+    "is_published", "is_private",
+    "blocks_json",
+    "bg_mode", "bg_tile_scale", "bg_dynamic_key",
+    "bg_dynbg_config_json",
+    "bg_color", "bg_color_dark", "bg_color_dark_mode",
+    "bg_image_filename",
+    "width_mode", "max_width", "full_padding_pct",
+    "pad_top", "pad_bottom", "pad_x", "section_gap", "block_margin_y",
+    "heading_color", "subheading_color",
+    "heading_font", "subheading_font", "heading_align",
+    "og_title", "og_description", "og_image_filename",
+    "layout_key",
+)
+
+
+def _page_snapshot_from_row(page):
+    """Build a snapshot dict from a Page row's current column values.
+    Used by the publish branch of `frontend_page_save` to record what
+    was just written to the live row. Mirrors the shape `draft_json`
+    uses so `restore` can deserialise it into the draft slot."""
+    return {f: getattr(page, f, None) for f in _PAGE_SNAPSHOT_FIELDS}
+
+
+def _record_page_revision(page, action, snapshot):
+    """Append a PageRevision row for this save and trim history past
+    the per-page cap. Called at the bottom of both the draft branch
+    and the publish branch of `frontend_page_save`. Trim keeps the
+    most recent `_PAGE_REVISION_LIMIT` entries; older rows are deleted
+    in the same transaction so history doesn't grow without bound on a
+    page edited many times a day."""
+    import json as _json
+    from .models import PageRevision
+    rev = PageRevision(
+        page_id=page.id,
+        action=action,
+        snapshot_json=_json.dumps(snapshot),
+        created_by_id=(current_user.id
+                       if current_user.is_authenticated else None),
+    )
+    db.session.add(rev)
+    # Trim — drop everything past the cap. Subquery picks the ids to
+    # delete in one round-trip so we don't load all rows into memory.
+    # The newly-added `rev` hasn't been flushed yet, so it can't be
+    # selected here; that's fine because the new row never lands in
+    # the "older than cap" bucket on the same insert.
+    overflow = (PageRevision.query
+                .filter_by(page_id=page.id)
+                .order_by(PageRevision.created_at.desc())
+                .offset(_PAGE_REVISION_LIMIT)
+                .all())
+    for r in overflow:
+        db.session.delete(r)
+
+
+_PAGE_REVISION_LIMIT = 50
+
+
 @bp.route("/frontend/pages/save", methods=["POST"])
 @admin_required
 def frontend_page_save():
@@ -12029,11 +12137,136 @@ def frontend_page_save():
     if has_heading_align and heading_align not in ("auto", "left", "center", "right"):
         heading_align = "auto"
 
+    # `save_action` controls whether this submit goes live (writes to
+    # the published columns) or stashes a pending draft for an already-
+    # published page. Driven by a hidden field the editor's `Save as
+    # draft` button flips before submit; defaults to publish so older
+    # callers / API submits behave exactly as they did before the
+    # feature shipped. Draft saves only make sense for an existing,
+    # published page — new pages and unpublished pages always go to
+    # the live columns.
+    save_action = (request.form.get("save_action") or "publish").strip().lower()
+    if save_action not in ("publish", "draft"):
+        save_action = "publish"
+
     if page_id:
         page = Page.query.get_or_404(int(page_id))
     else:
         page = Page()
+        save_action = "publish"
+    if save_action == "draft" and (not page.is_published or page.id is None):
+        # Draft only meaningful for published pages with an id; degrade
+        # silently to a normal publish so the admin doesn't lose work.
+        save_action = "publish"
 
+    # ── Draft branch ─────────────────────────────────────────────────
+    # Build a typed snapshot of every form-derived value and stash it
+    # in `page.draft_json`. The live columns are NOT touched, so the
+    # public site keeps rendering the published row. Slug uniqueness
+    # is skipped here — it gets enforced when the draft is eventually
+    # published. File uploads (bg_image / og_image) still land on disk
+    # because the file is needed when the draft is published; only
+    # the column references are deferred.
+    if save_action == "draft":
+        from . import dynbg as _dynbg
+        # Background image — write to disk if uploaded, capture filename.
+        # `bg_image_filename` only enters the snapshot when the admin
+        # actually changed it (clear or upload), so a draft that only
+        # tweaks text doesn't have to mention bg_image and won't clobber
+        # the live bg on publish.
+        bg_filename_change = None  # (changed?, value)
+        if request.form.get("clear_bg") == "1":
+            bg_filename_change = (True, None)
+        bg_upload = request.files.get("bg_image")
+        if bg_upload and bg_upload.filename:
+            ext = (bg_upload.filename.rsplit(".", 1)[-1].lower()
+                   if "." in bg_upload.filename else "")
+            if ext not in PAGE_BG_EXTS:
+                flash(f"Unsupported background type .{ext}. Allowed: "
+                      f"{', '.join(sorted(PAGE_BG_EXTS))}.", "danger")
+                return redirect(_safe_referrer() or url_for("main.frontend_pages"))
+            safe = secure_filename(bg_upload.filename) or f"page-bg.{ext}"
+            stored = f"{_uuid4().hex}_{safe}"
+            bg_upload.save(_os.path.join(current_app.config["UPLOAD_FOLDER"], stored))
+            bg_filename_change = (True, stored)
+        # OG image — same pattern.
+        og_filename_change = None
+        if request.form.get("og_present") == "1":
+            if request.form.get("clear_og_image") == "1":
+                og_filename_change = (True, None)
+            og_upload = request.files.get("og_image")
+            if og_upload and og_upload.filename:
+                stored_og, _orig = _save_upload(og_upload)
+                og_filename_change = (True, stored_og)
+        # bg_color trio — only when the present-marker is set.
+        bg_color_overrides = None
+        if request.form.get("bg_color_present") == "1":
+            import re as _bgc_re
+            from .design import DESIGN_FIELDS_BY_KEY as _DFK
+            _hex = _bgc_re.compile(r"^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$")
+            _tok = _bgc_re.compile(r"^token:([a-z0-9_]+)$", _bgc_re.IGNORECASE)
+            def _coerce_bg(v):
+                v = (v or "").strip()
+                if not v: return None
+                m = _tok.match(v)
+                if m:
+                    key = m.group(1); f = _DFK.get(key)
+                    if f and f.get("kind") == "color": return "token:" + key
+                    return None
+                return v if _hex.match(v) else None
+            dm = (request.form.get("bg_color_dark_mode") or "same").strip().lower()
+            if dm not in ("same", "auto", "manual"): dm = "same"
+            bg_color_overrides = {
+                "bg_color": _coerce_bg(request.form.get("bg_color")),
+                "bg_color_dark": _coerce_bg(request.form.get("bg_color_dark")),
+                "bg_color_dark_mode": dm,
+            }
+        # Assemble the snapshot. Only fields the admin explicitly
+        # interacted with land in the dict — the load path uses
+        # `dict.get(key, page.<column>)` so absent keys fall through to
+        # the published value.
+        snapshot = {
+            "title": title, "slug": slug, "template": tmpl,
+            "is_published": is_published, "is_private": bool(is_private),
+            "bg_mode": bg_mode, "bg_tile_scale": bg_tile_scale,
+            "bg_dynamic_key": _dynbg.normalize(request.form.get("bg_dynamic_key")),
+            "bg_dynbg_config_json": _dynbg_config_from_form(
+                request.form, "bg_dynbg_config_json"),
+            "width_mode": width_mode, "max_width": max_width,
+            "full_padding_pct": full_padding_pct,
+            "pad_top": pad_top, "pad_bottom": pad_bottom, "pad_x": pad_x,
+            "section_gap": section_gap, "block_margin_y": block_margin_y,
+        }
+        if blocks_json_to_save is not None:
+            snapshot["blocks_json"] = blocks_json_to_save
+        if bg_filename_change is not None:
+            snapshot["bg_image_filename"] = bg_filename_change[1]
+        if bg_color_overrides is not None:
+            snapshot.update(bg_color_overrides)
+        if has_heading_color:    snapshot["heading_color"]    = heading_color
+        if has_subheading_color: snapshot["subheading_color"] = subheading_color
+        if has_heading_font:     snapshot["heading_font"]     = heading_font
+        if has_subheading_font:  snapshot["subheading_font"]  = subheading_font
+        if has_heading_align:    snapshot["heading_align"]    = heading_align
+        if request.form.get("og_present") == "1":
+            snapshot["og_title"] = (
+                (request.form.get("og_title") or "").strip()[:200] or None)
+            snapshot["og_description"] = (
+                (request.form.get("og_description") or "").strip() or None)
+            if og_filename_change is not None:
+                snapshot["og_image_filename"] = og_filename_change[1]
+        from datetime import datetime as _dt_now
+        page.draft_json = _json.dumps(snapshot)
+        page.draft_saved_at = _dt_now.utcnow()
+        # The draft snapshot IS the saved state — record it on the
+        # revision log so the admin can restore this exact draft later
+        # even after Publishing or overwriting it with a newer draft.
+        _record_page_revision(page, "draft", snapshot)
+        db.session.commit()
+        flash(f"Draft saved for “{page.title}”", "success")
+        return redirect(url_for("main.frontend_page_edit", page_id=page.id))
+
+    # ── Publish branch (the existing live-write flow) ─────────────────
     # Set the NOT NULL columns up front. Once the Page is added to
     # the session below, ANY subsequent query that triggers
     # SQLAlchemy's autoflush would try to insert the row with all the
@@ -12171,8 +12404,106 @@ def frontend_page_save():
             if old_og and old_og != stored_og:
                 _cleanup_retired_asset(old_og)
 
+    # Publish supersedes any stashed draft — clear the snapshot + its
+    # timestamp so the editor opens against the freshly-published live
+    # values on the next load. The orphaned upload (if the admin had
+    # uploaded a draft bg / og image and is now publishing different
+    # content) sits on disk; the daily cleanup pass picks it up via
+    # the orphan scan, same as any other un-referenced upload.
+    page.draft_json = None
+    page.draft_saved_at = None
+    # Record this publish state on the revision log so the admin can
+    # roll back later. Captured from the page row's column values
+    # after the writes above so the snapshot matches what was actually
+    # persisted (including any sanitisation / clamping the route did
+    # on the way in). Skipped for brand-new pages whose `page.id` is
+    # None until the upcoming commit assigns it — we record the first
+    # revision on the NEXT save instead.
+    if page.id is not None:
+        _record_page_revision(page, "publish", _page_snapshot_from_row(page))
     db.session.commit()
     flash(f"Page “{title}” saved", "success")
+    return redirect(url_for("main.frontend_page_edit", page_id=page.id))
+
+
+@bp.route("/frontend/pages/<int:page_id>/revisions", methods=["GET"])
+@admin_required
+def frontend_page_revisions(page_id):
+    """Return the page's revision history as JSON for the editor's
+    History modal. Newest-first, capped at `_PAGE_REVISION_LIMIT`.
+    Each entry carries the id, action, ISO timestamp, and author
+    username so the modal can render a scannable list without doing
+    extra round-trips."""
+    from .models import Page, PageRevision
+    page = Page.query.get_or_404(page_id)
+    revs = (PageRevision.query
+            .filter_by(page_id=page.id)
+            .order_by(PageRevision.created_at.desc())
+            .limit(_PAGE_REVISION_LIMIT)
+            .all())
+    out = []
+    for r in revs:
+        out.append({
+            "id": r.id,
+            "action": r.action,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "created_by": (r.user.username if r.user else None),
+        })
+    return jsonify({"revisions": out, "current_draft_active": bool(page.draft_json)})
+
+
+@bp.route("/frontend/pages/<int:page_id>/revisions/<int:rev_id>/restore",
+           methods=["POST"])
+@admin_required
+def frontend_page_revision_restore(page_id, rev_id):
+    """Restore a past revision INTO the page's draft slot for review.
+    Non-destructive — the live row is untouched until the admin clicks
+    Publish on the editor. The restore itself counts as a save and is
+    logged as its own revision (action='draft') so the move is part of
+    the history trail too — admins can see exactly when and from which
+    older revision a rollback was kicked off."""
+    import json as _json
+    from datetime import datetime as _dt_now
+    from .models import Page, PageRevision
+    page = Page.query.get_or_404(page_id)
+    rev = PageRevision.query.get_or_404(rev_id)
+    if rev.page_id != page.id:
+        abort(404)
+    try:
+        snapshot = _json.loads(rev.snapshot_json)
+    except (ValueError, TypeError):
+        flash("That revision's snapshot is unreadable — cannot restore.", "danger")
+        return redirect(url_for("main.frontend_page_edit", page_id=page.id))
+    if not isinstance(snapshot, dict):
+        flash("That revision is malformed — cannot restore.", "danger")
+        return redirect(url_for("main.frontend_page_edit", page_id=page.id))
+    page.draft_json = rev.snapshot_json
+    page.draft_saved_at = _dt_now.utcnow()
+    _record_page_revision(page, "draft", snapshot)
+    db.session.commit()
+    flash(f"Restored revision from "
+          f"{rev.created_at.strftime('%b %d, %Y %I:%M %p')} UTC as a draft. "
+          f"Review and Publish to apply.", "success")
+    return redirect(url_for("main.frontend_page_edit", page_id=page.id))
+
+
+@bp.route("/frontend/pages/<int:page_id>/discard-draft", methods=["POST"])
+@admin_required
+def frontend_page_discard_draft(page_id):
+    """Drop any pending draft on a published page, reverting the editor
+    to the live values. The live row is untouched; this just clears the
+    `draft_json` / `draft_saved_at` columns so the next edit-screen load
+    populates from the published columns. Uploaded draft assets (bg /
+    og images that only ever existed in the snapshot) are left on disk —
+    the daily orphan-cleanup pass collects them."""
+    from .models import Page
+    page = Page.query.get_or_404(page_id)
+    had_draft = page.draft_json is not None
+    page.draft_json = None
+    page.draft_saved_at = None
+    db.session.commit()
+    if had_draft:
+        flash(f"Draft discarded for “{page.title}”", "success")
     return redirect(url_for("main.frontend_page_edit", page_id=page.id))
 
 

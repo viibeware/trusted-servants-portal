@@ -476,7 +476,26 @@
         {% include "frontend/_dynbg_apply.html" %}
       {% endwith %}
       {%- endif -%}
-      {%- for child in (d.get('blocks', []) or []) -%}{{ pp_block(child) }}{%- endfor -%}
+      {%- set _cl = d.get('cell_lengths') -%}
+      {%- set _children = d.get('blocks', []) or [] -%}
+      {%- if (d.display == 'grid') and _cl and (_cl | length) > 1 and (_cl | sum) == (_children | length) -%}
+        {# Cell-aware grid layout — children are stored concatenated by
+           cell with `cell_lengths` carrying the per-cell counts. CSS
+           grid's `auto-flow: row` can't express unequal columns (e.g.
+           2 left + 3 right), so each cell becomes a flex-column sub-
+           wrapper carrying `grid-column: N`. The wrapper inherits the
+           container's chosen gap for inside-cell stacking. #}
+        {%- set _cell_gap = d.gap or '1rem' -%}
+        {%- set _cursor = namespace(i=0) -%}
+        {%- for _len in _cl -%}
+          <div class="fe-pp-grid-cell" style="grid-column: {{ loop.index }}; display: flex; flex-direction: column; gap: {{ _cell_gap }}; min-width: 0;">
+            {%- for child in _children[_cursor.i:_cursor.i + _len] -%}{{ pp_block(child) }}{%- endfor -%}
+          </div>
+          {%- set _cursor.i = _cursor.i + _len -%}
+        {%- endfor -%}
+      {%- else -%}
+        {%- for child in _children -%}{{ pp_block(child) }}{%- endfor -%}
+      {%- endif -%}
     </div>
   {%- else -%}
     {{ render_block(b) }}
@@ -652,26 +671,125 @@
   .fe-preview-banner-close:hover { background: rgba(255,255,255,.15); }
   @media (prefers-reduced-motion: reduce) { .fe-preview-banner-dot { animation: none; } }
 </style>
-{# Scroll preservation across live-update reloads. The page-edit screen
-   re-POSTs blocks_json to this preview window on every edit (debounced),
-   which is a full navigation — without this, the preview would jump
-   back to the top each time the admin tweaks anything. We stash the
-   scroll position in sessionStorage on unload and restore it on load. #}
+{# Live-update poller. The preview window pings its opener (the page-
+   edit screen) for the current value of the hidden `#page-blocks-json`
+   input, and when it changes, silently POSTs that JSON to its OWN URL,
+   gets the fresh HTML back, and swaps the body content in place. No
+   new window, no full navigation, no focus-steal — just an AJAX swap.
+   Scroll position is snapshotted across the swap so the admin stays
+   where they were.
+
+   State (`lastSeen`, `inflight`) is parked on `window` so it survives
+   the body innerHTML swap. Without this, the inline script re-runs
+   from inside the swapped body and a fresh closure would seed
+   `lastSeen` with whatever the opener has at that instant — which
+   may include keystrokes typed DURING the fetch — and skip the next
+   fetch, leaving the preview showing partial edits until the next
+   unrelated change kicks the poller. With the window-scoped state,
+   `lastSeen` reflects what we ACTUALLY rendered, so any drift during
+   the in-flight fetch is caught by the next tick (or the immediate
+   post-fetch re-poll). #}
 <script>
 (function () {
-  var key = 'tsp-preview-scroll-' + ({{ page.id if page else 0 }});
-  try {
-    var stored = sessionStorage.getItem(key);
-    if (stored !== null) {
-      var y = parseInt(stored, 10) || 0;
-      // Defer to next frame so layout has settled before we scroll.
-      window.requestAnimationFrame(function () {
-        window.scrollTo(0, y);
-      });
+  var S = window.__tspPreviewState = window.__tspPreviewState || {
+    lastSeen: null, inflight: false, seeded: false
+  };
+  if (window.__tspPreviewPoller) {
+    clearInterval(window.__tspPreviewPoller);
+    window.__tspPreviewPoller = null;
+  }
+  var url = window.location.pathname;
+
+  function readOpenerBlocks() {
+    try {
+      if (!window.opener || window.opener.closed) return null;
+      var hidden = window.opener.document.getElementById('page-blocks-json');
+      return hidden ? hidden.value : null;
+    } catch (_) { return null; }
+  }
+
+  function readOpenerCsrf() {
+    try {
+      if (!window.opener || window.opener.closed) return '';
+      var el = window.opener.document.querySelector('[name="csrf_token"]');
+      return el ? el.value : '';
+    } catch (_) { return ''; }
+  }
+
+  function applyHtml(html) {
+    var scrollY = window.scrollY;
+    var parser = new DOMParser();
+    var doc = parser.parseFromString(html, 'text/html');
+    if (!doc || !doc.body) return;
+    // Swap body content. innerHTML doesn't execute scripts, so we
+    // clone+replace each <script> node so inline scripts in the new
+    // content actually run (lottie, dynbg, copy-script, lightbox, etc.
+    // all need this).
+    document.body.innerHTML = doc.body.innerHTML;
+    var scripts = document.body.querySelectorAll('script');
+    for (var i = 0; i < scripts.length; i++) {
+      var old = scripts[i];
+      var ns = document.createElement('script');
+      for (var j = 0; j < old.attributes.length; j++) {
+        ns.setAttribute(old.attributes[j].name, old.attributes[j].value);
+      }
+      if (!old.src) ns.textContent = old.textContent;
+      old.parentNode.replaceChild(ns, old);
     }
-  } catch (_) {}
+    // Restore scroll. requestAnimationFrame so layout settles first.
+    window.requestAnimationFrame(function () { window.scrollTo(0, scrollY); });
+  }
+
+  function poll() {
+    if (S.inflight) return;
+    var blocks = readOpenerBlocks();
+    if (blocks === null) return;  // opener gone / cross-origin / not editor
+    if (blocks === S.lastSeen) return;
+    S.lastSeen = blocks;
+    var csrf = readOpenerCsrf();
+    var fd = new FormData();
+    fd.append('csrf_token', csrf);
+    fd.append('blocks_json', blocks);
+    S.inflight = true;
+    fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (html) { if (html) applyHtml(html); })
+      .catch(function () { /* swallow — try again next tick */ })
+      .finally(function () {
+        S.inflight = false;
+        // Immediate re-poll: any keystrokes that landed during the
+        // fetch are sitting in `#page-blocks-json` now. Without this,
+        // they'd wait for the next 700ms tick — and if the user kept
+        // typing through that tick, the preview could trail multiple
+        // edits behind. setTimeout(0) yields so the body-swap settles
+        // first; then this picks up any drift.
+        setTimeout(poll, 0);
+      });
+  }
+
+  // Seed lastSeen ONLY on the very first script run for this window —
+  // that's the load from the initial form submission, where the body
+  // we just rendered matches the opener's hidden input exactly. After
+  // body swaps, the re-executed script inherits whatever `lastSeen`
+  // the previous fetch set (= what was actually rendered), so any
+  // newer typing in the opener registers as a real change.
+  if (!S.seeded) {
+    S.lastSeen = readOpenerBlocks();
+    S.seeded = true;
+  }
+  // 500ms tick — short enough that mid-sentence partial updates are
+  // rare, long enough that idle preview tabs don't burn CPU. The
+  // post-fetch immediate re-poll handles the busy-typing case where
+  // a fixed interval alone would lag.
+  window.__tspPreviewPoller = setInterval(poll, 500);
+
+  // Stop polling if the opener window closes so a forgotten preview tab
+  // doesn't ping forever.
   window.addEventListener('beforeunload', function () {
-    try { sessionStorage.setItem(key, String(window.scrollY)); } catch (_) {}
+    if (window.__tspPreviewPoller) {
+      clearInterval(window.__tspPreviewPoller);
+      window.__tspPreviewPoller = null;
+    }
   });
 })();
 </script>

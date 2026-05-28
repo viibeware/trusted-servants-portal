@@ -9655,10 +9655,27 @@ html[data-theme="dark"] .fe-pp {
 /* Direct children of a container honour its gap, but stand-alone
    blocks (paragraphs, headings, lists, etc.) usually carry their
    own top/bottom margins. Zero those when nested inside a container
-   so the gap drives the rhythm. */
-.block-container > .block { margin: 0; }
-.block-container > .block-paragraph p:first-child { margin-top: 0; }
-.block-container > .block-paragraph p:last-child  { margin-bottom: 0; }
+   so the gap drives the rhythm. The same applies to `.fe-pp-grid-cell`
+   wrappers — those are the per-column flex-column sub-wrappers the
+   grid container emits when the admin built unequal columns; their
+   children should behave like container children (gap-driven, not
+   margin-driven). */
+.block-container > .block,
+.fe-pp-grid-cell > .block { margin: 0; }
+.block-container > .block-paragraph p:first-child,
+.fe-pp-grid-cell > .block-paragraph p:first-child { margin-top: 0; }
+.block-container > .block-paragraph p:last-child,
+.fe-pp-grid-cell > .block-paragraph p:last-child  { margin-bottom: 0; }
+/* Mobile collapse: the grid container itself collapses to a single
+   column via `grid-template-columns: 1fr`, but the per-cell sub-
+   wrappers still carry `grid-column: N` from inline styles. Reset
+   to `auto` so they stack naturally (each cell becomes its own row).
+   Without this, the second cell would try to claim a non-existent
+   column 2 and either disappear or render weirdly depending on the
+   grid implementation. */
+@media (max-width: 720px) {
+  .fe-pp-grid-cell { grid-column: auto !important; }
+}
 
 /* Showcase wrapper — make sure containers inside the showcase layout
    inherit reasonable defaults (text colour, prose colour) without

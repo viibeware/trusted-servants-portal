@@ -2777,9 +2777,56 @@ class Page(db.Model):
     og_title = db.Column(db.String(200))
     og_description = db.Column(db.Text)
     og_image_filename = db.Column(db.String(500))
+    # Pending-draft snapshot for already-published pages. When non-null,
+    # `draft_json` holds a JSON object capturing every form field of an
+    # in-progress edit (title, slug, blocks_json, layout, background,
+    # padding, SEO, etc.) without touching the published columns. The
+    # public site keeps rendering whatever's in the live columns; the
+    # admin's edit screen loads from the draft snapshot when it exists.
+    # `draft_saved_at` is the wall-clock of the last "Save as Draft"
+    # click, surfaced in the editor banner ("Draft saved 3 minutes ago").
+    # Publishing copies the snapshot back to the columns and clears both
+    # fields atomically. Distinct from `is_published` (which controls
+    # public visibility — a `Draft` visibility page has nothing to do
+    # with this column).
+    draft_json = db.Column(db.Text)
+    draft_saved_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow,
                            onupdate=datetime.utcnow)
+
+
+class PageRevision(db.Model):
+    """Append-only edit history for a Page. Every successful Save (whether
+    draft or publish) writes a row here capturing the full page state at
+    that moment — same shape as `Page.draft_json` (a JSON object keyed by
+    column name). Lets the admin browse past states and Restore one back
+    into the draft slot for review before re-publishing. Capped per page
+    by `_trim_page_revisions()`; older entries fall off the tail."""
+    __tablename__ = "page_revision"
+    id = db.Column(db.Integer, primary_key=True)
+    page_id = db.Column(db.Integer,
+                        db.ForeignKey("page.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    # Which save produced this row — 'draft' (Save Draft) or 'publish'
+    # (Save & Publish). Surfaced as a chip in the History modal so the
+    # admin can scan past activity at a glance.
+    action = db.Column(db.String(16), nullable=False)
+    # Full page snapshot at save time. JSON object whose keys mirror
+    # Page columns (title, slug, blocks_json, bg_*, pad_*, og_*, etc.).
+    # Restore deserialises this back into `Page.draft_json` so the
+    # admin can review before publishing.
+    snapshot_json = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False,
+                           default=datetime.utcnow, index=True)
+    # User who triggered the save (nullable in case the request slipped
+    # through without an authenticated user — defensive).
+    created_by_id = db.Column(db.Integer,
+                              db.ForeignKey("user.id"), nullable=True)
+    page = db.relationship("Page", backref=db.backref(
+        "revisions", lazy="dynamic", cascade="all, delete-orphan",
+        order_by="PageRevision.created_at.desc()"))
+    user = db.relationship("User")
 
 
 class Popup(db.Model):

@@ -1934,7 +1934,9 @@ def _migrate_sqlite(app):
                          ("is_private", "BOOLEAN NOT NULL DEFAULT 0"),
                          ("og_title", "VARCHAR(200)"),
                          ("og_description", "TEXT"),
-                         ("og_image_filename", "VARCHAR(500)")):
+                         ("og_image_filename", "VARCHAR(500)"),
+                         ("draft_json", "TEXT"),
+                         ("draft_saved_at", "DATETIME")):
             add("page", col, ddl)
 
         # NotFoundEvent — added in 2.8.1. Captures the source IP on

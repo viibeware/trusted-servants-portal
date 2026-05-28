@@ -912,6 +912,16 @@ html[data-theme="dark"] .perm-badge-viewer { background: rgba(100, 116, 139, 0.2
 .post-chip-draft        { background: rgba(100, 116, 139, 0.14); color: #475569; border-color: rgba(100, 116, 139, 0.34); }
 .post-chip-warning      { background: rgba(245, 158, 11, 0.18);  color: #b45309; border-color: rgba(245, 158, 11, 0.5); }
 .post-chip-private      { background: rgba(168, 85, 247, 0.14); color: #6b21a8; border-color: rgba(168, 85, 247, 0.36); }
+.post-chip-pending-draft { background: rgba(245, 158, 11, 0.14); color: #92400e; border-color: rgba(245, 158, 11, 0.4); display: inline-flex; align-items: center; gap: 4px; }
+.post-chip-pending-draft .icon { width: 12px; height: 12px; }
+/* Pages-list status cell — multiple chips (visibility + optional
+   "Unpublished changes") stack with breathing room instead of butting
+   up against each other. Wraps on narrow widths so a long second chip
+   doesn't force horizontal scroll. */
+.fe-page-status-pills {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+}
+html[data-theme="dark"] .post-chip-pending-draft { background: rgba(245, 158, 11, 0.22); color: #fcd34d; border-color: rgba(245, 158, 11, 0.5); }
 html[data-theme="dark"] .post-chip-announcement { background: rgba(245, 158, 11, 0.18); color: #fbbf24; border-color: rgba(245, 158, 11, 0.5); }
 html[data-theme="dark"] .post-chip-event        { background: rgba(11, 92, 255, 0.22);  color: #93c5fd; border-color: rgba(11, 92, 255, 0.45); }
 html[data-theme="dark"] .post-chip-online       { background: rgba(20, 184, 166, 0.20); color: #5eead4; border-color: rgba(20, 184, 166, 0.45); }
@@ -2338,6 +2348,20 @@ html[data-theme="dark"] .post-chip-private      { background: rgba(168, 85, 247,
   border-color: #422006; padding: 6px 14px;
   flex: 0 0 auto; white-space: nowrap; }
 .fe-save-bar-btn.btn:hover { background: #1c0f02; color: #fde047; }
+/* Save-Draft secondary button — page-edit screen only. Outlined
+   variant tinted with the Publish button's fill colour (#422006) for
+   text and border, so the two buttons read as a matched pair: solid =
+   primary (Publish), outlined = secondary (Save Draft). Sits LEFT of
+   the Publish button in the bar (insertion order handled by the JS in
+   frontend_page_edit.html). */
+.fe-save-bar-btn-draft.btn {
+  background: transparent; color: #422006;
+  border-color: #422006;
+}
+.fe-save-bar-btn-draft.btn:hover {
+  background: rgba(66, 32, 6, 0.12); color: #422006;
+  border-color: #422006;
+}
 /* Hide the per-card inline save buttons once the global save bar is on
    screen — the bar is the canonical way to commit. The inline form-actions
    are still in the DOM as a no-JS fallback. */
@@ -8714,6 +8738,88 @@ body.setup-body { margin: 0; min-height: 100vh; background: var(--bg);
   font-size: 0.8125rem;
 }
 
+/* Pending-draft banner — surfaces when the edit screen is loaded
+   against a stashed `draft_json`. Amber chrome distinguishes it from
+   the page-title banner without competing for attention. The Discard
+   form sits inline on the right so the admin can bail out in one
+   click without scrolling. */
+.fe-page-draft-banner {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 16px; margin-bottom: 12px;
+  background: #fef3c7; color: #78350f;
+  border: 1px solid #fcd34d; border-left: 4px solid #f59e0b;
+  border-radius: var(--radius);
+  font-size: 0.92rem; line-height: 1.4;
+}
+html[data-theme="dark"] .fe-page-draft-banner {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fde68a; border-color: rgba(245, 158, 11, 0.45);
+  border-left-color: #f59e0b;
+}
+.fe-page-draft-banner-icon { flex: 0 0 auto; display: inline-flex; }
+.fe-page-draft-banner-icon .icon { width: 20px; height: 20px; }
+.fe-page-draft-banner-text { flex: 1 1 auto; min-width: 0; }
+.fe-page-draft-banner-text strong { margin-right: 6px; }
+.fe-page-draft-banner-text code {
+  background: rgba(0,0,0,.08); padding: 0 6px; border-radius: 4px;
+  font-size: 0.85em;
+}
+html[data-theme="dark"] .fe-page-draft-banner-text code {
+  background: rgba(255,255,255,.10);
+}
+.fe-page-draft-banner-discard { flex: 0 0 auto; margin: 0; }
+
+/* Edit history modal — chronological list of saves with a Restore
+   action per row. The first (newest) row is the page's current state
+   and has its Restore button hidden ("you're already here"). Chips
+   color-code Draft vs Published entries so admins can scan the
+   timeline at a glance. */
+.fe-page-history-list {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.fe-page-history-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel);
+}
+.fe-page-history-row.is-current {
+  background: var(--panel-2); border-style: dashed;
+}
+.fe-page-history-meta {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  min-width: 0;
+}
+.fe-page-history-when { font-weight: 600; font-size: 0.95rem; }
+.fe-page-history-who { white-space: nowrap; }
+.fe-page-history-current-tag {
+  font-style: italic;
+}
+.fe-page-history-chip {
+  display: inline-flex; align-items: center;
+  padding: 2px 10px; border-radius: 999px;
+  font-size: 0.72rem; font-weight: 700;
+  letter-spacing: 0.05em; text-transform: uppercase;
+}
+.fe-page-history-chip-publish {
+  background: rgba(20, 184, 166, 0.15); color: #0f766e;
+  border: 1px solid rgba(20, 184, 166, 0.4);
+}
+.fe-page-history-chip-draft {
+  background: rgba(245, 158, 11, 0.18); color: #92400e;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}
+html[data-theme="dark"] .fe-page-history-chip-publish {
+  background: rgba(20, 184, 166, 0.22); color: #5eead4;
+  border-color: rgba(20, 184, 166, 0.5);
+}
+html[data-theme="dark"] .fe-page-history-chip-draft {
+  background: rgba(245, 158, 11, 0.22); color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.5);
+}
+.fe-page-history-restore { margin: 0; flex: 0 0 auto; }
+.fe-page-history-loading { padding: 24px 0; text-align: center; }
+
 /* ---- Per-block content-edit modals ----
    Shared between footer and homepage block editors. Each block's
    content-editor lives in its own modal; the modal-panel already
@@ -10759,13 +10865,44 @@ input.be-container-color-text.is-invalid {
   display: none;
 }
 .fe-page-orphans-list {
-  display: flex; flex-direction: column; gap: 6px;
+  display: flex; flex-direction: column; gap: 8px;
   padding: 12px; border: 1px dashed var(--border); border-radius: 12px;
   background: var(--panel-2); min-height: 56px;
+  list-style: none; margin: 0;
 }
+/* Orphan-bin pill chrome — mirrored from the structure-card pill rules
+   because the base `.fe-page-structure .fe-page-structure-block` is
+   scoped to the structure card and doesn't inherit into this sibling
+   section. Background uses `var(--panel)` (one step lighter than the
+   bin's `var(--panel-2)`) so pills read as discrete cards instead of
+   blending into the bin. Icon + label + hover behaviour matches the
+   structure card so a pill looks identical whether it's placed or
+   parked. */
 .fe-page-orphans-list .fe-page-structure-block {
+  display: flex; align-items: center; gap: 8px;
   padding: 10px 12px; border-radius: 10px;
+  background: var(--panel);
+  color: var(--text); font-size: 0.875rem; font-weight: 500;
+  border: 1px solid var(--border);
+  text-align: left; font-family: inherit;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease,
+              transform 140ms ease, color 140ms ease;
 }
+.fe-page-orphans-list .fe-page-structure-block:hover {
+  background: var(--brand, var(--access));
+  border-color: var(--brand, var(--access));
+  color: #fff;
+}
+.fe-page-orphans-list .fe-page-structure-block-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--brand, var(--access)); flex: 0 0 auto;
+}
+.fe-page-orphans-list .fe-page-structure-block-icon .icon {
+  width: 14px; height: 14px;
+}
+.fe-page-orphans-list .fe-page-structure-block:hover .fe-page-structure-block-icon { color: #fff; }
+.fe-page-orphans-list .fe-page-structure-block:hover .fe-page-structure-block-edit-hint { opacity: 1; }
 
 /* ── Drag-drop affordances ──────────────────────────────────────
    While dragging, the source pill / palette tile dims, the hovered

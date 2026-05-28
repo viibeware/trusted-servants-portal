@@ -828,7 +828,24 @@
         {% include "frontend/_dynbg_apply.html" %}
       {% endwith %}
     {% endif %}
-    {% for child in (d.get('blocks', []) or []) %}{{ render_block(child) }}{% endfor %}
+    {% set _cl = d.get('cell_lengths') %}
+    {% set _children = d.get('blocks', []) or [] %}
+    {% if (_disp == 'grid') and _cl and (_cl | length) > 1 and (_cl | sum) == (_children | length) %}
+      {# Cell-aware grid layout — see the same branch in
+         `frontend/page.html`. Each cell becomes a flex-column
+         sub-wrapper carrying `grid-column: N` so unequal columns
+         (e.g. 2 left + 3 right) render exactly as built. #}
+      {% set _cell_gap = d.gap or '1rem' %}
+      {% set _cursor = namespace(i=0) %}
+      {% for _len in _cl %}
+        <div class="fe-pp-grid-cell" style="grid-column: {{ loop.index }}; display: flex; flex-direction: column; gap: {{ _cell_gap }}; min-width: 0;">
+          {% for child in _children[_cursor.i:_cursor.i + _len] %}{{ render_block(child) }}{% endfor %}
+        </div>
+        {% set _cursor.i = _cursor.i + _len %}
+      {% endfor %}
+    {% else %}
+      {% for child in _children %}{{ render_block(child) }}{% endfor %}
+    {% endif %}
   </div>
 {% endmacro %}
 
