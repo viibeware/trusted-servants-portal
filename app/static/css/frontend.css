@@ -3277,7 +3277,7 @@ html[data-theme="dark"] .fe-event-date-year { color: var(--fe-dm-text-muted, #94
 }
 .fe-meeting-detail-head-logo { flex: 0 0 auto; }
 .fe-meeting-detail-head-logo .fe-meeting-logo {
-  display: block; width: 180px; height: auto;
+  display: block; width: 240px; height: auto;
   border-radius: var(--fe-card-radius, 12px);
 }
 .fe-meeting-detail-head-content { flex: 1 1 auto; min-width: 0; }
@@ -3488,7 +3488,11 @@ html[data-theme="dark"] .fe-meeting-detail-alert {
 }
 @media (min-width: 860px) {
   .fe-event-detail-hero.has-cover {
-    grid-template-columns: minmax(0, 427px) minmax(0, 1fr);
+    /* 33% / 66% split between the featured-image column and the body
+       column. Previously the cover was capped at a fixed 427px; now
+       it scales with the container so the image and body always
+       hold a 1:2 width ratio. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
     gap: 32px;
   }
 }
@@ -3510,7 +3514,11 @@ html[data-theme="dark"] .fe-meeting-detail-alert {
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 }
 @media (min-width: 860px) {
-  .fe-event-detail-cover { height: 320px; aspect-ratio: 4 / 3; }
+  /* Keep the 4:3 aspect ratio but drop the fixed pixel height — the
+     cover now sizes itself to the 33% grid column, so its height
+     should follow the column width (width * 3/4) instead of being
+     pinned to 320px regardless of how wide the page actually is. */
+  .fe-event-detail-cover { aspect-ratio: 4 / 3; }
 }
 .fe-event-detail-cover:hover {
   transform: translateY(-3px);
@@ -4167,7 +4175,7 @@ html[data-theme="dark"] .fe-inclusion-tag {
 .fe-meeting-logo-wrap { margin: 0 0 24px; }
 .fe-meeting-logo-wrap-center { text-align: center; }
 .fe-meeting-logo {
-  display: block; width: 180px; max-width: 100%; height: auto;
+  display: block; width: 240px; max-width: 100%; height: auto;
   border-radius: var(--fe-card-radius, 12px);
 }
 .fe-meeting-logo-wrap-center .fe-meeting-logo { margin: 0 auto; }
@@ -12284,4 +12292,81 @@ html[data-theme="dark"] .fe-th-nav-link:not(.fe-th-nav-cta) { color: var(--fe-dm
   .fe-megamenu-themed { border-bottom-left-radius: 0 !important;
     border-bottom-right-radius: 0 !important; }
   .fe-megamenu-themed .fe-megamenu-inner { grid-template-columns: 1fr; gap: 20px; }
+}
+
+/* Featured-image elevation on the DETAIL templates (announcement,
+   event, and archive detail pages — all three use the same four
+   `templates/frontend/events/` layouts). The cover wrapper sits at
+   an `lg` shadow resting and lifts to `xl` on direct hover.
+   ──
+   Targeted classes:
+     `.fe-event-detail-cover` — Classic layout's lightbox-button
+                                wrapping the featured image.
+     `.fe-event-time-cover`   — Timeline layout's <div> wrapping
+                                the featured image.
+   ──
+   Slate-900 base with 18%/28% opacity + larger blur than the
+   image-block's static `lg` recipe — the image-block recipe was
+   calibrated for a content-page background and reads as no halo at
+   all against the detail page's white card surface. Reduced-motion
+   visitors get the same end states without the transition. */
+.fe-event-detail-cover,
+.fe-event-time-cover {
+  /* Drop the 1px border `.fe-event-detail-cover` ships with so the
+     featured image sits as a clean elevated tile, with the shadow
+     doing all the edge work. `.fe-event-time-cover` doesn't carry
+     a border but the reset is harmless there. */
+  border: 0;
+  /* Shadow colour follows the admin's primary-card shadow_color
+     token (`--fe-color-card-primary-shadow`, emitted from
+     `design.py::card_chrome_css_vars`) so theming the card shadow
+     also retints the featured image. Alpha (.18 / .10) is set per-
+     shadow-layer here rather than via the card's existing scale —
+     the image elevation is intentionally heavier (lg / xl) than
+     the card itself, so we keep our own size + alpha and only
+     borrow the colour. Falls back to slate-900 for any consumer
+     rendering outside a themed-frontend page. */
+  box-shadow:
+    0 12px 28px color-mix(in oklab, var(--fe-color-card-primary-shadow, #0f172a) 18%, transparent),
+    0 4px 10px  color-mix(in oklab, var(--fe-color-card-primary-shadow, #0f172a) 10%, transparent);
+  /* Hover transition pinned to a flat 200ms ease — short enough that
+     the elevation feels responsive, long enough that it doesn't snap. */
+  transition: box-shadow 200ms ease;
+}
+.fe-event-detail-cover:hover,
+.fe-event-time-cover:hover,
+.fe-event-detail-cover:focus-visible,
+.fe-event-time-cover:focus-within {
+  /* `.fe-event-detail-cover:hover` ships with a `translateY(-3px)`
+     lift earlier in this file; null it so the elevation reads as a
+     pure shadow expansion (the cover stays put while the shadow
+     blooms outward). */
+  transform: none;
+  box-shadow:
+    0 24px 48px color-mix(in oklab, var(--fe-color-card-primary-shadow, #0f172a) 28%, transparent),
+    0 10px 20px color-mix(in oklab, var(--fe-color-card-primary-shadow, #0f172a) 16%, transparent);
+}
+html[data-theme="dark"] .fe-event-detail-cover,
+html[data-theme="dark"] .fe-event-time-cover,
+body.fe-frontend-force-dark .fe-event-detail-cover,
+body.fe-frontend-force-dark .fe-event-time-cover {
+  box-shadow:
+    0 12px 28px color-mix(in oklab, var(--fe-color-card-primary-shadow-dark, var(--fe-color-card-primary-shadow, #0f172a)) 18%, transparent),
+    0 4px 10px  color-mix(in oklab, var(--fe-color-card-primary-shadow-dark, var(--fe-color-card-primary-shadow, #0f172a)) 10%, transparent);
+}
+html[data-theme="dark"] .fe-event-detail-cover:hover,
+html[data-theme="dark"] .fe-event-time-cover:hover,
+html[data-theme="dark"] .fe-event-detail-cover:focus-visible,
+html[data-theme="dark"] .fe-event-time-cover:focus-within,
+body.fe-frontend-force-dark .fe-event-detail-cover:hover,
+body.fe-frontend-force-dark .fe-event-time-cover:hover,
+body.fe-frontend-force-dark .fe-event-detail-cover:focus-visible,
+body.fe-frontend-force-dark .fe-event-time-cover:focus-within {
+  box-shadow:
+    0 24px 48px color-mix(in oklab, var(--fe-color-card-primary-shadow-dark, var(--fe-color-card-primary-shadow, #0f172a)) 28%, transparent),
+    0 10px 20px color-mix(in oklab, var(--fe-color-card-primary-shadow-dark, var(--fe-color-card-primary-shadow, #0f172a)) 16%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fe-event-detail-cover,
+  .fe-event-time-cover { transition: none; }
 }

@@ -11523,6 +11523,32 @@ input.be-container-color-text.is-invalid {
   flex-shrink: 0;
 }
 
+/* Pastel-strength slider row in the dynbg modal — label + descriptive
+   text on the left, range slider + live numeric readout on the right.
+   Stacks on narrow viewports so the slider keeps a usable width. */
+.dynbg-modal-pastel-row {
+  display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap;
+}
+.dynbg-modal-pastel-label {
+  flex: 1 1 320px; min-width: 0;
+  display: block;
+  cursor: pointer;
+}
+.dynbg-modal-pastel-slider {
+  flex: 0 1 240px; min-width: 200px;
+  display: flex; align-items: center; gap: 10px;
+}
+.dynbg-modal-pastel-slider input[type="range"] {
+  flex: 1 1 auto; min-width: 0;
+  accent-color: var(--access);
+}
+.dynbg-modal-pastel-slider output {
+  flex: 0 0 auto;
+  min-width: 2.5ch; text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600; color: var(--text);
+}
+
 /* ── Templates picker · Site Index thumbs ──────────────────────
    Two layouts share the same base palette as other thumbnails;
    the .t-eyebrow span anchors a section label and the .t-row

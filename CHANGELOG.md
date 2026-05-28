@@ -6,6 +6,19 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.9.2] — 2026-05-28
+
+### Added
+
+- **Pastel-strength slider on the dynamic-background picker.** Replaces the previous binary "Use pastels in light mode only" checkbox with an integer 0-100 slider + live numeric readout. `dynbg.normalize_pastel_strength()` accepts and coerces legacy booleans (`True` → 100, `False` → 0), ints, and numeric strings; `pastelize(hex_str, strength=100)` lerps between the source HSL values and the full pastel target so intermediate slider positions produce intermediate paleness. `encode_config()` persists the int (omits when 0); `decode_config()` returns the int (legacy boolean records resolve to 100). `colors_to_css_vars()` and the per-template settings JSON leaf (`bg_dynbg_pastel_light`) carry the strength end-to-end. Form-parse paths in `routes.py` now pass the raw form value through and let `encode_config` clamp.
+- **Themed featured-image elevation on detail pages.** New CSS rule on `.fe-event-detail-cover` (Classic) and `.fe-event-time-cover` (Timeline) emits an `lg` shadow at rest, expanding to `xl` on `:hover` / `:focus-visible` / `:focus-within`, with the colour driven by new `--fe-color-card-primary-shadow` + `--fe-color-card-primary-shadow-dark` CSS variables emitted from `design.py::card_chrome_css_vars`. Light/dark variants composed via `color-mix(in oklab, var(--…) <alpha>%, transparent)`. Transition is a flat `box-shadow 200ms ease` (no theme-token indirection so the timing stays predictable across themes). Border on the Classic cover stripped (`border: 0`) and the legacy `translateY(-3px)` hover lift overridden with `transform: none` — elevation now reads as pure shadow expansion, no jumping.
+
+### Changed
+
+- **Detail-page hero is now a 33 % / 66 % split** between the featured-image column and the body column (previously a fixed 427 px / 1fr). The fixed `height: 320px` on `.fe-event-detail-cover` was also dropped so the cover scales with the column width via its `aspect-ratio: 4/3` instead.
+- **Pastel target at strength 100 is now ~50 % paler than the previous all-or-nothing pastel band.** The legacy full-pastel target (`min(sat, 0.339)`, lightness 0.69–0.75) is now halved on saturation and pushed halfway toward pure white on lightness, landing in cream / blush / mint territory. `#ff0000` at strength 100 now resolves to `#ded0d0` (was `#ca9595`).
+- **Meeting detail logo bumped to 240 px on desktop** across all four meeting-detail layouts. Both the classic-specific `.fe-meeting-detail-head-logo .fe-meeting-logo` rule and the shared base `.fe-meeting-logo` rule updated; the `max-width: 600px` mobile override (140 px) is preserved.
+
 ## [2.9.1] — 2026-05-28
 
 ### Fixed

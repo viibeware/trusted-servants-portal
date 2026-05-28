@@ -2363,10 +2363,21 @@
 
         <fieldset class="dynbg-modal-fieldset" style="margin-top: 16px;">
           <legend>Light-mode tone</legend>
-          <label class="check dynbg-modal-randomize">
-            <input type="checkbox" id="dynbg-picker-modal-pastel-light" value="1">
-            <span><b>Use pastels in light mode only</b> <span class="muted smaller">— softens whichever colours are in play (slots above OR a randomised palette) into pastel variants when the visitor is viewing the site in light mode. Dark mode keeps the full-saturation values so the surface still reads with depth on a dark page.</span></span>
-          </label>
+          <div class="dynbg-modal-pastel-row">
+            <label for="dynbg-picker-modal-pastel-light" class="dynbg-modal-pastel-label">
+              <b>Light-mode pastel strength</b>
+              <span class="muted smaller">— softens whichever colours are in play (slots above OR a randomised palette) when the visitor is viewing the site in light mode. <b>0</b> leaves the colours at full saturation; <b>100</b> drops them into a soft pastel band (cream / blush / mint territory). Dark mode is unaffected.</span>
+            </label>
+            <div class="dynbg-modal-pastel-slider">
+              <input type="range"
+                     id="dynbg-picker-modal-pastel-light"
+                     min="0" max="100" step="1" value="0"
+                     aria-describedby="dynbg-picker-modal-pastel-light-out">
+              <output id="dynbg-picker-modal-pastel-light-out"
+                      for="dynbg-picker-modal-pastel-light"
+                      aria-live="off">0</output>
+            </div>
+          </div>
         </fieldset>
       </section>
     </div>

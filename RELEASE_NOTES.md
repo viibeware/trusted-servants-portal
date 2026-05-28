@@ -7,7 +7,14 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.9.1 — 2026-05-28 (latest) — Dynamic-background picker layering + phantom "online" users fix
+## 2.9.2 — 2026-05-28 (latest) — Pastel strength slider, themed image elevation, detail-page polish
+
+- **Dynamic background pastel intensity is now a slider, not a toggle.** Pull the slider in the Dynamic Background picker between 0 and 100 to dial how soft your light-mode palette gets — at 0 the colours stay fully saturated, at 100 they land in true cream / blush / mint pastels. Old saves that had the checkbox on still load with full strength. The strength-100 endpoint was also rebalanced to be visibly paler than the previous all-or-nothing setting, so even a maxed slider reads as a soft wash rather than a punchy tinted block.
+- **Featured images on announcement, event, and archive detail pages now elevate with a themed shadow.** A clearly visible `lg` shadow sits behind the image at rest and expands to an `xl` shadow on hover, with the shadow colour automatically following whatever you set under **Design → Card shadow colour** — change the theme tint and the image shadow retints to match. The border that used to outline the image is gone, the hover lift is dropped (the shadow alone does the work, no jumping), and the transition runs a flat 200 ms.
+- **Detail-page layout reshaped for better balance.** The featured-image column on announcement / event / archive detail pages (Classic layout) is now 33 % of the page width and the body column is 66 %, with the image height following the column width instead of being pinned to a fixed pixel value. Reads cleaner on wide screens where the previous fixed-width cover used to feel cramped next to a long body.
+- **Meeting detail logo bumped to 240 px on desktop** (was 180 px) across all four meeting-detail layouts (classic, card stack, magazine, minimal). Mobile keeps the existing narrower size so it still fits below 600 px wide.
+
+## 2.9.1 — 2026-05-28 — Dynamic-background picker layering + phantom "online" users fix
 
 - **Fixed: the Dynamic Background picker opened behind the modal that launched it** on the frontend templates page. The picker is a shared body-level dialog and was getting stacked under the template-edit modal (which is appended at runtime). The picker (along with the global media + icon pickers) now layers cleanly on top of any content modal that triggered it.
 - **Fixed: users appeared "persistently online" on `/api/live-meeting`.** The utility bar polls that endpoint every 30 seconds when the live-meeting badge is enabled, and the online-users tracker was treating each poll as a real page view — pinning the user's last-seen location to `/api/live-meeting` forever. Background polls on any `/api/*` endpoint are now skipped, so the Currently Online widget reflects actual navigation again. After deploying, lingering phantom-online users should drop off within your usual idle cutoff.

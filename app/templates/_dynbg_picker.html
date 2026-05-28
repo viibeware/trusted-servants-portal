@@ -61,7 +61,13 @@
 {# Animations default to ON. Persist '0' (disabled) as the only
    non-default state; '' = default = animated. #}
 {%- set _anim = '0' if _cfg.animate is sameas false else '' -%}
-{%- set _pastel = '1' if _cfg.pastel_light else '' -%}
+{# Pastel-strength slider value (0-100). decode_config returns an
+   int; a legacy True boolean previously stored was normalised to 100
+   by decode_config's `normalize_pastel_strength`. Empty string when
+   the strength is 0 so the trigger button's status text can detect
+   "off" without parsing. #}
+{%- set _pastel_int = _cfg.pastel_light | int -%}
+{%- set _pastel = (_pastel_int | string) if _pastel_int else '' -%}
 <div class="fe-dynbg-trigger-wrap" data-dynbg-trigger-wrap>
   <input type="hidden" name="{{ field_name }}" id="{{ _bid }}-input"
          value="{{ current or '' }}" data-dynbg-trigger-input>

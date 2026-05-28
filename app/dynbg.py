@@ -286,10 +286,35 @@ def normalize_float(value, lo, hi, default=None):
     return max(lo, min(hi, f))
 
 
+def normalize_pastel_strength(v, default=0):
+    """Coerce a stored ``pastel_light`` value into an int 0-100 strength.
+
+    Legacy storage was a boolean (``True`` = pastelise, ``False`` = off);
+    new storage is the 0-100 strength the admin set via the slider.
+    Both forms decode here so existing rows keep behaving the same:
+
+        True  → 100   (full pastel, matches legacy behaviour)
+        False → 0     (off)
+        '1'   → 1     (purely numeric — strength of 1%, NOT legacy on)
+        '100' → 100
+        out-of-range → clamped
+        garbage → ``default``
+    """
+    if v is True:
+        return 100
+    if v is False or v is None or v == "":
+        return default
+    try:
+        n = int(round(float(v)))
+    except (TypeError, ValueError):
+        return default
+    return max(0, min(100, n))
+
+
 def encode_config(overlay_key=None, colors=None, scope=None,
                   noise_size=None, noise_intensity=None,
                   randomize_colors=False, randomize_positions=False,
-                  animate=True, randomize=None, pastel_light=False):
+                  animate=True, randomize=None, pastel_light=0):
     """Return a JSON-serialisable dict shape for a surface's dynbg
     config column. Drops empty / default fields so a fresh install
     stores ``{}`` rather than a fat default record.
@@ -321,11 +346,13 @@ def encode_config(overlay_key=None, colors=None, scope=None,
         cleaned["randomize_colors"] = True
     if randomize_positions:
         cleaned["randomize_positions"] = True
-    # Opt-in: only persist when the admin explicitly turns on the
-    # "pastels in light mode only" toggle so a fresh install with no
-    # `pastel_light` key behaves exactly as before.
-    if pastel_light:
-        cleaned["pastel_light"] = True
+    # Opt-in: only persist a non-zero pastel strength. Stored as an int
+    # 0-100 (the slider's value). Legacy True/False is mapped through
+    # normalize_pastel_strength so older callers stay correct without
+    # any migration: True → 100, False → 0 (omitted).
+    ps = normalize_pastel_strength(pastel_light, default=0)
+    if ps > 0:
+        cleaned["pastel_light"] = ps
     # Opt-OUT semantics: only persist when the admin explicitly
     # disables animation. Animated presets default to running their
     # keyframe animations, so a fresh install with no `animate` key
@@ -358,7 +385,7 @@ def decode_config(raw):
         "randomize_positions": False,
         "randomize": False,
         "animate": True,
-        "pastel_light": False,
+        "pastel_light": 0,
         "colors": [],
     }
     if not raw:
@@ -388,7 +415,9 @@ def decode_config(raw):
         "randomize_positions": rp,
         "randomize": rc or rp,  # legacy alias — true when either is on
         "animate": animate,
-        "pastel_light": bool(data.get("pastel_light")),
+        # Strength int 0-100. Back-compat: a legacy ``True`` boolean
+        # still decodes as 100 (full pastel) via normalize_pastel_strength.
+        "pastel_light": normalize_pastel_strength(data.get("pastel_light"), 0),
         "colors": [c for c in normalize_colors(data.get("colors") or []) if c],
     }
 
@@ -396,22 +425,30 @@ def decode_config(raw):
 _PASTEL_HEX_RE = __import__("re").compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 
 
-def pastelize(hex_str):
-    """Return a pastel-soft variant of an arbitrary hex colour.
+def pastelize(hex_str, strength=100):
+    """Return a pastel-soft variant of an arbitrary hex colour, with the
+    admin-controlled strength dialed in.
 
-    Converts to HLS, preserves hue, drops saturation into the 0.35–
-    0.5 band, and lifts lightness into 0.80–0.88. The result reads
-    as the same colour family but several stops gentler — soft
-    blues, blushes, mints — suitable for a light-mode dynbg surface
-    where a fully-saturated brand colour would feel heavy.
+    ``strength`` is an int 0-100. At 100 the colour lands fully in the
+    pastel band (low saturation, raised lightness); at 0 the function
+    returns the input unchanged (no pastelisation). Intermediate values
+    linearly interpolate between the source HSL values and the full-
+    pastel target, so admins can dial the paleness from "vivid" through
+    "softened" to "cream wash" without having to swap the toggle.
 
     Returns ``None`` on invalid input so callers can short-circuit
-    without crashing the render. Output is `#rrggbb` (no alpha)
+    without crashing the render. Output is ``#rrggbb`` (no alpha)
     because the inline CSS-vars are blended downstream.
     """
     import colorsys
     if not isinstance(hex_str, str) or not _PASTEL_HEX_RE.match(hex_str):
         return None
+    s = max(0, min(100, int(strength) if strength is not None else 0))
+    if s == 0:
+        # Strength 0 short-circuits to the source colour so the consumer
+        # can still emit the var without a special case.
+        return hex_str if hex_str.startswith("#") else "#" + hex_str
+    t = s / 100.0
     h = hex_str.lstrip("#")
     if len(h) == 3:
         h = "".join(c * 2 for c in h)
@@ -424,14 +461,18 @@ def pastelize(hex_str):
     except ValueError:
         return None
     hue, light, sat = colorsys.rgb_to_hls(r, g, b)
-    # Pale-pastel band — clip saturation hard so even very vivid
-    # source colours arrive on the surface as soft tints, and push
-    # lightness into the 0.88–0.94 range (cream / blush territory)
-    # so the result reads as a faint wash rather than a saturated
-    # block. Pull the source lightness in toward the upper band so
-    # already-dark inputs don't stall in the muddy middle.
-    new_s = min(sat, 0.339)
-    new_l = max(0.69, min(0.75, light * 0.24 + 0.53))
+    # Full-strength target — the legacy pastel band (saturation clipped
+    # to 0.339, lightness clamped 0.69-0.75) pushed an additional 50%
+    # of the way toward pure white. The earlier implementation read as
+    # a still-slightly-punchy pastel; this revision lands at strength=
+    # 100 in true cream / blush / mint territory. At lower strengths
+    # we lerp from the source (sat, light) into this paler target.
+    legacy_target_s = min(sat, 0.339)
+    legacy_target_l = max(0.69, min(0.75, light * 0.24 + 0.53))
+    target_s = legacy_target_s * 0.5
+    target_l = legacy_target_l + (1.0 - legacy_target_l) * 0.5
+    new_s = sat * (1 - t) + target_s * t
+    new_l = light * (1 - t) + target_l * t
     nr, ng, nb = colorsys.hls_to_rgb(hue, new_l, new_s)
     return "#{:02x}{:02x}{:02x}".format(int(nr * 255), int(ng * 255), int(nb * 255))
 
@@ -462,12 +503,14 @@ def colors_to_css_vars(colors, cfg=None):
     fallback continues to drive the dark surface.
     """
     parts = []
-    pastel_light = bool(cfg and cfg.get("pastel_light"))
+    pastel_strength = normalize_pastel_strength(
+        cfg.get("pastel_light") if cfg else None, 0)
+    pastel_light = pastel_strength > 0
     cleaned = [c for c in (colors or []) if c]
     for i, c in enumerate(cleaned, start=1):
         parts.append(f"--fe-dynbg-c{i}: {c};")
         if pastel_light:
-            p = pastelize(c)
+            p = pastelize(c, strength=pastel_strength)
             if p:
                 parts.append(f"--fe-dynbg-c{i}-light: {p};")
     if pastel_light and not cleaned:

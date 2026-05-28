@@ -4610,16 +4610,35 @@
     const el = $('#dynbg-picker-modal-animate-off');
     return el && el.checked ? '1' : '';
   }
-  // Pastels-in-light-mode toggle. When on, the saved palette is
-  // pastelised by the server for light-mode renders only. Dark mode
-  // keeps the full-saturation values.
-  function setPastelLight (on) {
+  // Pastel-strength slider. 0 = off; 1-100 = increasing pastelisation
+  // applied by the server when the visitor is in light mode. Dark mode
+  // is always served the full-saturation values. Accepts boolean (legacy
+  // back-compat) and string/number forms; clamps to 0-100.
+  function setPastelLight (v) {
     const el = $('#dynbg-picker-modal-pastel-light');
-    if (el) el.checked = !!on;
+    if (!el) return;
+    let n;
+    if (v === true) n = 100;
+    else if (v === false || v == null || v === '') n = 0;
+    else { n = parseInt(v, 10); if (!isFinite(n)) n = 0; }
+    n = Math.max(0, Math.min(100, n));
+    el.value = String(n);
+    syncPastelOut();
   }
   function getPastelLight () {
     const el = $('#dynbg-picker-modal-pastel-light');
-    return el && el.checked ? '1' : '';
+    if (!el) return '';
+    const n = parseInt(el.value, 10) || 0;
+    return n > 0 ? String(n) : '';
+  }
+  // Mirror the slider's value into its <output> so admins see the
+  // numeric strength as they drag. Called from the input listener
+  // wired in `wireModalOnce`, and from `setPastelLight` so external
+  // setters (open / apply) refresh the readout too.
+  function syncPastelOut () {
+    const el = $('#dynbg-picker-modal-pastel-light');
+    const out = $('#dynbg-picker-modal-pastel-light-out');
+    if (el && out) out.textContent = el.value;
   }
 
   // ── Overlay grid ───────────────────────────────────────────────
@@ -4755,7 +4774,16 @@
     const randomColors    = payload.randomizeColors ? '1' : '';
     const randomPositions = payload.randomizePositions ? '1' : '';
     const animateOff      = payload.animateOff ? '1' : '';
-    const pastelLight     = payload.pastelLight ? '1' : '';
+    // pastelLight is now a numeric strength 0-100 (legacy booleans
+    // still accepted: true → 100, false → 0). Empty string when off so
+    // the trigger's status-text "pastel" extra is suppressed.
+    let pastelLight;
+    if (payload.pastelLight === true) pastelLight = '100';
+    else if (payload.pastelLight === false || payload.pastelLight == null || payload.pastelLight === '') pastelLight = '';
+    else {
+      const n = Math.max(0, Math.min(100, parseInt(payload.pastelLight, 10) || 0));
+      pastelLight = n > 0 ? String(n) : '';
+    }
     const inputBy = (camel) => {
       const sel = trigger.dataset[camel];
       return sel ? document.querySelector(sel) : null;
@@ -4824,7 +4852,13 @@
       }
       if (randomPositions) extras.push('random positions');
       if (animateOff) extras.push('static');
-      if (pastelLight) extras.push('pastel in light mode');
+      if (pastelLight) {
+        // Show the percentage so the admin can tell whether the
+        // slider is dialed in lightly (e.g. "25% pastel") vs fully.
+        const n = parseInt(pastelLight, 10) || 0;
+        extras.push(n >= 100 ? 'pastel in light mode'
+                             : (n + '% pastel in light mode'));
+      }
       if (extras.length) bits.push('· ' + extras.join(', '));
       statusEl.textContent = bits.join(' ');
     }
@@ -4873,7 +4907,7 @@
         randomizeColors: !!getRandomizeColors(),
         randomizePositions: !!getRandomizePositions(),
         animateOff: !!getAnimateOff(),
-        pastelLight: !!getPastelLight(),
+        pastelLight: getPastelLight(),  // numeric string '0'..'100' (or '' off)
       });
       closeSelf();
     });
@@ -4933,6 +4967,10 @@
       setNoiseSize(NOISE_DEFAULTS.size);
       setNoiseIntensity(NOISE_DEFAULTS.intensity);
     });
+    // Pastel-strength slider — live numeric readout next to the slider
+    // so admins see exactly how much pastelisation they're dialing in.
+    const pastelEl = $('#dynbg-picker-modal-pastel-light');
+    if (pastelEl) pastelEl.addEventListener('input', syncPastelOut);
     // Close affordances — backdrop + X.
     modal.querySelectorAll('[data-close]').forEach(el => {
       el.addEventListener('click', closeSelf);
@@ -4960,7 +4998,10 @@
     setRandomizeColors(trigger.dataset.dynbgRandomizeColors === '1');
     setRandomizePositions(trigger.dataset.dynbgRandomizePositions === '1');
     setAnimateOff(trigger.dataset.dynbgAnimateOff === '1');
-    setPastelLight(trigger.dataset.dynbgPastelLight === '1');
+    // The data attribute now carries the int strength as a string
+    // ('25', '100') instead of the legacy '1' boolean; setPastelLight
+    // accepts both forms.
+    setPastelLight(trigger.dataset.dynbgPastelLight || '');
     setActiveTab('background');
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');

@@ -102,11 +102,12 @@ def _dynbg_config_from_form(form, config_field):
         # encode_config drops the field entirely when animate=True so
         # the JSON stays minimal for the common case.
         animate=False if form.get(f"{config_field}__animate_off") == "1" else True,
-        # Pastels-in-light-mode opt-in: when checked, the saved
-        # palette pastelises only in light mode (dark mode keeps the
-        # full-saturation values). encode_config drops the field
-        # entirely when False so the JSON stays minimal.
-        pastel_light=form.get(f"{config_field}__pastel_light") == "1",
+        # Pastel-strength slider (0-100). 0 = off; higher values
+        # increasingly soften the palette in light mode. encode_config
+        # normalises the raw form value via normalize_pastel_strength
+        # (also accepts legacy '1' booleans → full strength) and drops
+        # the field entirely when 0 so the JSON stays minimal.
+        pastel_light=form.get(f"{config_field}__pastel_light"),
         # Legacy single-flag input still accepted on the off-chance an
         # older form posts it — encode_config maps it to both new flags.
         randomize=form.get(f"{config_field}__randomize") == "1" or None,
@@ -9699,7 +9700,9 @@ def frontend_template_settings_save(kind, key):
         randomize_colors=request.form.get("bg_dynbg_config_json__randomize_colors") == "1",
         randomize_positions=request.form.get("bg_dynbg_config_json__randomize_positions") == "1",
         animate=False if request.form.get("bg_dynbg_config_json__animate_off") == "1" else True,
-        pastel_light=request.form.get("bg_dynbg_config_json__pastel_light") == "1",
+        # Strength slider 0-100; encode_config normalises legacy
+        # booleans + clamps the int. Raw value passed through here.
+        pastel_light=request.form.get("bg_dynbg_config_json__pastel_light"),
     )
     if dynbg_cfg.get("overlay"):
         leaf["bg_dynbg_overlay"] = dynbg_cfg["overlay"]
@@ -9718,7 +9721,11 @@ def frontend_template_settings_save(kind, key):
     if dynbg_cfg.get("animate") is False:
         leaf["bg_dynbg_animate"] = False
     if dynbg_cfg.get("pastel_light"):
-        leaf["bg_dynbg_pastel_light"] = True
+        # Persist as the int strength (0-100). decode_config returns
+        # an int; legacy True values previously stored here keep
+        # behaving as full-strength because normalize_pastel_strength
+        # at the consumer side coerces ``True`` → 100.
+        leaf["bg_dynbg_pastel_light"] = dynbg_cfg["pastel_light"]
     # Classic blog detail toggles for the right-side rail. Stored
      # only as explicit `False` so the JSON stays lean — missing keys
      # mean "show the widget" (the default). When the user unchecks

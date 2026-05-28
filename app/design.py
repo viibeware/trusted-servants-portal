@@ -1214,6 +1214,20 @@ def design_css_vars(site):
         # SHADOW_SCALE value if the colour can't be parsed.
         _shadow_color_light = chosen.get('card_' + which + '_shadow_color', '#0f172a')
         _shadow_color_dark  = chosen.get('card_' + which + '_shadow_color_dark', _shadow_color_light)
+        # Raw shadow-colour vars (no alpha applied) so callers that need
+        # to compose a custom shadow size while STILL tracking the
+        # admin's shadow_color choice (e.g. the featured-image
+        # elevation on event/announcement/archive detail pages) can
+        # mix in their own alpha via color-mix(). The full
+        # `--fe-card-...-shadow` var below bakes the colour + the
+        # scale's offset/blur/alpha together; this raw pair gives a
+        # second handle for size-customised consumers.
+        parts.append(
+            f"--fe-color-card-{which}-shadow: {_shadow_color_light};"
+        )
+        parts.append(
+            f"--fe-color-card-{which}-shadow-dark: {_shadow_color_dark};"
+        )
         parts.append(
             f"--fe-card-{which}-shadow: "
             f"{shadow_with_color(chosen['card_' + which + '_shadow'], _shadow_color_light)};"
