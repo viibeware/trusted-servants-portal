@@ -60,11 +60,27 @@
       {% endif %}
     </div>
 
-    {% if otp and (otp.email or otp.login_url or otp.password_enc) %}
+    {% if otp and (otp.email or otp.login_url or otp.password_enc or otp.imap_host) %}
     <aside class="zoom-accounts-side">
       <div class="zoom-otp-widget">
         <h3 class="zoom-otp-title">OTP Email</h3>
-        <p class="muted small">Retrieve Zoom one-time-password codes by logging into this email.</p>
+        <p class="muted small">Retrieve Zoom one-time-passcodes for the assigned Zoom account. <strong>Wait 1 minute</strong> before clicking retrieve to allow time for Zoom to send the code.</p>
+        {% if otp.imap_host %}
+        {# Inline auto-retrieval — shares the wizard's fetcher (initOtpFetch). #}
+        <div class="otp-inline" data-otp-widget data-fetch-url="{{ url_for('main.otp_email_fetch_code') }}">
+          <button type="button" class="btn btn-primary otp-inline-fetch" data-otp-fetch>
+            {{ icon('mail') }}<span data-otp-fetch-label>Retrieve latest code</span>
+          </button>
+          <div class="otp-inline-result" data-otp-result hidden>
+            <button type="button" class="copy-btn mono otp-inline-code" data-copy="" data-tip="Click to copy" data-otp-code>------</button>
+            <span class="otp-inline-meta muted small" data-otp-meta></span>
+          </div>
+          <p class="otp-inline-error" data-otp-error hidden></p>
+        </div>
+        {% endif %}
+        {% if otp.imap_host and (otp.email or otp.password_enc or otp.login_url) %}
+        <div class="detail-label otp-manual-label">Or log in to the inbox manually</div>
+        {% endif %}
         <dl class="zoom-info">
           {% if otp.email %}
           <dt>Email</dt>
