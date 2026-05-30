@@ -23,7 +23,7 @@ from sqlalchemy import func, or_
 
 from .models import (db, User, ActivityLog, LoginSession, LoginFailure,
                      VisitorEvent, NotFoundEvent, DeletedFile, AccessRequest,
-                     IPBlock)
+                     IPBlock, RecoveryContactAbuse)
 
 
 # ─── KPI tiles ───────────────────────────────────────────────────
@@ -233,6 +233,44 @@ def clear_404s():
     return int(n or 0)
 
 
+def not_found_ips_for_path(path, days=30, limit=20):
+    """Distinct source IPs that hit ``path`` in the last ``days`` days,
+    plus a hit count and last-seen timestamp per IP. Each row also
+    carries an ``is_blocked`` flag so the UI can render "Block IP" vs
+    "Blocked" without an extra round-trip per row.
+
+    Rows with NULL ip (pre-2.8.1 events) are excluded — there's no IP
+    to show or block, and including them would just inflate the
+    "distinct count" with a misleading bucket.
+    """
+    if not path:
+        return []
+    today = datetime.utcnow().date()
+    cutoff = (today - timedelta(days=days - 1)).strftime("%Y-%m-%d")
+    rows = (db.session.query(
+                NotFoundEvent.ip,
+                func.count(NotFoundEvent.id),
+                func.max(NotFoundEvent.created_at))
+            .filter(NotFoundEvent.path == path)
+            .filter(NotFoundEvent.day >= cutoff)
+            .filter(NotFoundEvent.ip.isnot(None))
+            .group_by(NotFoundEvent.ip)
+            .order_by(func.count(NotFoundEvent.id).desc())
+            .limit(limit).all())
+    if not rows:
+        return []
+    # Batch-resolve blocked state so the template doesn't N+1.
+    ips = [r[0] for r in rows]
+    now = datetime.utcnow()
+    blocked = {b.ip for b in IPBlock.query
+                .filter(IPBlock.ip.in_(ips))
+                .filter((IPBlock.expires_at.is_(None)) |
+                        (IPBlock.expires_at > now)).all()}
+    return [{"ip": ip, "count": int(c), "last_seen": ls,
+             "is_blocked": ip in blocked}
+            for ip, c, ls in rows]
+
+
 # ─── Anomaly indicators ──────────────────────────────────────────
 def anomaly_signals():
     """Cheap rule-based detector. Returns a list of dicts:
@@ -286,6 +324,16 @@ def anomaly_signals():
             "level": "critical",
             "title": f"Concentrated attack from {top[0]}",
             "detail": f"{int(top[1])} failed login attempts from a single IP in the last 24 hours.",
+        })
+
+    rc_abuse = recovery_contact_abuse_count()
+    if rc_abuse:
+        out.append({
+            "level": "warn",
+            "title": "Flagged Recovery Contacts requests",
+            "detail": (f"{rc_abuse} suspicious update/removal request"
+                       f"{'s' if rc_abuse != 1 else ''} flagged — review and block below."),
+            "anchor": "wt-rc-abuse",
         })
 
     return out
@@ -357,6 +405,67 @@ def blocked_ips(active_only=True):
         q = q.filter(or_(IPBlock.expires_at.is_(None),
                          IPBlock.expires_at > now))
     return q.order_by(IPBlock.blocked_at.desc()).all()
+
+
+# ─── Recovery Contacts abuse (self-service update/removal flow) ───
+def recovery_contact_abuse_count():
+    """Number of unresolved Recovery Contacts abuse flags — drives the
+    overview panel header and the Watchtower sidebar chip. Read-only and
+    cheap (indexed ``resolved`` column), safe to call per request."""
+    try:
+        return int(db.session.query(func.count(RecoveryContactAbuse.id))
+                   .filter(RecoveryContactAbuse.resolved.is_(False)).scalar() or 0)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def recovery_contact_abuse(active_only=True, limit=50):
+    """Flagged update/removal requests for the overview panel. Each row is
+    joined with the IP blocklist so the panel knows whether the requestor's
+    IP is already blocked. Newest activity first. Returns a list of dicts."""
+    q = RecoveryContactAbuse.query
+    if active_only:
+        q = q.filter(RecoveryContactAbuse.resolved.is_(False))
+    rows = (q.order_by(RecoveryContactAbuse.last_attempt_at.desc().nullslast(),
+                       RecoveryContactAbuse.created_at.desc())
+            .limit(limit).all())
+    if not rows:
+        return []
+    now = datetime.utcnow()
+    ips = [r.ip_address for r in rows if r.ip_address]
+    blocks = ({b.ip: b for b in IPBlock.query.filter(IPBlock.ip.in_(ips)).all()}
+              if ips else {})
+    out = []
+    for r in rows:
+        blk = blocks.get(r.ip_address)
+        active = bool(blk and (blk.expires_at is None or blk.expires_at > now))
+        out.append({
+            "id": r.id,
+            "kind": r.kind,
+            "entry_name": r.entry_name,
+            "entry_email": r.entry_email,
+            "ip": r.ip_address,
+            "detail": r.detail,
+            "attempts": int(r.attempt_count or 1),
+            "last_attempt": r.last_attempt_at or r.created_at,
+            "locked_until": r.locked_until,
+            "locked": bool(r.locked_until and r.locked_until > now),
+            "blocked": active,
+            "block_id": blk.id if blk else None,
+        })
+    return out
+
+
+def resolve_rc_abuse(abuse_id, user_id):
+    """Mark a Recovery Contacts abuse flag handled. Returns True on change."""
+    row = db.session.get(RecoveryContactAbuse, int(abuse_id))
+    if row is None or row.resolved:
+        return False
+    row.resolved = True
+    row.resolved_at = datetime.utcnow()
+    row.resolved_by = user_id
+    db.session.commit()
+    return True
 
 
 # ─── State-mutating actions ──────────────────────────────────────

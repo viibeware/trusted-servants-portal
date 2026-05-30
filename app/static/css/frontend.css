@@ -194,7 +194,7 @@ html[data-theme="dark"] .fe-megamenu-link:hover:not(.fe-megamenu-link-colored) {
   min-width: 0; }
 .fe-utility-link, .fe-utility-btn, .fe-utility-text, .fe-utility-icon-only {
   display: inline-flex; align-items: center; gap: 6px;
-  color: inherit; line-height: 1; }
+  color: inherit; line-height: 1; white-space: nowrap; }
 /* Wrap each item so the side flex-row centres them by their actual
    content edges. The default block-level wrapper inherits
    line-height: normal (~1.2), which adds invisible half-leading above
@@ -334,10 +334,16 @@ html[data-theme="dark"] .fe-utility-bar.is-live { background: #d6b000; }
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    gap: 0; padding: 0; min-height: 36px;
-    /* Width clamp from the desktop inline style (max-width / fe-container)
-       loses meaning when the strip is allowed to overflow horizontally;
-       remove it so swipes can travel the whole viewport. */
+    gap: 0; min-height: 36px;
+    /* Width clamp + side padding from the desktop inline style lose
+       meaning once the strip becomes a full-bleed horizontal swipe lane:
+       the boxed-mode `max-width` and the full-width-mode inline
+       `padding-left/right: <header-pct>%` are both stamped inline by the
+       template, so only `!important` can beat them. Without zeroing the
+       padding the strip's content box stays inset by the header gutter,
+       each snap page sizes to that inset box, and the gutter on either
+       side reveals the neighbouring item's pills at rest. */
+    padding: 0 !important;
     max-width: none !important;
   }
   .fe-utility-bar-inner::-webkit-scrollbar { display: none; }
@@ -349,11 +355,22 @@ html[data-theme="dark"] .fe-utility-bar.is-live { background: #d6b000; }
     flex-wrap: nowrap;
   }
 
-  /* The centre column — when it carries the live message it's a snap
-     point of its own (full viewport, centred); when empty (no live
-     meeting) it collapses so the side snap points sit flush. */
+  /* Every mobile snap "page" (the centre, each item in item mode, each
+     side in group mode) must fill the full viewport width so that when
+     one is snapped into view its neighbours are scrolled fully off-screen
+     — otherwise the edge of an adjacent item's pill peeks in at the gap.
+     `flex-basis: 100%` ALONE doesn't do this here: a percentage flex-basis
+     resolves against the flex container's main size, which is treated as
+     indefinite inside a horizontal scroll container, so it collapses to
+     each page's *content* width (e.g. 355px on a 390px viewport). A
+     percentage `min-width` instead resolves against the container's
+     definite content width (the visible 100% / clientWidth), so it
+     reliably pins each page to ≥ the viewport. Pages wider than the
+     viewport (a long container) keep their natural width and stay
+     swipeable. */
   .fe-utility-bar-center {
     flex: 0 0 100%;
+    min-width: 100%;
     scroll-snap-align: center;
     display: flex; align-items: center; justify-content: center;
     padding: 6px 14px; min-height: 36px;
@@ -375,6 +392,11 @@ html[data-theme="dark"] .fe-utility-bar.is-live { background: #d6b000; }
   .fe-utility-bar--mobile-item .fe-utility-bar-side { display: contents; }
   .fe-utility-bar--mobile-item .fe-utility-mobile-item {
     flex: 0 0 100%;
+    min-width: 100%;  /* full-viewport page — see .fe-utility-bar-center above */
+    /* Clip content wider than the page (e.g. a container whose pills total
+       more than the viewport on a narrow phone) so it can't spill past the
+       page edge and peek in beside the neighbouring snap point. */
+    overflow: hidden;
     scroll-snap-align: center;
     display: flex; align-items: center; justify-content: center;
     padding: 6px 14px; min-height: 36px;
@@ -386,6 +408,8 @@ html[data-theme="dark"] .fe-utility-bar.is-live { background: #d6b000; }
      horizontally with normal gaps. */
   .fe-utility-bar--mobile-group .fe-utility-bar-side {
     flex: 0 0 100%;
+    min-width: 100%;  /* full-viewport page — see .fe-utility-bar-center above */
+    overflow: hidden; /* clip over-wide content so it can't peek past the page edge */
     scroll-snap-align: center;
     display: flex; align-items: center; justify-content: center;
     flex-wrap: wrap; gap: 12px;
@@ -537,13 +561,29 @@ body.fe-megamenu-open .fe-menu-btn span:last-child {
         --fe-recovery-ink: #0f172a; --fe-recovery-ink-soft: #475569; }
 .fe-header-recovery {
   position: sticky; top: 0; z-index: 40;
-  background: #fff; border-bottom: 1px solid #e5e9f0;
+  /* Frosted glass (brought over from Modern Dark): a translucent surface with
+     a blur+saturate backdrop so page content shows softly through on scroll.
+     The inner .fe-recovery-main is transparent so this frost reads through it;
+     the utility bar keeps its own (opaque) colour on top. */
+  background: rgba(255,255,255,0.72);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+  border-bottom: 1px solid rgba(15,23,42,0.06);
   box-shadow: 0 1px 0 rgba(15,23,42,0.03);
   transition: transform 220ms ease;
 }
 /* Headroom auto-hide for the Recovery Blue header — same JS class, same
    slide-up/slide-down behaviour as the classic header above. */
 .fe-header-recovery.fe-header-hidden { transform: translateY(-100%); }
+/* On mobile the Recovery Blue header stays FULLY sticky — it never auto-
+   hides on scroll-down. The headroom JS still toggles .fe-header-hidden,
+   but we neutralise the slide-up transform at/below the 880px breakpoint
+   (where the header collapses to the hamburger nav) so the helpline bar +
+   menu button stay reachable while scrolling. Same specificity as the rule
+   above but later in source order, so it wins inside the media query. */
+@media (max-width: 880px) {
+  .fe-header-recovery.fe-header-hidden { transform: none; }
+}
 
 /* Utility strip */
 .fe-recovery-util { background: var(--fe-recovery-blue); color: #fff;
@@ -574,7 +614,7 @@ html:not([data-theme="dark"]) .fe-theme-toggle-moon { display: inline-flex; }
 html[data-theme="dark"]           .fe-theme-toggle-sun  { display: inline-flex; }
 
 /* Main row */
-.fe-recovery-main { background: #fff; }
+.fe-recovery-main { background: transparent; }
 .fe-recovery-main-inner { display: flex; align-items: center; justify-content: space-between;
   gap: 24px; min-height: var(--fe-header-h, 72px); }
 
@@ -701,6 +741,17 @@ body.fe-megamenu-open .fe-recovery-menu-btn span:last-child {
   transform: translateY(-5px) rotate(-45deg);
 }
 
+/* Shared "drop down" entrance for the mobile menus — the hamburger
+   dropdown and the mega-menu panel both slide down + fade in from 12px
+   above their resting position with the same easing, so opening either
+   reads as one consistent motion instead of a hard cut. The -12px start
+   matches the mega-menu panel's own resting transform. Replays on every
+   open because the .fe-nav-open / .open class is re-added each time. */
+@keyframes feMobileMenuDrop {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* Responsive */
 @media (max-width: 980px) {
   .fe-recovery-nav-newcomer { display: none; }
@@ -708,9 +759,10 @@ body.fe-megamenu-open .fe-recovery-menu-btn span:last-child {
 @media (max-width: 880px) {
   .fe-recovery-nav { display: none; position: absolute; left: 0; right: 0;
     top: 100%; flex-direction: column; gap: 0; background: #fff;
-    border-bottom: 1px solid #e5e9f0; padding: 8px 20px 16px;
+    border-bottom: 1px solid #e5e9f0; padding: 8px 20px calc(16px + 1rem);
     box-shadow: 0 10px 24px rgba(15,23,42,0.10); z-index: 5; }
-  .fe-header-recovery.fe-nav-open .fe-recovery-nav { display: flex; align-items: stretch; }
+  .fe-header-recovery.fe-nav-open .fe-recovery-nav { display: flex; align-items: stretch;
+    animation: feMobileMenuDrop 280ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
   .fe-recovery-nav-link { padding: 12px 14px; }
   .fe-recovery-nav-cta { margin: 6px 14px 0; text-align: center; padding: 12px 18px !important; }
   .fe-recovery-menu-btn { display: inline-flex; flex-direction: column; justify-content: center; }
@@ -888,7 +940,7 @@ body.fe-megamenu-open .fe-recovery-menu-btn span:last-child {
 }
 
 /* ===== DCCMA Footer ===== */
-.fe-footer-recovery { background: #0a1026; color: #cbd5e1; font-size: 0.9375rem;
+.fe-footer-recovery { background: #0a1026; color: var(--fe-text-dark-active, #cbd5e1); font-size: 0.9375rem;
   line-height: 1.6; }
 .fe-footer-recovery-locations { background: #0b1429; padding: 48px 0 32px; border-bottom: 1px solid rgba(255,255,255,0.06); }
 .fe-footer-recovery-heading { font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -903,7 +955,7 @@ body.fe-megamenu-open .fe-recovery-menu-btn span:last-child {
 .fe-footer-recovery-loc:hover { background: rgba(255,255,255,0.08); transform: translateY(-2px); }
 .fe-footer-recovery-loc-name { font-weight: 700; font-size: 0.875rem; letter-spacing: 0.08em;
   color: #fff; margin-bottom: 10px; }
-.fe-footer-recovery-loc-addr { color: #cbd5e1; font-size: 0.9375rem; line-height: 1.5; }
+.fe-footer-recovery-loc-addr { color: var(--fe-text-dark-active, #cbd5e1); font-size: 0.9375rem; line-height: 1.5; }
 .fe-footer-recovery-loc-note { color: rgba(203,213,225,0.65); font-size: 0.8125rem; margin-top: 6px; }
 .fe-footer-recovery-loc-world .fe-footer-recovery-loc-note { color: var(--fe-recovery-blue-2); font-weight: 600; }
 
@@ -1445,7 +1497,7 @@ html[data-theme="dark"] body[data-fe-theme="recovery-blue"] .fe-btn-ghost:hover 
   letter-spacing: -0.02em; color: #fff;
 }
 .fe-contact-body {
-  font-size: 1.0625rem; line-height: 1.65; color: #cbd5e1;
+  font-size: 1.0625rem; line-height: 1.65; color: var(--fe-text-dark-active, #cbd5e1);
   margin-bottom: 28px;
 }
 .fe-contact-body > :first-child { margin-top: 0; }
@@ -1465,7 +1517,7 @@ html[data-theme="dark"] body[data-fe-theme="recovery-blue"] .fe-btn-ghost:hover 
   font-size: 1.375rem; font-weight: 700; margin: 4px 0 10px;
   letter-spacing: -0.015em; font-family: var(--fe-font-heading);
 }
-.fe-contact-lines { color: #cbd5e1; font-size: 0.9375rem; }
+.fe-contact-lines { color: var(--fe-text-dark-active, #cbd5e1); font-size: 0.9375rem; }
 .fe-contact-lines a { color: #fff; text-decoration: none; }
 .fe-contact-lines a:hover { color: var(--fe-accent-2); }
 
@@ -1831,15 +1883,27 @@ body.fe-footer-force-dark .fe-footer-location-card {
 html[data-theme="dark"] .fe-footer-location-card:hover,
 body.fe-footer-force-dark .fe-footer-location-card:hover {
   background: rgba(0, 0, 0, 0.36);
-  border-color: rgba(122, 163, 255, 0.55);
+  border-color: var(--fe-dm-border-hover, rgba(122, 163, 255, 0.55));
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 }
-html[data-theme="dark"] .fe-footer-location-name { color: #e2e8f0; }
-html[data-theme="dark"] .fe-footer-location-addr { color: #cbd5e1; }
+/* Frosted glass footer cards for Recovery Blue (brought over from Modern
+   Dark): a light translucent surface + the shared backdrop blur reads as
+   bright glass over the navy footer, instead of the default dark box. */
+body[data-fe-theme="recovery-blue"] .fe-footer-location-card {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+body[data-fe-theme="recovery-blue"] .fe-footer-location-card:hover {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+html[data-theme="dark"] .fe-footer-location-name { color: var(--fe-text-dark-active, #e2e8f0); }
+html[data-theme="dark"] .fe-footer-location-addr { color: var(--fe-text-dark-active, #cbd5e1); }
 html[data-theme="dark"] .fe-footer-location-note { color: #94a3b8; }
 html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-location-name { color: #ffffff; }
-html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-location-addr { color: #f1f5f9; }
-html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-location-note { color: #cbd5e1; }
+html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-location-addr { color: var(--fe-text-dark-active, #f1f5f9); }
+html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-location-note { color: var(--fe-text-dark-active, #cbd5e1); }
 
 /* ----- Contact section block ----- */
 .fe-footer-contact-grid {
@@ -1857,10 +1921,10 @@ html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-location-note
 .fe-footer-contact-body p { margin: 0 0 0.5em; }
 .fe-footer-contact-body p:last-child { margin: 0; }
 .fe-footer-contact-body a { color: var(--fe-color-link, var(--fe-accent)); }
-html[data-theme="dark"] .fe-footer-contact-pane h3.fe-footer-contact-heading { color: #e2e8f0; }
-html[data-theme="dark"] .fe-footer-contact-body { color: #cbd5e1; }
+html[data-theme="dark"] .fe-footer-contact-pane h3.fe-footer-contact-heading { color: var(--fe-text-dark-active, #e2e8f0); }
+html[data-theme="dark"] .fe-footer-contact-body { color: var(--fe-text-dark-active, #cbd5e1); }
 html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-contact-pane h3.fe-footer-contact-heading { color: #ffffff; }
-html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-contact-body { color: #f1f5f9; }
+html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-contact-body { color: var(--fe-text-dark-active, #f1f5f9); }
 
 /* ----- Custom variant — rows + columns dispatcher ----- */
 .fe-footer-custom .fe-footer-custom-stack {
@@ -1925,16 +1989,16 @@ body.fe-footer-force-dark .fe-footer-custom .fe-footer-block-divider { border-to
 /* Dark mode (page is dark) — text colors are DIMMED so the footer
    reads as a quiet, low-contrast band against the all-dark page. */
 html[data-theme="dark"] .fe-footer {
-  background: #0b1026; border-top-color: #1f2a44; color: #cbd5e1;
+  background: #0b1026; border-top-color: #1f2a44; color: var(--fe-text-dark-active, #cbd5e1);
 }
-html[data-theme="dark"] .fe-footer-name { color: #e2e8f0; }
+html[data-theme="dark"] .fe-footer-name { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-footer-tagline,
 html[data-theme="dark"] .fe-footer-link-list a,
 html[data-theme="dark"] .fe-footer-secondary-nav a,
 html[data-theme="dark"] .fe-footer-copy { color: #94a3b8; }
 html[data-theme="dark"] .fe-footer-link-list a:hover,
-html[data-theme="dark"] .fe-footer-secondary-nav a:hover { color: #e2e8f0; }
-html[data-theme="dark"] .fe-footer-col-title { color: #cbd5e1; }
+html[data-theme="dark"] .fe-footer-secondary-nav a:hover { color: var(--fe-text-dark-active, #e2e8f0); }
+html[data-theme="dark"] .fe-footer-col-title { color: var(--fe-text-dark-active, #cbd5e1); }
 html[data-theme="dark"] .fe-footer-bottom { border-top-color: #1f2a44; }
 html[data-theme="dark"] .fe-footer-social a {
   background: #131a33; border-color: transparent; color: #94a3b8;
@@ -1956,13 +2020,13 @@ html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-name { color:
 html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-tagline,
 html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-link-list a,
 html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-secondary-nav a,
-html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-copy { color: #f1f5f9; }
+html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-copy { color: var(--fe-text-dark-active, #f1f5f9); }
 html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-link-list a:hover,
 html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-secondary-nav a:hover { color: #ffffff; }
 html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-col-title { color: #ffffff; }
 html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-bottom { border-top-color: #1f2a44; }
 html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-social a {
-  background: #131a33; border-color: transparent; color: #f1f5f9;
+  background: #131a33; border-color: transparent; color: var(--fe-text-dark-active, #f1f5f9);
 }
 html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-social a:hover {
   background: #7aa3ff; color: #0b1026;
@@ -2039,6 +2103,17 @@ html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-social a:hove
               transform var(--fe-mm-fade-ms, 180ms) cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 body.fe-megamenu-open { overflow: hidden; }
+/* Mega-menu dynamic background: clip the animated backdrop to the panel's
+   rounded corners. The .fe-dynbg-host base already paints content above the
+   .fe-dynbg layer; the host is the panel itself for recovery-blue/themed and
+   the inner card for classic. */
+.fe-megamenu.fe-megamenu-has-dynbg,
+.fe-megamenu-classic-card.fe-megamenu-has-dynbg { overflow: hidden; }
+/* Background ↔ dynamic blend: the dynbg layer is painted over the panel's
+   solid background colour at the admin-chosen opacity (0 = just the colour,
+   1 = just the dynbg). The dynbg's own animations still run; only its overall
+   strength scales. */
+.fe-megamenu-has-dynbg .fe-dynbg { opacity: var(--fe-mm-dynbg-blend, 1); }
 /* On mobile the mega menu covers the full viewport width edge-to-edge, so the
    inline bottom-radius from the admin appearance controls looks out of place.
    Flush the bottom corners; top corners are already 0 on DCCMA (flush to the
@@ -2052,6 +2127,22 @@ body.fe-megamenu-open { overflow: hidden; }
     border-bottom-left-radius: 0 !important;
     border-bottom-right-radius: 0 !important;
   }
+  /* Mega-menu panel drops down with the SAME easing as the hamburger
+     dropdown (feMobileMenuDrop) on mobile, regardless of the desktop
+     panel-fade toggle, so opening a mega menu on a phone always animates
+     in instead of snapping. Replays on each open via the .open class; the
+     .fe-megamenu-panel-fade transition (when enabled) still drives the
+     slide-up on close. */
+  .fe-megamenu.open {
+    animation: feMobileMenuDrop 280ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+}
+/* Respect reduced-motion: skip the mobile drop entrance for both menus
+   (they still appear, just without the slide/fade). Placed after both
+   animation declarations above so it wins on equal specificity. */
+@media (prefers-reduced-motion: reduce) {
+  .fe-header-recovery.fe-nav-open .fe-recovery-nav,
+  .fe-megamenu.open { animation: none; }
 }
 .fe-megamenu-inner {
   max-width: 1400px; margin: 0 auto; padding: 0 40px;
@@ -2114,7 +2205,7 @@ html[data-theme="dark"] .fe-megamenu-link-colored { color: var(--link-color-dark
 .fe-megamenu-search-input::placeholder { color: #94a3b8; }
 .fe-megamenu-search-input::-webkit-search-cancel-button { cursor: pointer; }
 html[data-theme="dark"] .fe-megamenu-search {
-  background: #1e293b; color: #e2e8f0; border-color: #334155;
+  background: #1e293b; color: var(--fe-text-dark-active, #e2e8f0); border-color: #334155;
 }
 html[data-theme="dark"] .fe-megamenu-search-icon { color: #94a3b8; }
 html[data-theme="dark"] .fe-megamenu-search-input::placeholder { color: #64748b; }
@@ -2308,7 +2399,7 @@ html[data-theme="dark"] .fe-megamenu-classic-link-colored:hover { color: var(--l
 }
 .fe-megamenu-classic-search-input::placeholder { color: #94a3b8; }
 html[data-theme="dark"] .fe-megamenu-classic-search {
-  background: #1e293b; color: #e2e8f0; border-color: #334155;
+  background: #1e293b; color: var(--fe-text-dark-active, #e2e8f0); border-color: #334155;
 }
 html[data-theme="dark"] .fe-megamenu-classic-search-icon { color: #94a3b8; }
 html[data-theme="dark"] .fe-megamenu-classic-search-input::placeholder { color: #64748b; }
@@ -2370,7 +2461,9 @@ html[data-theme="dark"] .fe-megamenu-classic-search-input::placeholder { color: 
     border-top: 1px solid rgba(15,23,42,0.08); padding-top: 18px; margin-top: 18px; }
 }
 html[data-theme="dark"] .fe-megamenu-classic-card {
-  background: #131a33; color: #e2e8f0;
+  /* Dark-mode surface/text from the dedicated dark pickers; !important so they
+     beat the inline light base (which doubles as the blend base in dark too). */
+  background: var(--fe-mm-bg-dark, #131a33) !important; color: var(--fe-mega-fg-dark, #e2e8f0) !important;
   border-color: rgba(255,255,255,0.08);
   box-shadow: 0 20px 44px rgba(0,0,0,0.5), 0 2px 10px rgba(0,0,0,0.3);
 }
@@ -2385,25 +2478,36 @@ html[data-theme="dark"] .fe-megamenu-classic-link:hover {
    are applied as inline styles on the panel, so we use !important to swap
    in a consistent deep-navy panel when the frontend is in dark mode. */
 html[data-theme="dark"] .fe-megamenu-recovery-blue {
-  background: #131a33 !important;
-  color: #e2e8f0 !important;
+  /* Dark-mode panel surface + text come from the dedicated dark-mode colour
+     pickers (--fe-mm-bg-dark / --fe-mega-fg-dark). The solid surface doubles
+     as the blend base: when a dynamic background is set, its layer is drawn
+     over this colour at the chosen blend opacity. */
+  background: var(--fe-mm-bg-dark, #131a33) !important;
+  color: var(--fe-mega-fg-dark, #e2e8f0) !important;
   box-shadow: 0 24px 48px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.3);
 }
-html[data-theme="dark"] .fe-megamenu-recovery-blue .fe-megamenu-block-title { color: #f1f5f9; }
-html[data-theme="dark"] .fe-megamenu-recovery-blue .fe-megamenu-link:hover {
-  background: rgba(255,255,255,0.06);
+/* Recovery Blue mega menu: headings + buttons (including the admin "Back to TS
+   Pro dashboard" button) follow the configured Text colour in both modes — it
+   resolves to the dark-variant in dark mode via the panel `color` above. The
+   Logout pill keeps its distinct amber surface — excluded via :not(). */
+.fe-megamenu-recovery-blue .fe-megamenu-block-title { color: inherit; }
+.fe-megamenu-recovery-blue .fe-megamenu-block-btn:not(.fe-megamenu-block-btn--logout) {
+  color: inherit;
+  border-color: color-mix(in srgb, currentColor 45%, transparent);
+  background: color-mix(in srgb, currentColor 14%, transparent);
 }
-html[data-theme="dark"] .fe-megamenu-recovery-blue .fe-megamenu-block-btn {
-  background: rgba(255,255,255,0.08);
-  border-color: rgba(255,255,255,0.16);
-  color: #e2e8f0;
-}
-html[data-theme="dark"] .fe-megamenu-recovery-blue .fe-megamenu-block-btn:hover {
-  background: rgba(255,255,255,0.14);
+.fe-megamenu-recovery-blue .fe-megamenu-block-btn:not(.fe-megamenu-block-btn--logout):hover {
+  background: color-mix(in srgb, currentColor 24%, transparent);
 }
 html[data-theme="dark"] .fe-megamenu-recovery-blue .fe-megamenu-block-section-line {
   background: rgba(255,255,255,0.12);
 }
+/* "Render dark in light mode" (force-dark dynbg): switch text + links to the
+   dark-mode (lightened) variant too, so they stay legible over the dark dynbg
+   while the site itself is still in light mode. */
+.fe-megamenu-recovery-blue.fe-megamenu-force-dark { color: var(--fe-mega-fg-dark, #e2e8f0) !important; }
+.fe-megamenu-force-dark .fe-megamenu-link:not(.fe-megamenu-link-colored) { color: var(--fe-color-megamenu-link-dark, inherit); }
+.fe-megamenu-force-dark .fe-megamenu-link:hover:not(.fe-megamenu-link-colored) { color: var(--fe-color-megamenu-link-hover-dark, inherit); }
 
 /* Backdrop — blurs everything BELOW the header (main + footer). */
 .fe-megamenu-backdrop {
@@ -2480,7 +2584,41 @@ html[data-theme="dark"], body.fe-frontend-force-dark {
   --fe-dm-btn-primary-shadow:     0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
-html[data-theme="dark"] body.frontend-body { background: var(--fe-dm-page-bg); color: var(--fe-dm-text); }
+/* Re-resolve --fe-dm-page-bg ON THE BODY: the block above sets it on <html>,
+   where the body-level --fe-color-surface-dark token isn't visible, so it
+   fell back to the navy default. Redefining it here (on <body>, where the
+   token IS available) makes every consumer — the page bg AND descendant
+   containers that read --fe-dm-page-bg — pick up the active theme's
+   surface-dark colour instead of navy. */
+html[data-theme="dark"] body.frontend-body {
+  --fe-dm-page-bg: var(--fe-color-surface-dark, #0b1026);
+  /* Dark-mode text token: anywhere the "Text" token (--fe-color-text) is
+     consumed, swap it to the "Text — Darkmode" token site-wide. !important
+     beats the inline light value emitted on <body>; --fe-dm-text (the dark
+     palette's body-text var) is pointed at the same token so both text
+     systems honour the single dark-mode text control. */
+  --fe-color-text: var(--fe-color-text-dark, #e2e8f0) !important;
+  --fe-dm-text: var(--fe-color-text-dark, #e2e8f0);
+  /* Strong/heading dark text follows the same token (light mode has no
+     separate "strong" colour — headings there use the Text token too). */
+  --fe-dm-text-strong: var(--fe-color-text-dark, #f1f5f9);
+  /* Active dark-text channel: components that HARDCODE a neutral dark text
+     colour (#e2e8f0 / #f1f5f9 / #cbd5e1) reference this via
+     `color: var(--fe-text-dark-active, #origHex)`. It's defined ONLY in dark
+     mode, so in light mode those usages fall back to their original hex
+     (light mode is untouched); in dark mode they all follow the token. */
+  --fe-text-dark-active: var(--fe-color-text-dark, #e2e8f0);
+  background: var(--fe-dm-page-bg); color: var(--fe-dm-text);
+  /* Same fix for the derived dark primary-button colours: the <html> block
+     computes them via color-mix on --fe-color-btn-primary-bg, which isn't
+     visible at <html> (it's set on <body>) so it fell back to the blue
+     default. Re-resolve here on <body> so every dark primary surface —
+     buttons AND the events/announcements active tab — tracks the theme. */
+  --fe-dm-btn-primary-bg: color-mix(in srgb,
+                                    var(--fe-btn-bg, var(--fe-color-btn-primary-bg, #2e6bff)) 40%, #000);
+  --fe-dm-btn-primary-bg-hover: color-mix(in srgb,
+                                          var(--fe-btn-bg, var(--fe-color-btn-primary-bg, #2e6bff)) 60%, #000);
+}
 
 /* Classic header */
 html[data-theme="dark"] .fe-header { background: rgba(15, 23, 42, 0.72);
@@ -2488,7 +2626,7 @@ html[data-theme="dark"] .fe-header { background: rgba(15, 23, 42, 0.72);
 html[data-theme="dark"] .fe-header.fe-header-scrolled {
   background: rgba(11, 16, 38, 0.92); border-bottom-color: #1f2a44;
   box-shadow: 0 1px 0 rgba(0,0,0,0.4); }
-html[data-theme="dark"] .fe-brand { color: #e2e8f0; }
+html[data-theme="dark"] .fe-brand { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-nav a { color: #94a3b8; }
 html[data-theme="dark"] .fe-nav a:hover { color: #fff; background: #1e293b; }
 html[data-theme="dark"] .fe-nav-cta { background: var(--fe-recovery-blue, #0B5CFF); color: #fff !important; }
@@ -2496,9 +2634,9 @@ html[data-theme="dark"] .fe-nav-cta:hover { background: #3d6dff !important; }
 html[data-theme="dark"] .fe-menu-btn span { background: #e2e8f0; }
 
 /* DCCMA header (white → near-black) */
-html[data-theme="dark"] .fe-header-recovery { background: #0f172a;
-  border-bottom-color: #1f2a44; box-shadow: 0 1px 0 rgba(0,0,0,0.4); }
-html[data-theme="dark"] .fe-recovery-main { background: #0f172a; }
+html[data-theme="dark"] .fe-header-recovery { background: rgba(15,23,42,0.72);
+  border-bottom-color: rgba(255,255,255,0.08); box-shadow: 0 1px 0 rgba(0,0,0,0.4); }
+html[data-theme="dark"] .fe-recovery-main { background: transparent; }
 /* Utility strip dims to the same muted navy as the meeting-card "Join
    Zoom" button (#1e3a8a — Tailwind blue-900) so the bright #0B5CFF that
    lives on top of the header in light mode doesn't read as a glow bar
@@ -2506,8 +2644,8 @@ html[data-theme="dark"] .fe-recovery-main { background: #0f172a; }
    the link + phone copy; the white-alpha pill on the phone number works
    over any background tint. */
 html[data-theme="dark"] .fe-recovery-util { background: #1e3a8a; }
-html[data-theme="dark"] .fe-recovery-brand { color: #e2e8f0; }
-html[data-theme="dark"] .fe-recovery-nav-link { color: #e2e8f0; }
+html[data-theme="dark"] .fe-recovery-brand { color: var(--fe-text-dark-active, #e2e8f0); }
+html[data-theme="dark"] .fe-recovery-nav-link { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-recovery-nav-link:hover { color: #fff; background: #1e293b; }
 html[data-theme="dark"] .fe-recovery-nav-link.mega-active,
 html[data-theme="dark"] .fe-megaparent.mega-active { color: #fff; background: #1e293b; }
@@ -2517,7 +2655,12 @@ html[data-theme="dark"] .fe-recovery-nav-newcomer:hover,
 html[data-theme="dark"] .fe-recovery-nav-newcomer.mega-active { background: #1e293b; }
 html[data-theme="dark"] .fe-recovery-nav-portal { color: #94a3b8; }
 html[data-theme="dark"] .fe-recovery-menu-btn span { background: #e2e8f0; }
-html[data-theme="dark"] .fe-recovery-nav { background: #0f172a; border-bottom-color: #1f2a44; }
+/* The dark nav background belongs to the MOBILE dropdown panel only — on
+   desktop the nav row must stay transparent (an unscoped bg drew a navy box
+   behind the desktop nav links, especially visible over the frosted header). */
+@media (max-width: 880px) {
+  html[data-theme="dark"] .fe-recovery-nav { background: #0f172a; border-bottom-color: #1f2a44; }
+}
 
 /* Hero */
 html[data-theme="dark"] .fe-hero { background: linear-gradient(180deg, #0b1026 0%, #0f172a 100%); }
@@ -2554,7 +2697,7 @@ body.fe-frontend-force-dark .fe-hero-sub {
 }
 html[data-theme="dark"] .fe-hero-blob { opacity: 0.25; }
 html[data-theme="dark"] .fe-hero-eyebrow { background: rgba(81,100,255,0.18); color: #7aa3ff; }
-html[data-theme="dark"] .fe-btn-primary { background: #052566; color: #e2e8f0;
+html[data-theme="dark"] .fe-btn-primary { background: #052566; color: var(--fe-text-dark-active, #e2e8f0);
   box-shadow: var(--fe-btn-shadow, 0 8px 24px rgba(0,0,0,0.4)); }
 /* Hover: lighten the deep navy bg slightly so the press affordance
    reads on dark themes; keep the same #e2e8f0 label so contrast
@@ -2563,13 +2706,13 @@ html[data-theme="dark"] .fe-btn-primary { background: #052566; color: #e2e8f0;
    that would otherwise resolve to `#fff` via the design tokens. */
 html[data-theme="dark"] .fe-btn-primary:hover {
   background: color-mix(in srgb, #052566 80%, #fff 20%);
-  color: #e2e8f0;
+  color: var(--fe-text-dark-active, #e2e8f0);
 }
-html[data-theme="dark"] .fe-btn-ghost { background: transparent; color: #e2e8f0; border-color: #334155; }
+html[data-theme="dark"] .fe-btn-ghost { background: transparent; color: var(--fe-text-dark-active, #e2e8f0); border-color: #334155; }
 /* Same fix on the ghost variant: the inherited hover color
    resolves to ``#0f172a`` (dark slate) via the secondary-text token,
    which would disappear into the dark hover background. */
-html[data-theme="dark"] .fe-btn-ghost:hover { background: #1e293b; color: #e2e8f0; border-color: #94a3b8; }
+html[data-theme="dark"] .fe-btn-ghost:hover { background: #1e293b; color: var(--fe-text-dark-active, #e2e8f0); border-color: #94a3b8; }
 /* Meeting-card "Join Zoom Meeting" primary button — dark mode uses a
    muted navy-blue instead of the global light-on-dark primary. The base
    dark `.fe-btn-primary` is bright (#e2e8f0 / off-white) for max
@@ -2600,6 +2743,18 @@ html[data-theme="dark"] .frontend-body .fe-meeting-card-actions .fe-btn-primary:
   background: var(--fe-btn-bg, var(--fe-color-btn-primary-bg, var(--fe-ink)));
   color: var(--fe-btn-text, var(--fe-color-btn-primary-text, #fff));
   border-color: var(--fe-btn-bg, transparent);
+}
+/* Light-mode hover: darken to the primary hover-bg token so the hero CTA
+   matches .fe-btn-primary's hover. Falls back to an 88%-black mix of the
+   button's own colour when the admin uses a custom hero-button colour.
+   (Dark mode is handled by the html[data-theme="dark"] rules below.) */
+.fe-hero-cta .fe-btn-primary:hover,
+.fe-page .fe-hero-cta .fe-btn-primary:hover,
+.frontend-body .fe-hero-cta .fe-btn-primary:hover {
+  background: var(--fe-color-btn-primary-hover-bg,
+                  color-mix(in srgb, var(--fe-btn-bg, var(--fe-color-btn-primary-bg, var(--fe-ink))) 88%, black));
+  border-color: var(--fe-color-btn-primary-hover-bg,
+                    color-mix(in srgb, var(--fe-btn-bg, var(--fe-color-btn-primary-bg, var(--fe-ink))) 88%, black));
 }
 .fe-btn-icon { color: var(--fe-btn-icon-color, inherit); }
 /* Dark mode derives a darkened version of whatever colour the admin
@@ -2651,7 +2806,7 @@ html[data-theme="dark"] .fe-quick { background: #0b1026; }
 html[data-theme="dark"] .fe-quick-card {
   background: var(--fe-color-card-secondary-bg-dark, #131a33);
   border-color: var(--fe-color-card-secondary-border-dark, transparent);
-  color: #e2e8f0;
+  color: var(--fe-text-dark-active, #e2e8f0);
 }
 html[data-theme="dark"] .fe-quick-card:hover { background: #17203f; border-color: #1f2a44;
   box-shadow: 0 8px 28px rgba(0,0,0,0.4); }
@@ -2724,14 +2879,14 @@ body.fe-frontend-force-dark .fe-recovery-meeting-card:hover,
 body.fe-frontend-force-dark .fe-contact-card:hover,
 body.fe-frontend-force-dark .fe-inclusion-card:hover,
 body.fe-frontend-force-dark .fe-testimonial:hover {
-  border-color: rgba(122, 163, 255, 0.4);
+  border-color: var(--fe-dm-border-hover, rgba(122, 163, 255, 0.4));
 }
 html[data-theme="dark"] .fe-meeting-sched { color: #94a3b8; }
-html[data-theme="dark"] .fe-meeting-day { color: #e2e8f0; }
+html[data-theme="dark"] .fe-meeting-day { color: var(--fe-text-dark-active, #e2e8f0); }
 
 /* About */
 html[data-theme="dark"] .fe-about { background: #0b1026; }
-html[data-theme="dark"] .fe-about-body { color: #e2e8f0; }
+html[data-theme="dark"] .fe-about-body { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-about-pillar { background: #131a33; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
 html[data-theme="dark"] .fe-about-pillar p { color: #94a3b8; }
 
@@ -2746,18 +2901,18 @@ html[data-theme="dark"] .fe-contact-card { background: rgba(255,255,255,0.04); b
 html[data-theme="dark"] .fe-footer {
   background: #0b1026; border-top-color: #1f2a44;
 }
-html[data-theme="dark"] .fe-footer-name { color: #e2e8f0; }
+html[data-theme="dark"] .fe-footer-name { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-footer-tagline { color: #94a3b8; }
 html[data-theme="dark"] .fe-footer-links a { color: #94a3b8; }
 html[data-theme="dark"] .fe-footer-links a:hover { color: #fff; }
 html[data-theme="dark"] .fe-footer-copy { color: #64748b; }
-html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-links a { color: #f1f5f9; }
+html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-links a { color: var(--fe-text-dark-active, #f1f5f9); }
 html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-links a:hover { color: #ffffff; }
-html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-copy { color: #cbd5e1; }
+html:not([data-theme="dark"]) body.fe-footer-force-dark .fe-footer-copy { color: var(--fe-text-dark-active, #cbd5e1); }
 
 /* DCCMA homepage */
 html[data-theme="dark"] .fe-recovery-hero { background: #0b1026; border-bottom-color: #1f2a44; }
-html[data-theme="dark"] .fe-recovery-hero-h1 { color: #e2e8f0; }
+html[data-theme="dark"] .fe-recovery-hero-h1 { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-recovery-hero-lede { color: #94a3b8; }
 html[data-theme="dark"] .fe-recovery-threeup { background: #0f172a; border-bottom-color: #1f2a44; }
 html[data-theme="dark"] .fe-recovery-threeup-card {
@@ -2765,15 +2920,15 @@ html[data-theme="dark"] .fe-recovery-threeup-card {
   border-color: var(--fe-color-card-primary-border-dark, #1f2a44);
 }
 html[data-theme="dark"] .fe-recovery-threeup-card:hover { box-shadow: 0 10px 32px rgba(0,0,0,0.5); }
-html[data-theme="dark"] .fe-recovery-threeup-card h2 { color: #e2e8f0; }
+html[data-theme="dark"] .fe-recovery-threeup-card h2 { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-recovery-threeup-card p { color: #94a3b8; }
 html[data-theme="dark"] .fe-recovery-meetings { background: #0b1026; }
-html[data-theme="dark"] .fe-recovery-section-head h2 { color: #e2e8f0; }
+html[data-theme="dark"] .fe-recovery-section-head h2 { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-recovery-section-head p.muted { color: #94a3b8; }
 html[data-theme="dark"] .fe-recovery-meeting-card { background: #131a33; border-color: #1f2a44; }
-html[data-theme="dark"] .fe-recovery-meeting-card h3 { color: #e2e8f0; }
+html[data-theme="dark"] .fe-recovery-meeting-card h3 { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-recovery-meeting-sched { color: #94a3b8; }
-html[data-theme="dark"] .fe-recovery-meeting-sched .day { color: #e2e8f0; }
+html[data-theme="dark"] .fe-recovery-meeting-sched .day { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-recovery-fellowship { background: #13286b; }
 html[data-theme="dark"] .fe-recovery-helpline { background: #05081a; }
 
@@ -2892,7 +3047,7 @@ body.fe-frontend-force-dark .fe-split .fe-split-col {
   letter-spacing: -0.02em;
 }
 .fe-meetings-day-heading:first-of-type { margin-top: 0; }
-html[data-theme="dark"] .fe-meetings-day-heading { color: #e2e8f0; }
+html[data-theme="dark"] .fe-meetings-day-heading { color: var(--fe-text-dark-active, #e2e8f0); }
 .fe-meetings-empty {
   padding: 48px 0; text-align: center; font-size: 1.0625rem;
 }
@@ -2985,14 +3140,17 @@ html[data-theme="dark"] .fe-meetings-day-heading { color: #e2e8f0; }
 }
 /* Title link inherits the row colour and stays put on hover — the
    row-lift + box-shadow are the sole hover affordances. */
-html[data-theme="dark"] .fe-event-row { background: #131a33; border-color: #1f2a44; }
+html[data-theme="dark"] .fe-event-row {
+  background: var(--fe-color-card-primary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-primary-border-dark, #1f2a44);
+}
 html[data-theme="dark"] .fe-event-row:hover { box-shadow: 0 10px 28px rgba(0,0,0,0.45); }
 /* Dark-mode title colour — the base rule pins ``color: var(--fe-color-text)``
    which the design tokens fix at a light-mode dark value, so without this
    override the title would render dark-on-dark. The summary ``muted`` class
    keeps its theme-aware colour via the existing dark-mode rule. */
 html[data-theme="dark"] .fe-event-title,
-html[data-theme="dark"] .fe-event-title a { color: #f1f5f9; }
+html[data-theme="dark"] .fe-event-title a { color: var(--fe-dm-text-strong, #f1f5f9); }
 /* Date stamp + thumbnail tile — both default to `--fe-color-surface-alt`
    (a light gray) which renders as near-white on the dark page. Override
    to a deep navy so the calendar element + thumb fit the night-sky
@@ -3001,11 +3159,12 @@ html[data-theme="dark"] .fe-event-title a { color: #f1f5f9; }
    it doesn't bleed into the dark surface. */
 html[data-theme="dark"] .fe-event-date,
 html[data-theme="dark"] .fe-event-thumb {
-  background: #0f1a35; border-color: #243056;
+  background: var(--fe-color-card-secondary-bg-dark, #0f1a35);
+  border-color: var(--fe-color-card-secondary-border-dark, #243056);
 }
-html[data-theme="dark"] .fe-event-date-month { color: #7aa3ff; }
-html[data-theme="dark"] .fe-event-date-day { color: #f1f5f9; }
-html[data-theme="dark"] .fe-event-date-year { color: #94a3b8; }
+html[data-theme="dark"] .fe-event-date-month { color: var(--fe-color-brand, #7aa3ff); }
+html[data-theme="dark"] .fe-event-date-day { color: var(--fe-dm-text-strong, #f1f5f9); }
+html[data-theme="dark"] .fe-event-date-year { color: var(--fe-dm-text-muted, #94a3b8); }
 
 /* Date stamp on the far left — month/day/year stacked */
 .fe-event-date {
@@ -3179,7 +3338,7 @@ html[data-theme="dark"] .fe-event-date-year { color: #94a3b8; }
 }
 .fe-meeting-detail-head-logo { flex: 0 0 auto; }
 .fe-meeting-detail-head-logo .fe-meeting-logo {
-  display: block; width: 180px; height: auto;
+  display: block; width: 240px; height: auto;
   border-radius: var(--fe-card-radius, 12px);
 }
 .fe-meeting-detail-head-content { flex: 1 1 auto; min-width: 0; }
@@ -3332,8 +3491,8 @@ html[data-theme="dark"] .fe-event-date-year { color: #94a3b8; }
 .fe-copy-btn.is-copied { background: #16a34a; color: #fff; border-color: #16a34a; }
 
 html[data-theme="dark"] .fe-meeting-detail { background: #0b1026; }
-html[data-theme="dark"] .fe-meeting-detail-head h1 { color: #f1f5f9; }
-html[data-theme="dark"] .fe-meeting-detail-desc { color: #e2e8f0; }
+html[data-theme="dark"] .fe-meeting-detail-head h1 { color: var(--fe-text-dark-active, #f1f5f9); }
+html[data-theme="dark"] .fe-meeting-detail-desc { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-meeting-detail-card,
 body.fe-frontend-force-dark .fe-meeting-detail-card {
   background: var(--fe-color-card-primary-bg-dark, #131a33);
@@ -3347,13 +3506,13 @@ html[data-theme="dark"] .fe-meeting-detail-card:hover,
 body.fe-frontend-force-dark .fe-meeting-detail-card:hover,
 html[data-theme="dark"] .fe-meeting-detail-grid > .fe-meeting-resources:hover,
 body.fe-frontend-force-dark .fe-meeting-detail-grid > .fe-meeting-resources:hover {
-  border-color: rgba(122, 163, 255, 0.4);
+  border-color: var(--fe-dm-border-hover, rgba(122, 163, 255, 0.4));
 }
 html[data-theme="dark"] .fe-meeting-detail-day,
 html[data-theme="dark"] .fe-meeting-detail-time,
-html[data-theme="dark"] .fe-meeting-detail-location { color: #e2e8f0; }
+html[data-theme="dark"] .fe-meeting-detail-location { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-meeting-detail-creds code {
-  background: #0f172a; color: #e2e8f0; border-color: #334155;
+  background: #0f172a; color: var(--fe-text-dark-active, #e2e8f0); border-color: #334155;
 }
 html[data-theme="dark"] .fe-copy-btn { border-color: #334155; }
 html[data-theme="dark"] .fe-meeting-detail-alert {
@@ -3390,7 +3549,11 @@ html[data-theme="dark"] .fe-meeting-detail-alert {
 }
 @media (min-width: 860px) {
   .fe-event-detail-hero.has-cover {
-    grid-template-columns: minmax(0, 427px) minmax(0, 1fr);
+    /* 33% / 66% split between the featured-image column and the body
+       column. Previously the cover was capped at a fixed 427px; now
+       it scales with the container so the image and body always
+       hold a 1:2 width ratio. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
     gap: 32px;
   }
 }
@@ -3412,7 +3575,11 @@ html[data-theme="dark"] .fe-meeting-detail-alert {
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 }
 @media (min-width: 860px) {
-  .fe-event-detail-cover { height: 320px; aspect-ratio: 4 / 3; }
+  /* Keep the 4:3 aspect ratio but drop the fixed pixel height — the
+     cover now sizes itself to the 33% grid column, so its height
+     should follow the column width (width * 3/4) instead of being
+     pinned to 320px regardless of how wide the page actually is. */
+  .fe-event-detail-cover { aspect-ratio: 4 / 3; }
 }
 .fe-event-detail-cover:hover {
   transform: translateY(-3px);
@@ -3744,12 +3911,12 @@ body.fe-frontend-force-dark .fe-event-detail-card .fe-btn-primary:hover {
 .fe-feature-body li { margin: 0.15em 0; }
 .fe-feature-body strong { color: var(--fe-ink); }
 html[data-theme="dark"] .fe-feature-body { color: #94a3b8; }
-html[data-theme="dark"] .fe-feature-body strong { color: #e2e8f0; }
+html[data-theme="dark"] .fe-feature-body strong { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-features { background: #0b1026; }
 html[data-theme="dark"] .fe-feature-card {
   background: var(--fe-color-card-secondary-bg-dark, #131a33);
   border-color: var(--fe-color-card-secondary-border-dark, transparent);
-  color: #e2e8f0;
+  color: var(--fe-text-dark-active, #e2e8f0);
 }
 html[data-theme="dark"] .fe-feature-card p { color: #94a3b8; }
 html[data-theme="dark"] .fe-feature-icon { background: rgba(81,100,255,0.18); color: #7aa3ff; }
@@ -3785,7 +3952,7 @@ html[data-theme="dark"] .fe-feature-icon { background: rgba(81,100,255,0.18); co
 .fe-stat-lbl { margin-top: 8px; color: var(--fe-ink-muted);
   font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.06em; }
 html[data-theme="dark"] .fe-stats-block { background: #0b1026; }
-html[data-theme="dark"] .fe-stat-num { color: #e2e8f0; }
+html[data-theme="dark"] .fe-stat-num { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-stat-lbl { color: #94a3b8; }
 
 .fe-testimonial-grid {
@@ -3804,7 +3971,7 @@ html[data-theme="dark"] .fe-stat-lbl { color: #94a3b8; }
 .fe-testimonial cite { font-style: normal; font-size: 0.85rem;
   color: var(--fe-ink-muted); }
 html[data-theme="dark"] .fe-testimonial { background: #131a33; border-color: transparent; }
-html[data-theme="dark"] .fe-testimonial p { color: #e2e8f0; }
+html[data-theme="dark"] .fe-testimonial p { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-testimonial cite { color: #94a3b8; }
 
 .fe-faq-list { display: flex; flex-direction: column; gap: 8px;
@@ -3986,12 +4153,12 @@ html[data-theme="dark"] .fe-faq-item {
    No Pro-Tips-specific overrides needed. */
 html[data-theme="dark"] .fe-faq-item:hover,
 html[data-theme="dark"] .fe-faq-item.is-open {
-  border-color: rgba(122, 163, 255, 0.4);
+  border-color: var(--fe-dm-border-hover, rgba(122, 163, 255, 0.4));
 }
-html[data-theme="dark"] .fe-faq-summary { color: #e2e8f0; }
+html[data-theme="dark"] .fe-faq-summary { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-faq-summary-icon { background: rgba(81,100,255,0.18); color: #7aa3ff; }
 html[data-theme="dark"] .fe-faq-body-inner { color: #94a3b8; }
-html[data-theme="dark"] .fe-faq-body-inner strong { color: #e2e8f0; }
+html[data-theme="dark"] .fe-faq-body-inner strong { color: var(--fe-text-dark-active, #e2e8f0); }
 
 /* ---------- Inclusion block ---------- */
 .fe-inclusion { padding: 56px 0; }
@@ -4053,9 +4220,9 @@ html[data-theme="dark"] .fe-inclusion-card {
   background: var(--fe-color-card-secondary-bg-dark, #131a33);
   border-color: var(--fe-color-card-secondary-border-dark, transparent);
 }
-html[data-theme="dark"] .fe-inclusion-heading { color: #e2e8f0; }
+html[data-theme="dark"] .fe-inclusion-heading { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-inclusion-body { color: #94a3b8; }
-html[data-theme="dark"] .fe-inclusion-body strong { color: #e2e8f0; }
+html[data-theme="dark"] .fe-inclusion-body strong { color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-inclusion-icon { background: rgba(81,100,255,0.18); color: #7aa3ff; }
 html[data-theme="dark"] .fe-inclusion-tag {
   background: rgba(122, 163, 255, 0.14); color: #cbd9ff;
@@ -4069,7 +4236,7 @@ html[data-theme="dark"] .fe-inclusion-tag {
 .fe-meeting-logo-wrap { margin: 0 0 24px; }
 .fe-meeting-logo-wrap-center { text-align: center; }
 .fe-meeting-logo {
-  display: block; width: 180px; max-width: 100%; height: auto;
+  display: block; width: 240px; max-width: 100%; height: auto;
   border-radius: var(--fe-card-radius, 12px);
 }
 .fe-meeting-logo-wrap-center .fe-meeting-logo { margin: 0 auto; }
@@ -4135,13 +4302,14 @@ html[data-theme="dark"] .fe-inclusion-tag {
   color: var(--fe-color-link, var(--fe-color-brand, var(--fe-accent)));
   font-weight: 600;
 }
-html[data-theme="dark"] .fe-meeting-resources { background: #131a33; border-color: transparent; }
+html[data-theme="dark"] .fe-meeting-resources { background: var(--fe-color-card-secondary-bg-dark, #131a33); border-color: var(--fe-color-card-secondary-border-dark, transparent); }
 /* Dark-mode parity: Files & Readings inside the Classic grid was
    previously hand-tinted #1a2247 (noticeably brighter blue) which made
    it stand out from its #131a33 sibling cards. Land them on the same
    shade so the row reads cohesively in dark mode too. */
 html[data-theme="dark"] .fe-meeting-detail-grid > .fe-meeting-resources {
-  background: #131a33; border-color: transparent;
+  background: var(--fe-color-card-secondary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-secondary-border-dark, transparent);
 }
 
 /* ===========================================================================
@@ -4349,10 +4517,10 @@ html[data-theme="dark"] .fe-meeting-stack-action h2,
 html[data-theme="dark"] .fe-meeting-stack-prose,
 html[data-theme="dark"] .fe-meeting-stack-schedule h3,
 html[data-theme="dark"] .fe-meeting-stack-schedule-day,
-html[data-theme="dark"] .fe-meeting-stack-schedule-time { color: #f1f5f9; }
-html[data-theme="dark"] .fe-meeting-stack-creds code { background: #0b1026; color: #e2e8f0; }
+html[data-theme="dark"] .fe-meeting-stack-schedule-time { color: var(--fe-text-dark-active, #f1f5f9); }
+html[data-theme="dark"] .fe-meeting-stack-creds code { background: #0b1026; color: var(--fe-text-dark-active, #e2e8f0); }
 html[data-theme="dark"] .fe-meeting-stack-chip {
-  background: rgba(19, 26, 51, 0.85); color: #e2e8f0;
+  background: rgba(19, 26, 51, 0.85); color: var(--fe-text-dark-active, #e2e8f0);
   border-color: rgba(255,255,255,0.1);
 }
 
@@ -4479,14 +4647,14 @@ html[data-theme="dark"] .fe-meeting-mag-head h1,
 html[data-theme="dark"] .fe-meeting-mag-prose,
 html[data-theme="dark"] .fe-meeting-mag-side-day,
 html[data-theme="dark"] .fe-meeting-mag-side-time,
-html[data-theme="dark"] .fe-meeting-mag-side-addr { color: #f1f5f9; }
+html[data-theme="dark"] .fe-meeting-mag-side-addr { color: var(--fe-text-dark-active, #f1f5f9); }
 html[data-theme="dark"] .fe-meeting-mag-rule { background: #f1f5f9; opacity: 0.6; }
 html[data-theme="dark"] .fe-meeting-mag-side-card {
   background: var(--fe-color-card-secondary-bg-dark, #131a33);
   border-color: var(--fe-color-card-secondary-border-dark, transparent);
 }
 html[data-theme="dark"] .fe-meeting-mag-side-creds code {
-  background: #0b1026; color: #e2e8f0; border-color: rgba(255,255,255,0.08);
+  background: #0b1026; color: var(--fe-text-dark-active, #e2e8f0); border-color: rgba(255,255,255,0.08);
 }
 
 /* ===========================================================================
@@ -4580,8 +4748,8 @@ html[data-theme="dark"] .fe-meeting-mag-side-creds code {
 html[data-theme="dark"] .fe-meeting-min { background: #0b1026; }
 html[data-theme="dark"] .fe-meeting-min-head h1,
 html[data-theme="dark"] .fe-meeting-min-desc,
-html[data-theme="dark"] .fe-meeting-min-info dd { color: #f1f5f9; }
-html[data-theme="dark"] .fe-meeting-min-cred code { background: #131a33; color: #e2e8f0; }
+html[data-theme="dark"] .fe-meeting-min-info dd { color: var(--fe-text-dark-active, #f1f5f9); }
+html[data-theme="dark"] .fe-meeting-min-cred code { background: #131a33; color: var(--fe-text-dark-active, #e2e8f0); }
 
 /* ===========================================================================
    Event detail — Poster template
@@ -4755,8 +4923,8 @@ html[data-theme="dark"] .fe-event-poster-ticket-notch {
 html[data-theme="dark"] .fe-event-poster-ticket-day,
 html[data-theme="dark"] .fe-event-poster-ticket-val,
 html[data-theme="dark"] .fe-event-poster-prose,
-html[data-theme="dark"] .fe-event-poster-contact h3 { color: #f1f5f9; }
-html[data-theme="dark"] .fe-event-poster-ticket-creds code { background: #0b1026; color: #e2e8f0; }
+html[data-theme="dark"] .fe-event-poster-contact h3 { color: var(--fe-text-dark-active, #f1f5f9); }
+html[data-theme="dark"] .fe-event-poster-ticket-creds code { background: #0b1026; color: var(--fe-text-dark-active, #e2e8f0); }
 
 /* ===========================================================================
    Event detail — Timeline template
@@ -4901,10 +5069,10 @@ html[data-theme="dark"] .fe-event-time-day,
 html[data-theme="dark"] .fe-event-time-main h1,
 html[data-theme="dark"] .fe-event-time-meta li,
 html[data-theme="dark"] .fe-event-time-prose,
-html[data-theme="dark"] .fe-event-time-contact ul { color: #f1f5f9; }
+html[data-theme="dark"] .fe-event-time-contact ul { color: var(--fe-text-dark-active, #f1f5f9); }
 html[data-theme="dark"] .fe-event-time-creds { background: #131a33; }
 html[data-theme="dark"] .fe-event-time-creds code {
-  background: #0b1026; color: #e2e8f0; border-color: rgba(255,255,255,0.08);
+  background: #0b1026; color: var(--fe-text-dark-active, #e2e8f0); border-color: rgba(255,255,255,0.08);
 }
 
 /* ===========================================================================
@@ -4991,8 +5159,8 @@ html[data-theme="dark"] .fe-event-time-creds code {
 html[data-theme="dark"] .fe-event-min { background: #0b1026; }
 html[data-theme="dark"] .fe-event-min-head h1,
 html[data-theme="dark"] .fe-event-min-prose,
-html[data-theme="dark"] .fe-event-min-info dd { color: #f1f5f9; }
-html[data-theme="dark"] .fe-event-min-cred code { background: #131a33; color: #e2e8f0; }
+html[data-theme="dark"] .fe-event-min-info dd { color: var(--fe-text-dark-active, #f1f5f9); }
+html[data-theme="dark"] .fe-event-min-cred code { background: #131a33; color: var(--fe-text-dark-active, #e2e8f0); }
 
 /* Per-meeting extended-content blocks — admin-tunable Markdown panes
    that render below the schedule / zoom / files cards on every
@@ -5066,7 +5234,7 @@ body.fe-frontend-force-dark .fe-meeting-extended-card {
    lift + shadow have a colour cue to land against. */
 html[data-theme="dark"] .fe-meeting-extended-card:hover,
 body.fe-frontend-force-dark .fe-meeting-extended-card:hover {
-  border-color: rgba(122, 163, 255, 0.4);
+  border-color: var(--fe-dm-border-hover, rgba(122, 163, 255, 0.4));
 }
 html[data-theme="dark"] .fe-meeting-extended-body code,
 html[data-theme="dark"] .fe-meeting-extended-body pre {
@@ -5263,7 +5431,7 @@ html[data-theme="dark"] .fe-edit-shortcut:focus-visible {
    surface is visible against #0b1026. */
 html[data-theme="dark"] .fe-mlist-protips-head h2,
 body.fe-frontend-force-dark .fe-mlist-protips-head h2 {
-  color: #f1f5f9;
+  color: var(--fe-text-dark-active, #f1f5f9);
 }
 html[data-theme="dark"] .fe-mlist-protips-head p,
 body.fe-frontend-force-dark .fe-mlist-protips-head p {
@@ -5280,11 +5448,11 @@ body.fe-frontend-force-dark .fe-mlist-protips-inline .fe-protips-icon {
    inside the inline section. */
 html[data-theme="dark"] .fe-mlist-protips-inline .fe-faq-body-inner,
 body.fe-frontend-force-dark .fe-mlist-protips-inline .fe-faq-body-inner {
-  color: #cbd5e1;
+  color: var(--fe-text-dark-active, #cbd5e1);
 }
 html[data-theme="dark"] .fe-mlist-protips-inline .fe-faq-summary,
 body.fe-frontend-force-dark .fe-mlist-protips-inline .fe-faq-summary {
-  color: #f1f5f9;
+  color: var(--fe-text-dark-active, #f1f5f9);
 }
 
 @media (max-width: 900px) {
@@ -5569,12 +5737,12 @@ body.fe-frontend-force-dark .fe-mlist-card-alert {
 html[data-theme="dark"] .fe-mlist-rail-search input,
 body.fe-frontend-force-dark .fe-mlist-rail-search input {
   background: rgba(255, 255, 255, 0.06);
-  color: #f1f5f9;
+  color: var(--fe-text-dark-active, #f1f5f9);
 }
 html[data-theme="dark"] .fe-mlist-rail-search input:focus,
 body.fe-frontend-force-dark .fe-mlist-rail-search input:focus {
   background: rgba(255, 255, 255, 0.10);
-  border-color: rgba(122, 163, 255, 0.55);
+  border-color: var(--fe-dm-border-hover, rgba(122, 163, 255, 0.55));
 }
 html[data-theme="dark"] .fe-mlist-search-kbd,
 body.fe-frontend-force-dark .fe-mlist-search-kbd {
@@ -6275,7 +6443,7 @@ body.fe-frontend-force-dark .fe-mlist-card {
    directory + Pro Tips share one hover treatment in dark mode. */
 html[data-theme="dark"] .fe-mlist-card:hover,
 body.fe-frontend-force-dark .fe-mlist-card:hover {
-  border-color: rgba(122, 163, 255, 0.4);
+  border-color: var(--fe-dm-border-hover, rgba(122, 163, 255, 0.4));
 }
 html[data-theme="dark"] .fe-mlist-toolbar,
 html[data-theme="dark"] .fe-mlist-week-col {
@@ -6462,7 +6630,7 @@ body.fe-search-open { overflow: hidden; }
 html[data-theme="dark"] .fe-search-modal-panel,
 body.fe-frontend-force-dark .fe-search-modal-panel {
   background: #131a33;
-  color: #e2e8f0;
+  color: var(--fe-text-dark-active, #e2e8f0);
   border-color: rgba(255, 255, 255, 0.08);
 }
 html[data-theme="dark"] .fe-search-modal-input-row,
@@ -6474,7 +6642,7 @@ html[data-theme="dark"] .fe-search-modal-foot kbd,
 body.fe-frontend-force-dark .fe-search-modal-kbd,
 body.fe-frontend-force-dark .fe-search-modal-foot kbd {
   background: rgba(255, 255, 255, 0.10);
-  color: #cbd5e1;
+  color: var(--fe-text-dark-active, #cbd5e1);
 }
 html[data-theme="dark"] .fe-search-modal-hint code,
 body.fe-frontend-force-dark .fe-search-modal-hint code {
@@ -6946,6 +7114,59 @@ body.fe-frontend-force-dark .fe-events-omni-tab.is-active {
 .fe-events-card-meta-icon { display: inline-flex; width: 14px; height: 14px; }
 .fe-events-card-meta-icon .icon { width: 14px; height: 14px; }
 .fe-events-card-summary { margin: 0; font-size: 0.95rem; line-height: 1.5; }
+/* Body preview rendered under the summary on event cards when an
+   admin has body text on the post + the events-list template hasn't
+   suppressed it. Slightly tighter than the summary so the two read
+   as a hierarchy (summary = lede, body = continuation). Strips
+   first/last margin so the block sits flush with the card padding. */
+.fe-events-card-body-preview {
+  margin: 6px 0 0; font-size: 0.92rem; line-height: 1.55;
+  color: var(--fe-color-text, var(--fe-ink));
+}
+.fe-events-card-body-preview > :first-child { margin-top: 0; }
+.fe-events-card-body-preview > :last-child  { margin-bottom: 0; }
+.fe-events-card-body-preview p { margin: 0.6em 0; }
+
+/* "Read more ›" affordance appended to truncated card bodies on both
+   the events and announcements list templates. Sits inline as the
+   tail of the body block so the chevron reads as "this preview
+   continues at the linked detail page". Uses the accent text colour
+   that drives every other "look here next" link on list pages, and
+   the `›` chevron slides one character on hover for a small
+   directional cue. */
+.fe-card-read-more {
+  display: inline-block;
+  margin-top: 6px;
+  font-weight: 600;
+  color: var(--fe-accent, var(--fe-color-text, currentColor));
+  text-decoration: none;
+  white-space: nowrap;
+}
+.fe-card-read-more:hover,
+.fe-card-read-more:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.fe-card-read-more > span {
+  display: inline-block;
+  margin-left: 2px;
+  transition: transform 160ms ease;
+}
+.fe-card-read-more:hover > span,
+.fe-card-read-more:focus-visible > span {
+  transform: translateX(3px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fe-card-read-more > span { transition: none; }
+}
+/* Timeline cards stack the read-more above the absolute card-link
+   overlay (z-index 1) so the link is clickable. `position: relative`
+   creates a positioning context that participates in the stacking
+   order without pulling the link out of the flex/grid flow. */
+.fe-events-tl-read-more {
+  position: relative; z-index: 2;
+  align-self: flex-start;
+}
 
 @media (max-width: 720px) {
   .fe-events-card,
@@ -7539,6 +7760,7 @@ html:not([data-theme="dark"]) .fe-announcements-list a.fe-events-omni-archive {
 }
 .fe-announcements-card-fulltext > :first-child { margin-top: 0; }
 .fe-announcements-card-fulltext > :last-child  { margin-bottom: 0; }
+.fe-announcements-card-fulltext p { margin: 1.1em 0; }
 .fe-announcements-card-fulltext ul,
 .fe-announcements-card-fulltext ol {
   margin: 0.5em 0;
@@ -8682,7 +8904,7 @@ body.fe-frontend-force-dark .fe-submission-card {
 }
 html[data-theme="dark"] .fe-submission-card:hover,
 body.fe-frontend-force-dark .fe-submission-card:hover {
-  border-color: rgba(122, 163, 255, 0.4);
+  border-color: var(--fe-dm-border-hover, rgba(122, 163, 255, 0.4));
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
 }
 html[data-theme="dark"] .fe-submission-modal-panel,
@@ -9394,8 +9616,10 @@ html[data-theme="dark"] .fe-pp {
   --fe-dm-bg:           #0e111b;
   --fe-dm-surface:      #131a2c;
   --fe-dm-border:       #1f2a40;
-  --fe-dm-text:         #cbd5e1;
-  --fe-dm-text-strong:  #f1f5f9;
+  /* Body + strong text follow the "Text — Darkmode" token so page-builder
+     content (homepage + all pages) honours the single dark-text control. */
+  --fe-dm-text:         var(--fe-color-text-dark, #cbd5e1);
+  --fe-dm-text-strong:  var(--fe-color-text-dark, #f1f5f9);
   --fe-dm-text-soft:    #94a3b8;
   --fe-dm-link:         #93c5fd;
 }
@@ -9553,10 +9777,27 @@ html[data-theme="dark"] .fe-pp {
 /* Direct children of a container honour its gap, but stand-alone
    blocks (paragraphs, headings, lists, etc.) usually carry their
    own top/bottom margins. Zero those when nested inside a container
-   so the gap drives the rhythm. */
-.block-container > .block { margin: 0; }
-.block-container > .block-paragraph p:first-child { margin-top: 0; }
-.block-container > .block-paragraph p:last-child  { margin-bottom: 0; }
+   so the gap drives the rhythm. The same applies to `.fe-pp-grid-cell`
+   wrappers — those are the per-column flex-column sub-wrappers the
+   grid container emits when the admin built unequal columns; their
+   children should behave like container children (gap-driven, not
+   margin-driven). */
+.block-container > .block,
+.fe-pp-grid-cell > .block { margin: 0; }
+.block-container > .block-paragraph p:first-child,
+.fe-pp-grid-cell > .block-paragraph p:first-child { margin-top: 0; }
+.block-container > .block-paragraph p:last-child,
+.fe-pp-grid-cell > .block-paragraph p:last-child  { margin-bottom: 0; }
+/* Mobile collapse: the grid container itself collapses to a single
+   column via `grid-template-columns: 1fr`, but the per-cell sub-
+   wrappers still carry `grid-column: N` from inline styles. Reset
+   to `auto` so they stack naturally (each cell becomes its own row).
+   Without this, the second cell would try to claim a non-existent
+   column 2 and either disappear or render weirdly depending on the
+   grid implementation. */
+@media (max-width: 720px) {
+  .fe-pp-grid-cell { grid-column: auto !important; }
+}
 
 /* Showcase wrapper — make sure containers inside the showcase layout
    inherit reasonable defaults (text colour, prose colour) without
@@ -9805,6 +10046,7 @@ html[data-theme="dark"] [style*="--tpl-bg-dark"] {
   font-size: 1rem;
 }
 .fe-contact-fineprint { text-align: center; }
+.fe-rc-help { text-align: center; margin-top: 0.35rem; }
 
 /* Dark-mode swap — section bg falls to the page-bg token, card swaps
    to the dark surface token, blurred blobs lift in opacity so they
@@ -9856,573 +10098,491 @@ body.fe-frontend-force-dark .fe-contact-eyebrow {
   background: color-mix(in srgb, var(--fe-accent, #60a5fa) 24%, transparent);
 }
 
-/* ── Dynamic backgrounds library ────────────────────────────────
-   Eight CSS-only backdrops that any frontend surface (page, hero,
-   section, container block, etc.) can opt into via the .fe-dynbg
-   wrapper rendered by frontend/_dynbg.html.
+/* ── Phone List (public /phonelist) ─────────────────────────────
+   Two-column shell reusing the contact-page card + aside chrome:
+   intro + submission form in the left rail, the member directory in
+   the wider right column. The directory cards + form prefs get their
+   own tokens, with the same per-element dark-mode overrides the
+   contact card uses (resolving --fe-dm-* on <html> falls back to
+   blue, so they're set on the actual elements). */
+.fe-rc-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: clamp(2rem, 4vw, 3.5rem);
+  align-items: start;
+}
+@media (max-width: 880px) {
+  .fe-rc-grid { grid-template-columns: 1fr; gap: 2rem; }
+}
+/* Left column (.fe-rc-main) = page header + member directory;
+   right column (.fe-rc-aside) = optional intro + submission form.
+   DOM order matches visual order, so the <h1> leads the document. */
+.fe-rc-aside { padding-top: 0.5rem; }
+.fe-rc-card { margin-top: 1.5rem; }
+.fe-rc-hint { margin: -0.25rem 0 0.25rem; }
 
-   Common contract:
-     • .fe-dynbg sits absolutely-positioned inside a positioned host
-       and stretches to its bounds. Hosts that want a dynbg must set
-       `position: relative; overflow: hidden;` and place .fe-dynbg as
-       the first child so it paints under everything else.
-     • Every preset draws using brand tokens (--fe-accent, --fe-color-
-       bg, --fe-color-surface) so the same key produces a brand-
-       coloured backdrop on every install.
-     • Animations honour prefers-reduced-motion globally below.
-     • Dark-mode rules stack at the bottom of each preset's section.
-*/
-.fe-dynbg {
+.fe-rc-prefs {
+  border: 1px solid var(--fe-color-border, rgba(0, 0, 0, 0.08));
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  text-align: left;
+}
+.fe-rc-prefs legend {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0 0.35rem;
+  text-align: left;
+  color: var(--fe-color-text, #0a0a0a);
+}
+/* Specificity bump so the global `.form label` block rule doesn't win and
+   re-center the checkbox rows — keep them left-aligned and inline. */
+.fe-rc-prefs .fe-rc-check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
+.fe-rc-prefs .fe-rc-check input { width: auto; margin: 0; flex: 0 0 auto; }
+.fe-rc-prefs p { margin: 0.15rem 0 0; }
+
+/* Locked "contact me" row — forced on when both phone + email are hidden. */
+.fe-rc-prefs .fe-rc-check.is-locked { cursor: not-allowed; opacity: 0.7; }
+.fe-rc-prefs .fe-rc-check.is-locked input { cursor: not-allowed; }
+.fe-rc-contact-locked-note { font-style: italic; }
+
+.fe-rc-main { min-width: 0; }
+
+/* CTA below the directory cards — the top border is the divider. */
+.fe-rc-cta {
+  margin-top: 1.75rem;
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--fe-color-border, rgba(0, 0, 0, 0.1));
+  text-align: left;
+}
+.fe-rc-cta-text {
+  margin: 0 0 1rem;
+  color: var(--fe-ink-muted, #475569);
+  font-size: 1rem;
+}
+/* It's an <a>, so the frontend link colour would bury the button text —
+   force the primary-button text colour (matches .fe-rc-confirm-cta). */
+.fe-rc-cta-btn { padding: 11px 24px; color: var(--fe-color-btn-primary-text, #fff) !important; }
+/* …and being an <a>, the generic `.fe-page a:hover` rule (specificity
+   0,2,1) would paint a hover underline that a plain button never gets.
+   Suppress it with the `.fe-page`/`.frontend-body` prefix so this beats
+   that rule — the button already telegraphs its hover via the lift. */
+.fe-page .fe-rc-cta-btn,
+.frontend-body .fe-rc-cta-btn,
+.fe-page .fe-rc-cta-btn:hover,
+.frontend-body .fe-rc-cta-btn:hover { text-decoration: none; }
+/* Desktop shows the in-column CTA (under the cards); the mobile copy
+   (below the form) is hidden. At ≤880px the grid stacks to one column —
+   flip them so the CTA lands at the very bottom of the page. */
+.fe-rc-cta--mobile { display: none; }
+@media (max-width: 880px) {
+  .fe-rc-cta--desktop { display: none; }
+  .fe-rc-cta--mobile { display: block; }
+}
+html[data-theme="dark"] .fe-rc-cta,
+body.fe-frontend-force-dark .fe-rc-cta { border-top-color: var(--fe-dm-border); }
+html[data-theme="dark"] .fe-rc-cta-text,
+body.fe-frontend-force-dark .fe-rc-cta-text { color: var(--fe-dm-text-muted); }
+
+.fe-rc-main-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1.1rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--fe-color-border, rgba(0, 0, 0, 0.08));
+}
+.fe-rc-main-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--fe-color-text, #0a0a0a);
+}
+.fe-rc-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fe-color-text-muted, #64748b);
+  white-space: nowrap;
+}
+
+/* Toolbar — live search + print / PDF actions above the directory. */
+.fe-rc-toolbar {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0 0 1.1rem;
+}
+.fe-rc-search { position: relative; flex: 1 1 220px; min-width: 0; }
+.fe-rc-search-icon {
   position: absolute;
-  inset: 0;
-  z-index: 0;
+  left: 12px; top: 50%; transform: translateY(-50%);
+  display: grid; place-items: center;
+  color: var(--fe-color-text-muted, #64748b);
   pointer-events: none;
-  overflow: hidden;
 }
-.fe-dynbg > * {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+.fe-rc-search-icon .icon { width: 16px; height: 16px; }
+.fe-rc-search-input {
+  width: 100%;
+  padding: 0.6rem 0.8rem 0.6rem 2.25rem;
+  font-size: 0.95rem;
+  border: 1px solid var(--fe-color-border, rgba(0, 0, 0, 0.12));
+  border-radius: 10px;
+  background: var(--fe-color-surface, #fff);
+  color: var(--fe-color-text, #0a0a0a);
 }
-/* When a dynbg lives inside a host that also lays out content, the
-   host's children need a positive z-index OR a stacking context so
-   they paint above the dynbg. The :has() selector promotes the host
-   so consumers don't have to remember; falls back gracefully on
-   browsers without :has() (the host class can opt in manually). */
-:where(.fe-dynbg-host) { position: relative; isolation: isolate; }
-:where(.fe-dynbg-host) > :not(.fe-dynbg) { position: relative; z-index: 1; }
-/* The :where rule above promotes every direct child (other than the
-   `.fe-dynbg` layer itself) to `position: relative` so content paints
-   above the dynbg layer. That's correct for content blocks but BREAKS
-   absolutely-positioned overlays that also live as direct children —
-   the hero's particle <canvas>, background <video>, and frosty blob
-   container all want `position: absolute; inset: 0` to overlay the
-   section without taking flex flow space. When forced into flow,
-   `initLoginFX`'s `parent.getBoundingClientRect()` resize loop
-   inflates the canvas, which inflates the parent, which fires
-   ResizeObserver, which inflates the canvas — and the hero balloons
-   well past 100vh. Re-assert absolute positioning for those
-   overlays specifically. Higher specificity than the :where rule
-   above so we always win the cascade. */
-.fe-dynbg-host > .fe-hero-particles,
-.fe-dynbg-host > .fe-hero-video,
-.fe-dynbg-host > .fe-hero-bg {
-  position: absolute;
-  z-index: 0;
+.fe-rc-search-input:focus {
+  outline: none;
+  border-color: var(--fe-accent, #0b5cff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fe-accent, #0b5cff) 18%, transparent);
 }
-/* Particle canvas in particular should sit ABOVE the dynbg layer
-   but below content. Keep its z-index: 1 from `.fe-hero-particles`. */
-.fe-dynbg-host > .fe-hero-particles {
-  z-index: 1;
+.fe-rc-actions { display: flex; gap: 0.5rem; flex: 0 0 auto; }
+.fe-rc-action { display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
+.fe-rc-action .icon { width: 16px; height: 16px; }
+
+.fe-rc-noresults {
+  text-align: center;
+  padding: 2.25rem 1rem;
+  color: var(--fe-color-text-muted, #64748b);
+  border: 1px dashed var(--fe-color-border, rgba(0, 0, 0, 0.12));
+  border-radius: 14px;
+}
+.fe-rc-noresults .icon { width: 38px; height: 38px; opacity: 0.6; margin-bottom: 0.5rem; }
+.fe-rc-noresults p { margin: 0; }
+
+/* "I'm updating my existing entry" block — pale green to set it apart as
+   an edit action. Dark mode swaps to a muted green-tinted surface. */
+.fe-rc-update {
+  background: color-mix(in srgb, #30a46c 8%, #fff);
+  border-color: color-mix(in srgb, #30a46c 28%, transparent);
+}
+html[data-theme="dark"] .fe-rc-update,
+body.fe-frontend-force-dark .fe-rc-update {
+  background: color-mix(in srgb, #30a46c 16%, var(--fe-dm-surface));
+  border-color: color-mix(in srgb, #30a46c 32%, var(--fe-dm-border));
 }
 
-/* Page-level dynbg wrapper: when an admin sets a dynamic background
-   on a list/index page (meetings list, events list, etc.), the inner
-   page-section's flat soft-panel background would paint on top of the
-   dynbg and hide it. Force the immediate child sections of the page
-   wrapper to render transparent so the chosen backdrop shows through.
-   Cards inside those sections keep their own backgrounds (they're
-   nested deeper, so the rule doesn't reach them). */
-.fe-page-dynbg-host.fe-dynbg-host > .fe-section,
-.fe-page-dynbg-host.fe-dynbg-host > .fe-mlist,
-.fe-page-dynbg-host.fe-dynbg-host > section {
-  background: transparent;
+/* "Remove me from the list" block — pale pink to set it apart as a
+   destructive action. Dark mode swaps to a muted red-tinted surface. */
+.fe-rc-remove {
+  background: color-mix(in srgb, #e5484d 7%, #fff);
+  border-color: color-mix(in srgb, #e5484d 28%, transparent);
+}
+html[data-theme="dark"] .fe-rc-remove,
+body.fe-frontend-force-dark .fe-rc-remove {
+  background: color-mix(in srgb, #e5484d 16%, var(--fe-dm-surface));
+  border-color: color-mix(in srgb, #e5484d 32%, var(--fe-dm-border));
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .fe-dynbg * { animation: none !important; }
-}
-
-/* Admin opt-out: when a `.fe-dynbg-no-anim-marker` element is
-   present inside the host (emitted by `_dynbg_apply.html` when the
-   admin checked "Freeze movement"), freeze every animated child in
-   the base dynbg and the overlay layer.
-
-   Uses `:has()` so each surface's host doesn't need a separate
-   server-side class stamp — the marker span travels with the
-   apply-partial include and the CSS finds it from any host. The
-   explicit `.fe-dynbg-no-anim` class below is kept as a fallback
-   so future server-side stamping (or :has()-less browsers) can
-   still opt out by adding it directly. Same `!important` recipe
-   as the reduced-motion gate. */
-.fe-dynbg-host:has(> .fe-dynbg-no-anim-marker) .fe-dynbg > *,
-.fe-dynbg-host:has(> .fe-dynbg-no-anim-marker) .fe-dynbg-overlay > *,
-.fe-dynbg-no-anim .fe-dynbg > *,
-.fe-dynbg-no-anim .fe-dynbg-overlay > * {
-  animation: none !important;
-}
-
-/* ── aurora-blobs ─── 3 brand-tinted blurred circles drifting.
-   Each blob's colour resolves through `--fe-dynbg-c1/c2/c3` first
-   (set by the per-surface custom-colour stamp on the dynbg-host)
-   and falls through to the brand accent when no override is set. */
-.fe-dynbg-aurora-blobs {
-  --_db-c1: var(--fe-dynbg-c1, color-mix(in srgb, var(--fe-accent, #0b5cff) 60%, #16c2ba));
-  --_db-c2: var(--fe-dynbg-c2, color-mix(in srgb, var(--fe-accent, #0b5cff) 50%, #8b5cf6));
-  --_db-c3: var(--fe-dynbg-c3, color-mix(in srgb, var(--fe-accent, #0b5cff) 35%, #fb923c));
-  background: var(--fe-color-surface-alt, var(--fe-panel-soft, #f8fafc));
-  filter: none;
-}
-/* Each blob's position + size reads from `--fe-dynbg-blob-<slot>-*`
-   custom properties. When `randomize_positions` is on, the host
-   stamps fresh values per render; otherwise the var() fallbacks
-   reproduce the original hand-tuned layout. */
-.fe-dynbg-aurora-blobs .fe-dynbg-blob {
-  width: var(--_db-blob-size, 380px);
-  height: var(--_db-blob-size, 380px);
-  border-radius: 50%;
-  filter: blur(60px);
-  opacity: 0.55;
-  animation: feDynbgBlobDrift 18s ease-in-out infinite;
-  inset: auto;
-}
-.fe-dynbg-aurora-blobs .fe-dynbg-blob-a {
-  --_db-blob-size: var(--fe-dynbg-blob-a-size, 380px);
-  top: var(--fe-dynbg-blob-a-top, -120px);
-  left: var(--fe-dynbg-blob-a-left, -80px);
-  bottom: var(--fe-dynbg-blob-a-bottom, auto);
-  right: var(--fe-dynbg-blob-a-right, auto);
-  background: var(--_db-c1);
-}
-.fe-dynbg-aurora-blobs .fe-dynbg-blob-b {
-  --_db-blob-size: var(--fe-dynbg-blob-b-size, 380px);
-  top: var(--fe-dynbg-blob-b-top, auto);
-  left: var(--fe-dynbg-blob-b-left, auto);
-  bottom: var(--fe-dynbg-blob-b-bottom, -160px);
-  right: var(--fe-dynbg-blob-b-right, -100px);
-  background: var(--_db-c2);
-  animation-delay: -6s; animation-duration: 22s;
-}
-.fe-dynbg-aurora-blobs .fe-dynbg-blob-c {
-  --_db-blob-size: var(--fe-dynbg-blob-c-size, 240px);
-  top: var(--fe-dynbg-blob-c-top, 30%);
-  left: var(--fe-dynbg-blob-c-left, auto);
-  bottom: var(--fe-dynbg-blob-c-bottom, auto);
-  right: var(--fe-dynbg-blob-c-right, 35%);
-  background: var(--_db-c3);
+/* When "Remove me from the list" is checked, every other field/checkbox is
+   disabled and greyed out — only Name + Email stay active. */
+.fe-rc-prefs.is-removal-locked,
+label.is-removal-locked {
   opacity: 0.45;
-  animation-delay: -12s; animation-duration: 26s;
+  transition: opacity 160ms ease;
 }
-@keyframes feDynbgBlobDrift {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33%      { transform: translate(40px, -25px) scale(1.05); }
-  66%      { transform: translate(-30px, 30px) scale(0.95); }
+.fe-rc-prefs.is-removal-locked .fe-rc-check,
+.fe-rc-prefs.is-removal-locked .fe-rc-check input,
+label.is-removal-locked,
+label.is-removal-locked input { cursor: not-allowed; }
+
+/* "Contact me" button on entry cards + the contact modal. */
+.fe-rc-contact-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  align-self: flex-start; margin-top: 0.15rem;
+  font-size: 0.85rem; font-weight: 600;
+  padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  color: var(--fe-accent, #0b5cff);
+  border: 1px solid color-mix(in srgb, var(--fe-accent, #0b5cff) 35%, transparent);
+  background: color-mix(in srgb, var(--fe-accent, #0b5cff) 10%, transparent);
+  transition: background 120ms ease;
 }
-html[data-theme="dark"] .fe-dynbg-aurora-blobs,
-body.fe-frontend-force-dark .fe-dynbg-aurora-blobs {
-  background: var(--fe-color-bg, #0b1220);
+.fe-rc-contact-btn:hover { background: color-mix(in srgb, var(--fe-accent, #0b5cff) 18%, transparent); }
+.fe-rc-contact-btn-icon { display: inline-grid; place-items: center; }
+.fe-rc-contact-btn-icon .icon { width: 14px; height: 14px; }
+
+body.rc-modal-open { overflow: hidden; }
+.rc-contact-modal[hidden] { display: none; }
+.rc-contact-modal {
+  position: fixed; inset: 0; z-index: 1200;
+  display: flex; align-items: center; justify-content: center; padding: 1rem;
 }
-html[data-theme="dark"] .fe-dynbg-aurora-blobs .fe-dynbg-blob,
-body.fe-frontend-force-dark .fe-dynbg-aurora-blobs .fe-dynbg-blob {
-  opacity: 0.65;
+.rc-contact-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+}
+.rc-contact-panel {
+  position: relative; width: 100%; max-width: 480px;
+  max-height: 90vh; overflow-y: auto;
+  background: var(--fe-color-surface, #fff);
+  border: 1px solid var(--fe-color-border, rgba(0, 0, 0, 0.08));
+  border-radius: 16px; padding: clamp(1.5rem, 4vw, 2rem);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.3);
+}
+.rc-contact-x {
+  position: absolute; top: 12px; right: 12px;
+  display: grid; place-items: center; width: 34px; height: 34px;
+  border-radius: 8px; border: 0; background: transparent; cursor: pointer;
+  color: var(--fe-color-text-muted, #64748b);
+}
+.rc-contact-x:hover { background: color-mix(in srgb, var(--fe-color-text, #0a0a0a) 8%, transparent); }
+.rc-contact-x .icon { width: 18px; height: 18px; }
+.rc-contact-title {
+  margin: 0 0 0.4rem; font-size: 1.3rem; font-weight: 800;
+  padding-right: 2rem; color: var(--fe-color-text, #0a0a0a);
+}
+.rc-contact-lead { margin: 0 0 1rem; }
+html[data-theme="dark"] .rc-contact-panel,
+body.fe-frontend-force-dark .rc-contact-panel {
+  background: var(--fe-dm-surface); border-color: var(--fe-dm-border); color: var(--fe-dm-text);
+}
+html[data-theme="dark"] .rc-contact-title,
+body.fe-frontend-force-dark .rc-contact-title { color: var(--fe-dm-text-strong); }
+
+/* Confirmation landing page — 75vh tall with the card centered both ways. */
+.fe-rc-confirm-section {
+  min-height: 75vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+}
+.fe-rc-confirm-wrap { width: 100%; max-width: 640px; }
+.fe-rc-confirm-card { text-align: center; padding: clamp(2rem, 5vw, 3.25rem); }
+.fe-rc-confirm-icon {
+  display: inline-grid; place-items: center;
+  width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 1.1rem;
+}
+.fe-rc-confirm-icon .icon { width: 32px; height: 32px; }
+.fe-rc-confirm-ok {
+  background: color-mix(in srgb, var(--fe-accent, #0b5cff) 14%, transparent);
+  color: var(--fe-accent, #0b5cff);
+}
+.fe-rc-confirm-warn {
+  background: color-mix(in srgb, #e5484d 14%, transparent);
+  color: #e5484d;
+}
+.fe-rc-confirm-title {
+  font-size: clamp(1.5rem, 1rem + 2vw, 2.1rem); font-weight: 800;
+  margin: 0 0 0.6rem; color: var(--fe-color-text, #0a0a0a);
+}
+.fe-rc-confirm-msg {
+  color: var(--fe-color-text-muted, #475569); line-height: 1.6;
+  max-width: 46ch; margin: 0 auto 1.5rem;
+}
+/* The frontend .btn-primary colours text with the accent (for ghost
+   buttons); force white so the label shows on the solid accent fill. */
+.fe-rc-confirm-cta,
+.fe-rc-confirm-cta:hover,
+.fe-rc-confirm-cta:visited { color: #fff !important; }
+html[data-theme="dark"] .fe-rc-confirm-title,
+body.fe-frontend-force-dark .fe-rc-confirm-title { color: var(--fe-dm-text-strong); }
+html[data-theme="dark"] .fe-rc-confirm-msg,
+body.fe-frontend-force-dark .fe-rc-confirm-msg { color: var(--fe-dm-text-muted); }
+
+html[data-theme="dark"] .fe-rc-search-input,
+body.fe-frontend-force-dark .fe-rc-search-input {
+  background: var(--fe-dm-surface);
+  border-color: var(--fe-dm-border);
+  color: var(--fe-dm-text);
+}
+html[data-theme="dark"] .fe-rc-search-icon,
+body.fe-frontend-force-dark .fe-rc-search-icon,
+html[data-theme="dark"] .fe-rc-noresults,
+body.fe-frontend-force-dark .fe-rc-noresults {
+  color: var(--fe-dm-text-muted);
+}
+html[data-theme="dark"] .fe-rc-noresults,
+body.fe-frontend-force-dark .fe-rc-noresults {
+  border-color: var(--fe-dm-border);
 }
 
-/* ── mesh-gradient ─── three overlapping conic gradients, no motion */
-.fe-dynbg-mesh-gradient {
-  --_db-c1: var(--fe-dynbg-c1, var(--fe-accent, #0b5cff));
-  --_db-c2: var(--fe-dynbg-c2, color-mix(in srgb, var(--fe-accent, #0b5cff) 60%, #8b5cf6));
-  --_db-c3: var(--fe-dynbg-c3, color-mix(in srgb, var(--fe-accent, #0b5cff) 40%, #fb923c));
-  background: var(--fe-color-bg, #f8fafc);
-}
-.fe-dynbg-mesh-gradient .fe-dynbg-mesh {
-  inset: -10%;
-  filter: blur(80px);
-  opacity: 0.5;
-}
-.fe-dynbg-mesh-gradient .fe-dynbg-mesh-a {
-  background: conic-gradient(
-    from var(--fe-dynbg-mesh-a-angle, 0deg)
-      at var(--fe-dynbg-mesh-a-x, 25%) var(--fe-dynbg-mesh-a-y, 30%),
-    var(--_db-c1) 0deg,
-    transparent 90deg,
-    transparent 270deg,
-    var(--_db-c2) 360deg);
-}
-.fe-dynbg-mesh-gradient .fe-dynbg-mesh-b {
-  background: conic-gradient(
-    from var(--fe-dynbg-mesh-b-angle, 180deg)
-      at var(--fe-dynbg-mesh-b-x, 75%) var(--fe-dynbg-mesh-b-y, 60%),
-    var(--_db-c2) 0deg,
-    transparent 120deg,
-    transparent 240deg,
-    var(--_db-c3) 360deg);
-  opacity: 0.4;
-}
-.fe-dynbg-mesh-gradient .fe-dynbg-mesh-c {
-  background: radial-gradient(ellipse 60% 40%
-    at var(--fe-dynbg-mesh-c-x, 50%) var(--fe-dynbg-mesh-c-y, 50%),
-    color-mix(in srgb, var(--_db-c1) 25%, transparent),
-    transparent 70%);
-  opacity: 0.7;
-}
-html[data-theme="dark"] .fe-dynbg-mesh-gradient,
-body.fe-frontend-force-dark .fe-dynbg-mesh-gradient {
-  background: var(--fe-color-bg, #0b1220);
-}
-html[data-theme="dark"] .fe-dynbg-mesh-gradient .fe-dynbg-mesh,
-body.fe-frontend-force-dark .fe-dynbg-mesh-gradient .fe-dynbg-mesh {
-  opacity: 0.4;
+/* Print — strip the page down to just the directory list. Hides every
+   body-level chrome element (header, footer, utility bar, modals) except
+   the page content, then within the page drops the form column, toolbar,
+   and animated background. Scoped via :has() so other pages are
+   unaffected. The on-screen search filters by hiding cards, so a printed
+   page reflects the current filter. */
+@media print {
+  body:has(.fe-rc-section) > *:not(#fe-page) { display: none !important; }
+  body:has(.fe-rc-section) .fe-rc-aside,
+  body:has(.fe-rc-section) .fe-rc-toolbar { display: none !important; }
+  .fe-rc-section .fe-dynbg,
+  .fe-rc-section .fe-dynbg-overlay { display: none !important; }
+  .fe-rc-section { padding: 0 !important; }
+  .fe-rc-grid { display: block !important; }
+  .fe-rc-item-card {
+    break-inside: avoid;
+    box-shadow: none !important;
+    transform: none !important;
+  }
 }
 
-/* ── aurora-bands ─── wide angled bands sweeping vertically */
-.fe-dynbg-aurora-bands {
-  --_db-c1: var(--fe-dynbg-c1, color-mix(in srgb, var(--fe-accent, #0b5cff) 70%, #16c2ba));
-  --_db-c2: var(--fe-dynbg-c2, color-mix(in srgb, var(--fe-accent, #0b5cff) 55%, #8b5cf6));
-  background: var(--fe-color-surface-alt, var(--fe-panel-soft, #f8fafc));
+.fe-rc-item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
 }
-.fe-dynbg-aurora-bands .fe-dynbg-band {
-  inset: -20%;
-  filter: blur(70px);
-  opacity: 0.55;
-  animation: feDynbgBandDrift 24s ease-in-out infinite alternate;
+.fe-rc-item-card {
+  /* Surface + border read from the Primary card design tokens (same as
+     meeting / submission cards) so the directory cards inherit the
+     operator's primary-card look. Shadow, transition and hover lift are
+     normalised by the shared `.fe-card-primary` aggregator near the
+     bottom of this file (this card is listed there). */
+  background: var(--fe-color-card-primary-bg, var(--fe-color-surface, #fff));
+  border: var(--fe-card-primary-border-width, 1px) solid var(--fe-color-card-primary-border, var(--fe-accent));
+  border-radius: 14px;
+  padding: 1.1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
 }
-.fe-dynbg-aurora-bands .fe-dynbg-band-a {
-  background: linear-gradient(var(--fe-dynbg-band-a-angle, 115deg),
-    transparent 30%,
-    var(--_db-c1) 50%,
-    transparent 70%);
+/* Live search hides non-matching cards. `display: flex` above outranks the
+   UA [hidden] rule, so force it off explicitly when the search excludes a card. */
+.fe-rc-item-card[hidden] { display: none !important; }
+.fe-rc-item-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--fe-color-text, #0a0a0a);
+  word-break: break-word;
 }
-.fe-dynbg-aurora-bands .fe-dynbg-band-b {
-  background: linear-gradient(var(--fe-dynbg-band-b-angle, 75deg),
-    transparent 25%,
-    var(--_db-c2) 55%,
-    transparent 80%);
-  animation-delay: -8s; animation-duration: 30s;
-  opacity: 0.45;
+.fe-rc-item-sponsor {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: flex-start;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: var(--fe-accent, #0b5cff);
+  background: color-mix(in srgb, var(--fe-accent, #0b5cff) 12%, transparent);
 }
-@keyframes feDynbgBandDrift {
-  0%   { transform: translate(-5%, -3%); }
-  100% { transform: translate(5%, 3%); }
+.fe-rc-item-sponsor-icon { display: inline-grid; place-items: center; }
+/* Solid red heart — CSS fill/stroke override Lucide's fill="none"
+   stroke="currentColor" presentation attributes, so the outline heart
+   renders filled-in red regardless of the chip's accent text colour. */
+.fe-rc-item-sponsor-icon .icon { width: 14px; height: 14px; fill: #e5484d; stroke: #e5484d; }
+.fe-rc-sponsor { margin-top: -0.25rem; }
+
+.fe-rc-item-contacts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
 }
-html[data-theme="dark"] .fe-dynbg-aurora-bands,
-body.fe-frontend-force-dark .fe-dynbg-aurora-bands {
-  background: var(--fe-color-bg, #0b1220);
+.fe-rc-item-contact {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  text-decoration: none;
+  color: var(--fe-color-text-muted, #475569);
+  font-size: 0.95rem;
+  transition: color 120ms ease;
+  word-break: break-word;
 }
-html[data-theme="dark"] .fe-dynbg-aurora-bands .fe-dynbg-band,
-body.fe-frontend-force-dark .fe-dynbg-aurora-bands .fe-dynbg-band {
-  opacity: 0.7;
+.fe-rc-item-contact:hover { color: var(--fe-accent, #0b5cff); }
+.fe-rc-item-contact-icon {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--fe-accent, #0b5cff) 12%, transparent);
+  color: var(--fe-accent, #0b5cff);
+}
+.fe-rc-item-contact-icon .icon { width: 15px; height: 15px; }
+.fe-rc-item-contact-val { min-width: 0; }
+
+.fe-rc-item-empty {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--fe-color-text-muted, #64748b);
+  border: 1px dashed var(--fe-color-border, rgba(0, 0, 0, 0.12));
+  border-radius: 14px;
+}
+.fe-rc-item-empty-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  margin-bottom: 0.65rem;
+  background: color-mix(in srgb, var(--fe-accent, #0b5cff) 12%, transparent);
+  color: var(--fe-accent, #0b5cff);
+}
+.fe-rc-item-empty p { margin: 0; }
+
+html[data-theme="dark"] .fe-rc-item-card,
+body.fe-frontend-force-dark .fe-rc-item-card {
+  background: var(--fe-color-card-primary-bg-dark, #131a33);
+  border-color: var(--fe-color-card-primary-border-dark, #1f2a44);
+  color: var(--fe-dm-text);
+}
+html[data-theme="dark"] .fe-rc-item-name,
+body.fe-frontend-force-dark .fe-rc-item-name,
+html[data-theme="dark"] .fe-rc-main-title,
+body.fe-frontend-force-dark .fe-rc-main-title {
+  color: var(--fe-dm-text-strong);
+}
+html[data-theme="dark"] .fe-rc-item-contact,
+body.fe-frontend-force-dark .fe-rc-item-contact,
+html[data-theme="dark"] .fe-rc-count,
+body.fe-frontend-force-dark .fe-rc-count {
+  color: var(--fe-dm-text-muted);
+}
+html[data-theme="dark"] .fe-rc-item-contact-icon,
+body.fe-frontend-force-dark .fe-rc-item-contact-icon,
+html[data-theme="dark"] .fe-rc-item-empty-icon,
+body.fe-frontend-force-dark .fe-rc-item-empty-icon,
+html[data-theme="dark"] .fe-rc-item-sponsor,
+body.fe-frontend-force-dark .fe-rc-item-sponsor {
+  background: color-mix(in srgb, var(--fe-accent, #60a5fa) 22%, transparent);
+}
+html[data-theme="dark"] .fe-rc-item-empty,
+body.fe-frontend-force-dark .fe-rc-item-empty {
+  color: var(--fe-dm-text-muted);
+  border-color: var(--fe-dm-border);
+}
+html[data-theme="dark"] .fe-rc-main-head,
+body.fe-frontend-force-dark .fe-rc-main-head {
+  border-bottom-color: var(--fe-dm-border);
+}
+html[data-theme="dark"] .fe-rc-prefs,
+body.fe-frontend-force-dark .fe-rc-prefs {
+  border-color: var(--fe-dm-border);
+}
+html[data-theme="dark"] .fe-rc-prefs legend,
+body.fe-frontend-force-dark .fe-rc-prefs legend {
+  color: var(--fe-dm-text);
 }
 
-/* ── starfield ─── three layered dot fields with twinkle */
-.fe-dynbg-starfield {
-  --_db-c1: var(--fe-dynbg-c1, var(--fe-accent, #0b5cff));
-  background:
-    radial-gradient(ellipse 120% 80% at 50% 0%,
-      color-mix(in srgb, var(--_db-c1) 18%, transparent),
-      transparent 70%),
-    var(--fe-color-bg, #07101e);
-}
-.fe-dynbg-starfield .fe-dynbg-stars {
-  inset: 0;
-  background-repeat: repeat;
-  animation: feDynbgStarsTwinkle 6s ease-in-out infinite;
-}
-.fe-dynbg-starfield .fe-dynbg-stars-a {
-  background-image:
-    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255,255,255,0.85), transparent 50%),
-    radial-gradient(1px   1px   at 27% 62%, rgba(255,255,255,0.7),  transparent 50%),
-    radial-gradient(1.2px 1.2px at 56% 24%, rgba(255,255,255,0.8),  transparent 50%),
-    radial-gradient(1px   1px   at 73% 78%, rgba(255,255,255,0.6),  transparent 50%),
-    radial-gradient(1.5px 1.5px at 88% 41%, rgba(255,255,255,0.75), transparent 50%);
-  background-size: 400px 400px;
-}
-.fe-dynbg-starfield .fe-dynbg-stars-b {
-  background-image:
-    radial-gradient(2px 2px at 8% 70%, color-mix(in srgb, var(--_db-c1) 70%, #fff), transparent 50%),
-    radial-gradient(1px 1px at 45% 35%, rgba(255,255,255,0.5),       transparent 50%),
-    radial-gradient(1px 1px at 65% 90%, rgba(255,255,255,0.55),      transparent 50%);
-  background-size: 600px 600px;
-  animation-delay: -2s;
-}
-.fe-dynbg-starfield .fe-dynbg-stars-c {
-  background-image:
-    radial-gradient(0.8px 0.8px at 22% 38%, rgba(255,255,255,0.4), transparent 50%),
-    radial-gradient(0.8px 0.8px at 52% 80%, rgba(255,255,255,0.4), transparent 50%),
-    radial-gradient(0.8px 0.8px at 84% 14%, rgba(255,255,255,0.5), transparent 50%);
-  background-size: 240px 240px;
-  animation-delay: -4s;
-  animation-duration: 8s;
-}
-@keyframes feDynbgStarsTwinkle {
-  0%, 100% { opacity: 0.85; }
-  50%      { opacity: 0.4;  }
-}
-/* Light-mode swap: dim the dots and tint the bg toward the brand
-   so the same recipe reads as "soft sky" rather than "deep space". */
-html[data-theme="light"] .fe-dynbg-starfield,
-body:not(.fe-frontend-force-dark) html:not([data-theme="dark"]) .fe-dynbg-starfield {
-  background:
-    radial-gradient(ellipse 120% 80% at 50% 0%,
-      color-mix(in srgb, var(--_db-c1) 12%, transparent),
-      transparent 70%),
-    var(--fe-color-surface-alt, #eef2f7);
-}
-html[data-theme="light"] .fe-dynbg-starfield .fe-dynbg-stars,
-body:not(.fe-frontend-force-dark) html:not([data-theme="dark"]) .fe-dynbg-starfield .fe-dynbg-stars {
-  filter: invert(1) hue-rotate(180deg);
-  opacity: 0.35;
-}
-
-/* ── dotted-grid ─── subtle dot lattice */
-.fe-dynbg-dotted-grid {
-  background: var(--fe-color-surface-alt, var(--fe-panel-soft, #f8fafc));
-}
-.fe-dynbg-dotted-grid .fe-dynbg-dots {
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    color-mix(in srgb, var(--fe-color-text, #0a0a0a) 22%, transparent) 1px,
-    transparent 0);
-  background-size: 18px 18px;
-  background-position: 0 0;
-  opacity: 0.5;
-}
-html[data-theme="dark"] .fe-dynbg-dotted-grid,
-body.fe-frontend-force-dark .fe-dynbg-dotted-grid {
-  background: var(--fe-color-bg, #0b1220);
-}
-html[data-theme="dark"] .fe-dynbg-dotted-grid .fe-dynbg-dots,
-body.fe-frontend-force-dark .fe-dynbg-dotted-grid .fe-dynbg-dots {
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    color-mix(in srgb, #ffffff 28%, transparent) 1px,
-    transparent 0);
-  opacity: 0.3;
-}
-
-/* ── diagonal-lines ─── soft diagonal stripes */
-.fe-dynbg-diagonal-lines {
-  background: var(--fe-color-surface-alt, var(--fe-panel-soft, #f8fafc));
-}
-.fe-dynbg-diagonal-lines .fe-dynbg-lines {
-  background-image: repeating-linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--fe-color-text, #0a0a0a) 7%, transparent) 0 1px,
-    transparent 1px 14px);
-}
-html[data-theme="dark"] .fe-dynbg-diagonal-lines,
-body.fe-frontend-force-dark .fe-dynbg-diagonal-lines {
-  background: var(--fe-color-bg, #0b1220);
-}
-html[data-theme="dark"] .fe-dynbg-diagonal-lines .fe-dynbg-lines,
-body.fe-frontend-force-dark .fe-dynbg-diagonal-lines .fe-dynbg-lines {
-  background-image: repeating-linear-gradient(
-    135deg,
-    color-mix(in srgb, #ffffff 9%, transparent) 0 1px,
-    transparent 1px 14px);
-}
-
-/* ── noise-paper ─── fractal-noise grain */
-.fe-dynbg-noise-paper {
-  background: var(--fe-color-surface, #fdfbf7);
-}
-.fe-dynbg-noise-paper .fe-dynbg-noise {
-  width: 100%; height: 100%;
-  opacity: 0.55;
-  mix-blend-mode: multiply;
-}
-html[data-theme="dark"] .fe-dynbg-noise-paper,
-body.fe-frontend-force-dark .fe-dynbg-noise-paper {
-  background: var(--fe-color-bg, #14181f);
-}
-html[data-theme="dark"] .fe-dynbg-noise-paper .fe-dynbg-noise,
-body.fe-frontend-force-dark .fe-dynbg-noise-paper .fe-dynbg-noise {
-  opacity: 0.4;
-  mix-blend-mode: screen;
-}
-
-/* ── spotlight ─── two corner-anchored radial glows */
-.fe-dynbg-spotlight {
-  --_db-c1: var(--fe-dynbg-c1, var(--fe-accent, #0b5cff));
-  --_db-c2: var(--fe-dynbg-c2, color-mix(in srgb, var(--fe-accent, #0b5cff) 55%, #8b5cf6));
-  background: var(--fe-color-bg, #f8fafc);
-}
-.fe-dynbg-spotlight .fe-dynbg-spot {
-  filter: blur(90px);
-  opacity: 0.55;
-}
-.fe-dynbg-spotlight .fe-dynbg-spot-a {
-  top:    var(--fe-dynbg-spot-a-top, -25%);
-  bottom: var(--fe-dynbg-spot-a-bottom, auto);
-  left:   var(--fe-dynbg-spot-a-left, -15%);
-  right:  var(--fe-dynbg-spot-a-right, auto);
-  width:  var(--fe-dynbg-spot-a-w, 70%);
-  height: var(--fe-dynbg-spot-a-h, 90%);
-  background: radial-gradient(circle at 50% 50%,
-    color-mix(in srgb, var(--_db-c1) 70%, transparent),
-    transparent 70%);
-  inset: auto;
-}
-.fe-dynbg-spotlight .fe-dynbg-spot-b {
-  top:    var(--fe-dynbg-spot-b-top, auto);
-  bottom: var(--fe-dynbg-spot-b-bottom, -25%);
-  left:   var(--fe-dynbg-spot-b-left, auto);
-  right:  var(--fe-dynbg-spot-b-right, -15%);
-  width:  var(--fe-dynbg-spot-b-w, 70%);
-  height: var(--fe-dynbg-spot-b-h, 90%);
-  background: radial-gradient(circle at 50% 50%,
-    var(--_db-c2),
-    transparent 70%);
-  opacity: 0.4;
-  inset: auto;
-}
-html[data-theme="dark"] .fe-dynbg-spotlight,
-body.fe-frontend-force-dark .fe-dynbg-spotlight {
-  background: var(--fe-color-bg, #0b1220);
-}
-html[data-theme="dark"] .fe-dynbg-spotlight .fe-dynbg-spot,
-body.fe-frontend-force-dark .fe-dynbg-spotlight .fe-dynbg-spot {
-  opacity: 0.7;
-}
-
-/* ── Dynamic-background overlays ────────────────────────────────
-   Independent layer that paints above the base dynbg AND above
-   page content (with `pointer-events: none` so clicks pass through).
-   Each overlay textures the surface without intercepting input;
-   they compose with any base dynbg or stand on their own. */
-.fe-dynbg-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  /* Above content (host promotes content to z-index: 1) but well
-     below modals (z-index: 100+). The texture rides on top of the
-     hero / cards / typography to give the whole surface a tactile
-     finish, the way the viibeware project's body::before does
-     site-wide. The `--bg-only` modifier below opts out of this
-     placement and tucks the overlay between the base dynbg and
-     content, so cards / typography paint without the texture. */
-  z-index: 10;
-}
-.fe-dynbg-overlay--bg-only {
-  /* z-index: 0 keeps the overlay above the base .fe-dynbg (also at
-     z-index: auto / 0) while content (forced to z-index: 1 by the
-     host's :where rule) paints on top — content stays clean while
-     the bg gets textured. DOM order matters here: this overlay must
-     render AFTER the base dynbg and BEFORE content for the stacking
-     to work; _dynbg_apply.html follows that order. */
-  z-index: 0;
-}
-/* ── noise-grain ─── viibeware's recipe: SVG fractal-noise tiled.
-   Data-URL (vs inline <svg>) because inline SVGs without an explicit
-   viewBox sometimes render blank when sized 100%/100% inside a
-   positioned parent — particularly under <body> on Safari. The
-   data-URL has its own viewBox so the SVG paints reliably and tiles
-   via the default `background-repeat: repeat`. The 0.03 alpha on the
-   rect inside the SVG matches the viibeware recipe exactly; CSS-side
-   opacity stays at 1 so the texture reads at the same intensity it
-   does on viibeware. */
-.fe-dynbg-overlay-noise-grain {
-  background-image: url("data:image/svg+xml;utf8,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-}
-html[data-theme="dark"] .fe-dynbg-overlay-noise-grain,
-body.fe-frontend-force-dark .fe-dynbg-overlay-noise-grain {
-  /* Same grain reads quieter against dark backgrounds, so flip to a
-     blend mode that lifts the texture against deep tones rather than
-     bumping the alpha (which would look noisy on light theme). */
-  mix-blend-mode: screen;
-  opacity: 0.6;
-}
-
-/* ── scanlines ─── 2px horizontal stripes at 1.5% alpha */
-.fe-dynbg-overlay-scanlines {
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.015) 2px,
-    rgba(0, 0, 0, 0.015) 4px
-  );
-}
-html[data-theme="dark"] .fe-dynbg-overlay-scanlines,
-body.fe-frontend-force-dark .fe-dynbg-overlay-scanlines {
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(255, 255, 255, 0.025) 2px,
-    rgba(255, 255, 255, 0.025) 4px
-  );
-}
-
-/* ── linen ─── two-direction stripe weave */
-.fe-dynbg-overlay-linen {
-  background:
-    repeating-linear-gradient(0deg,
-      transparent 0 1px,
-      rgba(0, 0, 0, 0.025) 1px 2px),
-    repeating-linear-gradient(90deg,
-      transparent 0 1px,
-      rgba(0, 0, 0, 0.025) 1px 2px);
-}
-html[data-theme="dark"] .fe-dynbg-overlay-linen,
-body.fe-frontend-force-dark .fe-dynbg-overlay-linen {
-  background:
-    repeating-linear-gradient(0deg,
-      transparent 0 1px,
-      rgba(255, 255, 255, 0.04) 1px 2px),
-    repeating-linear-gradient(90deg,
-      transparent 0 1px,
-      rgba(255, 255, 255, 0.04) 1px 2px);
-}
-
-/* ── vignette ─── radial darken from corners */
-.fe-dynbg-overlay-vignette {
-  background: radial-gradient(ellipse at center,
-    transparent 40%,
-    rgba(0, 0, 0, 0.18) 100%);
-}
-html[data-theme="dark"] .fe-dynbg-overlay-vignette,
-body.fe-frontend-force-dark .fe-dynbg-overlay-vignette {
-  background: radial-gradient(ellipse at center,
-    transparent 40%,
-    rgba(0, 0, 0, 0.45) 100%);
-}
-
-/* ── crosshatch ─── two diagonal stripe sets */
-.fe-dynbg-overlay-crosshatch {
-  background:
-    repeating-linear-gradient(45deg,
-      transparent 0 4px,
-      rgba(0, 0, 0, 0.04) 4px 5px),
-    repeating-linear-gradient(-45deg,
-      transparent 0 4px,
-      rgba(0, 0, 0, 0.04) 4px 5px);
-}
-html[data-theme="dark"] .fe-dynbg-overlay-crosshatch,
-body.fe-frontend-force-dark .fe-dynbg-overlay-crosshatch {
-  background:
-    repeating-linear-gradient(45deg,
-      transparent 0 4px,
-      rgba(255, 255, 255, 0.05) 4px 5px),
-    repeating-linear-gradient(-45deg,
-      transparent 0 4px,
-      rgba(255, 255, 255, 0.05) 4px 5px);
-}
-
-/* ── dot-weave ─── tiny dot lattice for halftone newsprint feel */
-.fe-dynbg-overlay-dot-weave {
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    rgba(0, 0, 0, 0.18) 1px,
-    transparent 0);
-  background-size: 6px 6px;
-  opacity: 0.4;
-}
-html[data-theme="dark"] .fe-dynbg-overlay-dot-weave,
-body.fe-frontend-force-dark .fe-dynbg-overlay-dot-weave {
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    rgba(255, 255, 255, 0.22) 1px,
-    transparent 0);
-  opacity: 0.3;
-}
-
-/* All overlays respect reduced-motion just like the base dynbg
-   layer (none of them animate today, but keep the gate uniform so
-   future animated overlays inherit the rule for free). */
-@media (prefers-reduced-motion: reduce) {
-  .fe-dynbg-overlay { animation: none !important; }
-  .fe-dynbg-overlay * { animation: none !important; }
-}
+/* ── Dynamic backgrounds + overlays ───────────────────────────────
+   Moved to css/dynbg.css (shared by the public frontend AND the admin
+   picker modal so the live preview + thumbnails render in both). It is
+   loaded via its own <link> alongside this file. The light-mode pastel
+   swap rules moved there too. */
 
 /* ── Site Index ─────────────────────────────────────────────────
    Auto-populated /siteindex page. Two layouts share the same
@@ -10875,6 +11035,7 @@ html[data-theme="dark"] .fe-mlist-sort select option {
 .fe-fellowships-card,
 .fe-library-item,
 .fe-submission-card,
+.fe-rc-item-card,
 .fe-card-primary {
   box-shadow: var(--fe-card-primary-shadow, none);
   transition:
@@ -10897,6 +11058,7 @@ html[data-theme="dark"] .fe-mlist-sort select option {
 .fe-fellowships-card:hover,
 .fe-library-item:hover,
 .fe-submission-card:hover,
+.fe-rc-item-card:hover,
 .fe-card-primary:hover {
   box-shadow: var(--fe-card-primary-hover-shadow, 0 8px 28px rgba(15, 23, 42, 0.10));
   transform: var(--fe-card-primary-hover-transform, translateY(-2px));
@@ -10953,6 +11115,7 @@ html[data-theme="dark"] .fe-announcements-card,
 html[data-theme="dark"] .fe-fellowships-card,
 html[data-theme="dark"] .fe-library-item,
 html[data-theme="dark"] .fe-submission-card,
+html[data-theme="dark"] .fe-rc-item-card,
 html[data-theme="dark"] .fe-card-primary {
   box-shadow: var(--fe-card-primary-shadow-dark, var(--fe-card-primary-shadow, none));
 }
@@ -10970,6 +11133,7 @@ html[data-theme="dark"] .fe-announcements-card:hover,
 html[data-theme="dark"] .fe-fellowships-card:hover,
 html[data-theme="dark"] .fe-library-item:hover,
 html[data-theme="dark"] .fe-submission-card:hover,
+html[data-theme="dark"] .fe-rc-item-card:hover,
 html[data-theme="dark"] .fe-card-primary:hover {
   box-shadow: var(--fe-card-primary-hover-shadow-dark,
                   var(--fe-card-primary-hover-shadow, 0 8px 28px rgba(15, 23, 42, 0.10)));
@@ -11296,55 +11460,20 @@ body.fe-footer-force-dark .fe-footer-admin-login--logout:focus-visible {
   border-color: rgba(245, 158, 11, 0.80);
 }
 
-/* Footer admin-login auth row — same layout idea (space-between,
-   pills at the column edges) so the signed-in footer matches the
-   mega-menu treatment. `width: 100%` lets the row fill the block
-   container's column flow regardless of which footer layout it's
-   dropped into. */
+/* Footer admin-login auth row — the signed-in pair (dashboard + logout)
+   sits LEFT-ALIGNED with a fixed gap and wraps to a second line when the
+   footer block gets too narrow to hold both on one row. `width: 100%`
+   lets the row fill the block container's column flow regardless of which
+   footer layout it's dropped into. */
 .fe-footer-admin-login-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 1rem;
   width: 100%;
   flex-wrap: wrap;
 }
-.fe-footer-admin-login--logout {
-  /* Force the Logout pill toward the far end of the row when the
-     footer block is narrower than the row's natural content. With
-     flex-wrap allowed, this keeps the pair visually paired even
-     after a wrap. */
-  margin-left: auto;
-}
 
-/* ── Dynbg pastel-in-light-mode swap ──────────────────────────────
-   When the admin enables "Use pastels in light mode only" in the
-   dynbg-picker modal, the renderer stamps companion
-   `--fe-dynbg-cN-light` custom properties next to the canonical
-   `--fe-dynbg-cN` ones. Outside dark mode (no `data-theme="dark"`
-   attribute on <html>) we re-bind the canonical vars to the
-   pastel values so every consumer (blob fills, gradient stops,
-   band strokes, spotlight colours) picks up the soft palette
-   automatically — no per-preset CSS to update. Dark mode keeps
-   the full-saturation originals so the surface still reads with
-   depth on a dark page. */
-/* `!important` is required because the canonical `--fe-dynbg-cN` is
-   set INLINE on the same element (`style="--fe-dynbg-c1: #vivid;
-   --fe-dynbg-c1-light: #pastel"`), and inline custom-property
-   declarations otherwise outrank any selector-driven rule for the
-   same property. The swap only fires when the visitor is in light
-   mode AND the element carries a `-light` companion, so it's a
-   narrow rebind — won't leak into dark mode or onto any element
-   that didn't opt in by carrying the companion var. */
-html:not([data-theme="dark"]) [style*="--fe-dynbg-c1-light"] {
-  --fe-dynbg-c1: var(--fe-dynbg-c1-light) !important;
-}
-html:not([data-theme="dark"]) [style*="--fe-dynbg-c2-light"] {
-  --fe-dynbg-c2: var(--fe-dynbg-c2-light) !important;
-}
-html:not([data-theme="dark"]) [style*="--fe-dynbg-c3-light"] {
-  --fe-dynbg-c3: var(--fe-dynbg-c3-light) !important;
-}
 
 /* CustomForm public render. Minimal styling that inherits the
    frontend chrome's container/section spacing — each field is a
@@ -11525,19 +11654,216 @@ body.fe-popup-open { overflow: hidden; }
   .fe-popup-no-desktop { display: none !important; }
 }
 
-/* >>> TSP demo overlay (branch: demo — keep on merge, not on main) >>>
-   Full-bleed hero on page-builder pages: let a `hero` block break out of the
-   boxed page shell to span the viewport, while the rest of the page stays
-   centered. Scoped to `.fe-pp` so it only affects page-builder pages (not the
-   classic homepage or meeting/event detail heroes). `overflow-x: clip` guards
-   against the 1px-ish horizontal overflow that 100vw causes when a classic
-   scrollbar is present — and unlike `hidden`, `clip` doesn't break sticky. */
-body.frontend-body { overflow-x: clip; }
+/* ========================================================================
+   THEMED REGIONS — shared structure for the alternate themes
+   (modern-dark, cyberpunk, sanctuary, terminal).
+   This block carries only LAYOUT + behaviour (sticky, responsive, the
+   hamburger → dropdown, the mega-menu grid). Each theme's *skin* (colours,
+   glass, glow, type) lives in static/css/themes/<key>.css scoped to
+   body[data-fe-theme="<key>"]. Colours here resolve through the design
+   tokens so an unskinned themed header still renders legibly.
+   ======================================================================== */
+.fe-header-themed {
+  position: sticky; top: 0; z-index: 40; width: 100%;
+  background: var(--fe-color-surface, #fff);
+  border-bottom: 1px solid var(--fe-color-border, #e2e8f0);
+  transition: transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
+              background 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+.fe-header-themed.fe-header-hidden { transform: translateY(-100%); }
+.fe-header-themed-inner {
+  display: flex; align-items: center; gap: 24px;
+  margin: 0 auto; width: 100%;
+}
+.fe-th-brand { display: inline-flex; align-items: center; gap: 10px;
+  text-decoration: none; color: var(--fe-color-text, #0f172a);
+  margin-right: auto; flex: 0 0 auto; }
+.fe-th-logo { display: block; }
+.fe-th-brand-name { font-family: var(--fe-font-heading);
+  font-weight: 700; font-size: 1.35rem; letter-spacing: -0.01em;
+  color: inherit; }
+.fe-th-nav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.fe-th-nav-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 9px 14px; border-radius: 10px;
+  font-size: 0.975rem; font-weight: 600; text-decoration: none;
+  color: var(--fe-color-nav-link, #0f172a);
+  transition: color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+.fe-th-nav-link:hover, .fe-th-nav-link.mega-active {
+  color: var(--fe-color-nav-link-hover, var(--fe-color-brand));
+  text-decoration: none;
+}
+/* Dark mode: themed-header nav links default to the dark-mode text colour so
+   they don't render dark-on-dark — the --fe-color-nav-link token is tuned for
+   the theme's LIGHT header. The :not(.fe-th-nav-cta) guard preserves the CTA
+   pill's own colour; per-theme CSS can still override. */
+html[data-theme="dark"] .fe-th-nav-link:not(.fe-th-nav-cta) { color: var(--fe-dm-text, #e2e8f0); }
+.fe-th-nav-link .fe-nav-caret { display: inline-flex; transition: transform 160ms ease; }
+.fe-th-nav-link .fe-nav-caret .icon { width: 16px; height: 16px; }
+.fe-th-nav-link.mega-active .fe-nav-caret { transform: rotate(180deg); }
+.fe-th-nav-twoline { flex-direction: column; align-items: flex-start;
+  line-height: 1.1; gap: 1px; padding-top: 6px; padding-bottom: 6px; }
+.fe-th-nav-twoline-lead { font-size: 0.7rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7; }
+.fe-th-nav-twoline-cta { display: inline-flex; align-items: center; gap: 4px; }
+/* CTA pill — follows the FULL primary-button token set (bg, border, radius,
+   weight, text-transform, drop-shadow, hover transform + glow) so it behaves
+   exactly like .fe-btn-primary; each theme can still re-skin it in its file. */
+.fe-th-nav-cta {
+  background: var(--fe-color-btn-primary-bg, var(--fe-color-brand));
+  color: var(--fe-color-btn-primary-text, #fff) !important;
+  border-width: var(--fe-btn-primary-border-width, 1px);
+  border-style: solid;
+  border-color: var(--fe-color-btn-primary-border, var(--fe-color-btn-primary-bg, transparent));
+  border-radius: var(--fe-btn-radius, 999px);
+  padding: 10px 20px; margin-left: 8px;
+  font-weight: var(--fe-btn-weight, 600);
+  text-transform: var(--fe-btn-text-transform, none);
+  box-shadow: var(--fe-btn-shadow, 0 8px 20px rgba(15, 23, 42, 0.18));
+  transition: transform 160ms ease, box-shadow 200ms ease,
+              background 160ms ease, border-color 160ms ease;
+}
+.fe-th-nav-cta:hover {
+  background: var(--fe-color-btn-primary-hover-bg,
+                  color-mix(in srgb, var(--fe-color-btn-primary-bg, var(--fe-color-brand)) 88%, black));
+  color: var(--fe-color-btn-primary-text, #fff) !important;
+  border-width: var(--fe-btn-primary-hover-border-width, var(--fe-btn-primary-border-width, 1px));
+  border-color: var(--fe-color-btn-primary-hover-border,
+                    var(--fe-color-btn-primary-border, var(--fe-color-btn-primary-bg, transparent)));
+  transform: var(--fe-btn-hover-transform, translateY(-1px));
+  box-shadow: var(--fe-btn-hover-glow, 0 10px 28px rgba(81, 100, 255, 0.32));
+}
+/* Hamburger — hidden on desktop. Two bars cross into an X when the mobile
+   dropdown is open (#fe-header.fe-nav-open, toggled by base.html JS). */
+.fe-th-menu-btn { display: none; flex: 0 0 auto;
+  width: 42px; height: 42px; border: 0; background: transparent;
+  cursor: pointer; position: relative; border-radius: 10px; }
+.fe-th-menu-btn span { position: absolute; left: 11px; right: 11px; height: 2px;
+  background: var(--fe-color-text, #0f172a); border-radius: 2px;
+  transition: transform 200ms ease, opacity 200ms ease; }
+.fe-th-menu-btn span:first-child { top: 17px; }
+.fe-th-menu-btn span:last-child  { bottom: 17px; }
+.fe-header-themed.fe-nav-open .fe-th-menu-btn span:first-child { transform: translateY(4px) rotate(45deg); }
+.fe-header-themed.fe-nav-open .fe-th-menu-btn span:last-child  { transform: translateY(-4px) rotate(-45deg); }
+
+@media (max-width: 880px) {
+  .fe-th-menu-btn { display: block; }
+  .fe-th-nav {
+    display: none; position: absolute; left: 0; right: 0;
+    top: var(--fe-header-h, 76px);
+    flex-direction: column; align-items: stretch; gap: 2px;
+    padding: 12px 5vw 20px;
+    background: var(--fe-color-surface, #fff);
+    border-bottom: 1px solid var(--fe-color-border, #e2e8f0);
+    box-shadow: 0 24px 40px rgba(0,0,0,0.18);
+    max-height: calc(100vh - var(--fe-header-h, 76px));
+    overflow-y: auto;
+  }
+  .fe-header-themed.fe-nav-open .fe-th-nav { display: flex; }
+  .fe-th-nav-link { width: 100%; padding: 12px 14px; }
+  .fe-th-nav-twoline { align-items: flex-start; }
+  .fe-th-nav-cta { margin-left: 0; margin-top: 6px; justify-content: center; }
+}
+
+/* Themed mega-menu — inherits all positioning + open/close from the base
+   .fe-megamenu rules above; this only sets the panel grid behaviour and a
+   neutral skin. Each theme overrides the surface/border in its file. */
+.fe-megamenu-themed { --fe-mm-link-base: 1.05rem; --fe-mm-heading-base: 1.5rem;
+  background: var(--fe-color-surface-dark, #0b1026);
+  color: var(--fe-color-megamenu-link, #fff); }
+.fe-megamenu-themed .fe-megamenu-inner {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+@media (max-width: 880px) {
+  .fe-megamenu-themed { border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important; }
+  .fe-megamenu-themed .fe-megamenu-inner { grid-template-columns: 1fr; gap: 20px; }
+}
+
+/* Featured-image elevation on the DETAIL templates (announcement,
+   event, and archive detail pages — all three use the same four
+   `templates/frontend/events/` layouts). The cover wrapper sits at
+   an `lg` shadow resting and lifts to `xl` on direct hover.
+   ──
+   Targeted classes:
+     `.fe-event-detail-cover` — Classic layout's lightbox-button
+                                wrapping the featured image.
+     `.fe-event-time-cover`   — Timeline layout's <div> wrapping
+                                the featured image.
+   ──
+   Slate-900 base with 18%/28% opacity + larger blur than the
+   image-block's static `lg` recipe — the image-block recipe was
+   calibrated for a content-page background and reads as no halo at
+   all against the detail page's white card surface. Reduced-motion
+   visitors get the same end states without the transition. */
+.fe-event-detail-cover,
+.fe-event-time-cover {
+  /* Drop the 1px border `.fe-event-detail-cover` ships with so the
+     featured image sits as a clean elevated tile, with the shadow
+     doing all the edge work. `.fe-event-time-cover` doesn't carry
+     a border but the reset is harmless there. */
+  border: 0;
+  /* Shadow colour follows the admin's primary-card shadow_color
+     token (`--fe-color-card-primary-shadow`, emitted from
+     `design.py::card_chrome_css_vars`) so theming the card shadow
+     also retints the featured image. Alpha (.18 / .10) is set per-
+     shadow-layer here rather than via the card's existing scale —
+     the image elevation is intentionally heavier (lg / xl) than
+     the card itself, so we keep our own size + alpha and only
+     borrow the colour. Falls back to slate-900 for any consumer
+     rendering outside a themed-frontend page. */
+  box-shadow:
+    0 12px 28px color-mix(in oklab, var(--fe-color-card-primary-shadow, #0f172a) 18%, transparent),
+    0 4px 10px  color-mix(in oklab, var(--fe-color-card-primary-shadow, #0f172a) 10%, transparent);
+  /* Hover transition pinned to a flat 200ms ease — short enough that
+     the elevation feels responsive, long enough that it doesn't snap. */
+  transition: box-shadow 200ms ease;
+}
+.fe-event-detail-cover:hover,
+.fe-event-time-cover:hover,
+.fe-event-detail-cover:focus-visible,
+.fe-event-time-cover:focus-within {
+  /* `.fe-event-detail-cover:hover` ships with a `translateY(-3px)`
+     lift earlier in this file; null it so the elevation reads as a
+     pure shadow expansion (the cover stays put while the shadow
+     blooms outward). */
+  transform: none;
+  box-shadow:
+    0 24px 48px color-mix(in oklab, var(--fe-color-card-primary-shadow, #0f172a) 28%, transparent),
+    0 10px 20px color-mix(in oklab, var(--fe-color-card-primary-shadow, #0f172a) 16%, transparent);
+}
+html[data-theme="dark"] .fe-event-detail-cover,
+html[data-theme="dark"] .fe-event-time-cover,
+body.fe-frontend-force-dark .fe-event-detail-cover,
+body.fe-frontend-force-dark .fe-event-time-cover {
+  box-shadow:
+    0 12px 28px color-mix(in oklab, var(--fe-color-card-primary-shadow-dark, var(--fe-color-card-primary-shadow, #0f172a)) 18%, transparent),
+    0 4px 10px  color-mix(in oklab, var(--fe-color-card-primary-shadow-dark, var(--fe-color-card-primary-shadow, #0f172a)) 10%, transparent);
+}
+html[data-theme="dark"] .fe-event-detail-cover:hover,
+html[data-theme="dark"] .fe-event-time-cover:hover,
+html[data-theme="dark"] .fe-event-detail-cover:focus-visible,
+html[data-theme="dark"] .fe-event-time-cover:focus-within,
+body.fe-frontend-force-dark .fe-event-detail-cover:hover,
+body.fe-frontend-force-dark .fe-event-time-cover:hover,
+body.fe-frontend-force-dark .fe-event-detail-cover:focus-visible,
+body.fe-frontend-force-dark .fe-event-time-cover:focus-within {
+  box-shadow:
+    0 24px 48px color-mix(in oklab, var(--fe-color-card-primary-shadow-dark, var(--fe-color-card-primary-shadow, #0f172a)) 28%, transparent),
+    0 10px 20px color-mix(in oklab, var(--fe-color-card-primary-shadow-dark, var(--fe-color-card-primary-shadow, #0f172a)) 16%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fe-event-detail-cover,
+  .fe-event-time-cover { transition: none; }
+}
+
+/* >>> TSP demo overlay: full-bleed page-builder hero (keep on merge) >>> */
 .fe-pp .fe-hero {
-  width: 100vw;
-  max-width: 100vw;
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
-  border-radius: 0;
+  max-width: 100vw;
+  width: 100vw;
 }
+/* Allow the hero to bleed past the page wrapper without a horizontal scrollbar. */
+html { overflow-x: clip; }
 /* <<< TSP demo overlay <<< */

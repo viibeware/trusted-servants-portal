@@ -86,6 +86,36 @@ HEADER_TEMPLATES = [
         "description": "Fellowship-style two-row layout: a blue utility strip on top (helpline + hyperlist link), wide logotype on the left of the main row, and a row of primary nav links on the right. White-on-white with a soft hairline divider.",
         "partial": "frontend/headers/recovery-blue.html",
     },
+    {
+        "key": "modern-dark",
+        "name": "Modern Dark",
+        "description": "Glassy mission-control header — translucent dark bar that blurs the page behind it, wide logotype, primary nav with full-width mega menus, and a gradient call-to-action pill. Styled by the active theme.",
+        "partial": "frontend/headers/themed.html",
+    },
+    {
+        "key": "cyberpunk",
+        "name": "Cyberpunk",
+        "description": "Neon HUD header — near-black bar with a glowing cyan/magenta underline, monospace uppercase nav, and a sharp neon call-to-action. Styled by the active theme.",
+        "partial": "frontend/headers/themed.html",
+    },
+    {
+        "key": "sanctuary",
+        "name": "Sanctuary",
+        "description": "Warm cream header — soft sand bar with a hairline border, serif logotype, sage-green nav hovers, and a rounded sage call-to-action. Styled by the active theme.",
+        "partial": "frontend/headers/themed.html",
+    },
+    {
+        "key": "terminal",
+        "name": "Terminal",
+        "description": "A TUI status bar — near-black mono header with a phosphor-green underline, monospace nav, and a green command-style call-to-action. Styled by the active theme.",
+        "partial": "frontend/headers/themed.html",
+    },
+    {
+        "key": "neobrutal",
+        "name": "Neobrutal",
+        "description": "A bold neobrutalist bar — flat colour, thick black border, chunky Archivo Black logotype + nav, and a hard-shadowed call-to-action that presses on click. Styled by the active theme.",
+        "partial": "frontend/headers/themed.html",
+    },
 ]
 
 # Each prebuilt footer's "shape" expressed as a synthetic block list, used
@@ -129,9 +159,11 @@ FOOTER_BLOCK_CATALOG = [
     {"key": "spacer",        "name": "Spacer",         "icon": "move-vertical",
      "desc": "Vertical breathing room between adjacent blocks."},
     {"key": "powered_by",    "name": "Powered by",     "icon": "github",
-     "desc": "Static \"Powered by Trusted Servants Pro\" attribution linking the project's GitHub."},
+     "desc": "Static \"Powered by Trusted Servants Pro\" attribution linking to gettspro.com."},
     {"key": "admin_login",   "name": "Admin login",    "icon": "log-in",
      "desc": "Pill-style link to the admin sign-in page. Authenticated users get redirected straight to the dashboard."},
+    {"key": "privacy_links", "name": "Privacy & cookies", "icon": "shield",
+     "desc": "Privacy policy link + a \"Cookie settings\" button that re-prompts the cookie banner. Both pieces appear only when the matching feature is configured under Web Frontend → Cookie Compliance."},
 ]
 
 
@@ -204,6 +236,36 @@ MEGAMENU_TEMPLATES = [
         "description": "Full-width colored panel: bold bg color with rounded bottom corners, animated chevrons, and a hover-slide effect on each link.",
         "partial": "frontend/megamenus/recovery-blue.html",
     },
+    {
+        "key": "modern-dark",
+        "name": "Modern Dark",
+        "description": "Full-width glass panel with a soft aurora wash, gradient hairline divider, and chevron-slide links. Styled by the active theme.",
+        "partial": "frontend/megamenus/themed.html",
+    },
+    {
+        "key": "cyberpunk",
+        "name": "Cyberpunk",
+        "description": "Full-width neon panel — near-black with a glowing grid, cyan section rules, and magenta hover states on monospace links. Styled by the active theme.",
+        "partial": "frontend/megamenus/themed.html",
+    },
+    {
+        "key": "sanctuary",
+        "name": "Sanctuary",
+        "description": "Full-width warm cream panel with a soft shadow, sage section rules, and gentle sage hover states. Styled by the active theme.",
+        "partial": "frontend/megamenus/themed.html",
+    },
+    {
+        "key": "terminal",
+        "name": "Terminal",
+        "description": "Full-width near-black panel with a phosphor-green rule, monospace links prefixed like command output, and a green hover state. Styled by the active theme.",
+        "partial": "frontend/megamenus/themed.html",
+    },
+    {
+        "key": "neobrutal",
+        "name": "Neobrutal",
+        "description": "Full-width flat-colour panel with a thick black border + hard offset shadow and chunky links that get a colour-block highlight on hover. Styled by the active theme.",
+        "partial": "frontend/megamenus/themed.html",
+    },
 ]
 
 THEMES = [
@@ -217,7 +279,126 @@ THEMES = [
         "name": "Recovery Blue",
         "description": "Fellowship-style — blue utility strip, two-row header with wide logotype, fellowship-style copy, full-width mega menus. Picking this theme cascades to every section's layout.",
     },
+    {
+        "key": "modern-dark",
+        "name": "Modern Dark",
+        "description": "Mission-control aesthetic — deep-indigo canvas, animated aurora glow, film grain, teal→cyan gradient buttons, Fraunces display over Inter. Defaults to dark mode; the light/dark toggle still works. Cascades to every region.",
+        "default_mode": "dark",
+    },
+    {
+        "key": "cyberpunk",
+        "name": "Cyberpunk",
+        "description": "Neon-grid HUD — near-black canvas, scanlines + perspective grid, neon cyan/magenta, sharp zero-radius edges, corner-bracket cards, glitch monospace headings. Defaults to dark mode. Cascades to every region.",
+        "default_mode": "dark",
+    },
+    {
+        "key": "sanctuary",
+        "name": "Sanctuary",
+        "description": "Warm and calm — sand/cream canvas, sage-green + clay accents, Lora humanist-serif headings, soft rounded cards, airy editorial spacing. A grounded, supportive light theme. Defaults to light mode. Cascades to every region.",
+        "default_mode": "light",
+    },
+    {
+        "key": "terminal",
+        "name": "Terminal",
+        "description": "A utilitarian command line — near-black canvas, phosphor-green accents, all-monospace type, flat boxy panels with visible borders, zero radius, prompt-prefixed headings and a blinking cursor. Defaults to dark mode; the light toggle is a clean printout paper. Cascades to every region.",
+        "default_mode": "dark",
+    },
+    {
+        "key": "neobrutal",
+        "name": "Neobrutal",
+        "description": "Neobrutalism — colourful flat surfaces (yellow / pink / cyan), thick black borders, hard offset drop-shadows, chunky Archivo Black headings, and buttons that 'press' on click. Bold, high-contrast, playful. Defaults to light mode; the dark companion keeps the bright blocks on a near-black canvas. Cascades to every region.",
+        "default_mode": "light",
+    },
 ]
+
+# Theme key → the visitor light/dark default that best fits the theme.
+# `frontend_theme_save` applies this to `SiteSetting.frontend_default_theme`
+# so a dark-by-design theme greets first-time visitors in dark mode (the
+# visitor's own saved sun/moon choice still wins via localStorage). Themes
+# absent from this map leave the admin's existing default untouched.
+THEME_DEFAULT_MODE = {t["key"]: t["default_mode"] for t in THEMES if t.get("default_mode")}
+
+
+# ---------------------------------------------------------------------------
+# Per-theme saved state.
+#
+# Switching themes snapshots the OUTGOING theme's appearance fields into
+# SiteSetting.frontend_theme_states_json (keyed by theme), then restores the
+# INCOMING theme's saved snapshot — so returning to a theme brings back how it
+# was left. A theme with no snapshot yet starts from its built-in defaults.
+# The theme switcher modal also exposes an explicit Reset-to-default and
+# Return-to-last-state for the active theme.
+#
+# THEME_STATE_FIELDS is deliberately just the "appearance" fields (design
+# tokens, fonts, default mode, per-template settings, mega-menu colours) so a
+# snapshot is small and a switch never disturbs CONTENT (pages, blocks, footer
+# content all live in their own columns and are untouched).
+# ---------------------------------------------------------------------------
+THEME_STATE_FIELDS = [
+    "frontend_design_json",
+    "frontend_fonts_json",
+    "frontend_default_theme",
+    "frontend_template_settings_json",
+    "frontend_mega_bg_color",
+    "frontend_mega_text_color",
+    "frontend_mega_radius_bl",
+    "frontend_mega_radius_br",
+    "frontend_mega_bg_dynamic_key",
+    "frontend_mega_bg_dynbg_config_json",
+    "frontend_mega_bg_dynbg_dark",
+    "frontend_mega_bg_color_dark",
+    "frontend_mega_text_color_dark",
+    "frontend_mega_bg_dynbg_blend",
+]
+
+
+def load_theme_states(site):
+    """Parse the per-theme state map; returns {} on missing/invalid JSON."""
+    import json as _json
+    try:
+        return _json.loads(site.frontend_theme_states_json or "{}") or {}
+    except (ValueError, TypeError):
+        return {}
+
+
+def save_theme_states(site, states):
+    import json as _json
+    site.frontend_theme_states_json = _json.dumps(states)
+
+
+def snapshot_theme_state(site):
+    """Capture the current appearance-field values as a dict."""
+    return {f: getattr(site, f, None) for f in THEME_STATE_FIELDS}
+
+
+def apply_theme_state(site, state):
+    """Restore a previously-captured snapshot onto the SiteSetting."""
+    if not isinstance(state, dict):
+        return
+    for f in THEME_STATE_FIELDS:
+        if f in state:
+            setattr(site, f, state[f])
+
+
+def reset_theme_state(site, theme_key):
+    """Clear a theme's customisations back to its built-in defaults: drop the
+    override JSON blobs (so the design.py / fonts.py theme defaults take over),
+    set the visitor default mode to the theme's preferred one, and restore the
+    mega-menu colour columns to their model defaults."""
+    site.frontend_design_json = None
+    site.frontend_fonts_json = None
+    site.frontend_template_settings_json = None
+    site.frontend_default_theme = THEME_DEFAULT_MODE.get(theme_key, "system")
+    site.frontend_mega_bg_color = "#0B5CFF"
+    site.frontend_mega_text_color = "#ffffff"
+    site.frontend_mega_radius_bl = 18
+    site.frontend_mega_radius_br = 18
+    site.frontend_mega_bg_dynamic_key = None
+    site.frontend_mega_bg_dynbg_config_json = None
+    site.frontend_mega_bg_dynbg_dark = False
+    site.frontend_mega_bg_color_dark = None
+    site.frontend_mega_text_color_dark = None
+    site.frontend_mega_bg_dynbg_blend = 100
 
 HOMEPAGE_TEMPLATES = [
     {
@@ -889,10 +1070,14 @@ def template_settings(site, kind, key):
               "bg_dynbg_overlay_scope", "bg_dynbg_overlay_size",
               "bg_dynbg_overlay_intensity", "bg_dynbg_randomize_colors",
               "bg_dynbg_randomize_positions", "bg_dynbg_animate",
-              "bg_dynbg_pastel_light",
+              "bg_dynbg_pastel_light", "bg_dynbg_knobs",
               # Classic blog detail rail toggles — present only when
               # explicitly disabled, so a missing key means "show".
-              "show_related_widget", "show_categories_widget"):
+              "show_related_widget", "show_categories_widget",
+              # Card body preview controls (announcements + events list
+              # templates). Missing keys fall through to the per-list
+              # default in the partial.
+              "card_body_mode", "card_body_max_chars"):
         if k in leaf:
             out[k] = leaf[k]
     return out
@@ -1135,6 +1320,53 @@ def _inject_popups():
     return {"popups": popups}
 
 
+@bp.context_processor
+def _inject_cookie_compliance():
+    """Resolve the cookie-compliance state for the current visitor and
+    surface it to every frontend template (the banner partial pulls
+    from this). When the module is off, the resolved dict carries
+    `enabled: False` and the partial renders nothing. Region inference
+    runs per-request — never cached and never persisted."""
+    try:
+        from .models import SiteSetting, Page
+        from . import cookie_compliance as cc
+        site = SiteSetting.query.first()
+        if not site or not getattr(site, "cookie_compliance_enabled", False):
+            return {"cookie_compliance": {"enabled": False}}
+        configured = getattr(site, "cookie_compliance_mode", "notice") or "notice"
+        if getattr(site, "cookie_compliance_auto_region", True):
+            effective = cc.infer_visitor_mode(request.headers, configured)
+        else:
+            effective = configured
+        # Policy URL — internal Page wins over external URL when both set.
+        policy_url = None
+        if getattr(site, "cookie_compliance_policy_page_id", None):
+            page = Page.query.get(site.cookie_compliance_policy_page_id)
+            if page and page.is_published and not page.is_private:
+                policy_url = "/" + page.slug
+        if not policy_url and getattr(site, "cookie_compliance_policy_external_url", None):
+            policy_url = site.cookie_compliance_policy_external_url
+        return {"cookie_compliance": {
+            "enabled": True,
+            "mode": effective,
+            "configured_mode": configured,
+            "auto_region": getattr(site, "cookie_compliance_auto_region", True),
+            "position": getattr(site, "cookie_compliance_position", "bottom-bar") or "bottom-bar",
+            "title": getattr(site, "cookie_compliance_title", None) or "We use cookies",
+            "body": getattr(site, "cookie_compliance_body", None) or (
+                "This site uses cookies to function. With your permission "
+                "we also use cookies to understand how the site is used."),
+            "accept_label": getattr(site, "cookie_compliance_accept_label", None) or "Accept",
+            "reject_label": getattr(site, "cookie_compliance_reject_label", None) or (
+                "Reject non-essential" if effective != "notice" else ""),
+            "more_label": getattr(site, "cookie_compliance_more_label", None) or "Privacy policy",
+            "policy_url": policy_url,
+            "remember_days": getattr(site, "cookie_compliance_remember_days", None) or 365,
+        }}
+    except Exception:
+        return {"cookie_compliance": {"enabled": False}}
+
+
 def _page_og(site, title=None, description=None, image_url=None):
     """Build the per-page Open Graph override context consumed by
     ``frontend/base.html``. Any arg left None / empty falls back to the
@@ -1205,15 +1437,22 @@ def _post_in_archive(post):
     """True when the post is in the unified /archive — either explicitly
     archived OR an event whose end-time has already passed (in case the
     auto-archive sweep hasn't run yet). Detail pages use this to flip
-    the back-link to "Archive" instead of the live list."""
+    the back-link to "Archive" instead of the live list.
+
+    ``event_ends_at`` is stored naive site-local (parsed from the HTML5
+    ``datetime-local`` input the admin types into), so "has it passed?"
+    must compare against site-local now, not UTC — otherwise an event
+    ending at 7 pm Pacific would look "passed" any time after 11 am UTC
+    that day."""
     if not post:
         return False
     if post.is_archived:
         return True
     if post.is_event:
-        from datetime import datetime
+        from .timezone import now_local_naive
+        from .models import SiteSetting
         ref = post.event_ends_at or post.event_starts_at
-        if ref and ref < datetime.utcnow():
+        if ref and ref < now_local_naive(SiteSetting.query.first()):
             return True
     return False
 
@@ -1397,6 +1636,7 @@ def meeting_detail(slug):
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
 
         "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
+        "knobs": _tpl_settings.get("bg_dynbg_knobs", {}),
     }
     # Resolve the meeting's free-text location to a saved Location row
     # so the public templates can render the full split address (name /
@@ -2083,6 +2323,7 @@ def submission_form():
         "randomize_positions": _tpl_settings.get("bg_dynbg_randomize_positions", False),
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
         "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
+        "knobs": _tpl_settings.get("bg_dynbg_knobs", {}),
     }
     width_mode = (site.frontend_submission_form_width_mode if site else None) or "boxed"
     if width_mode not in ("boxed", "full"):
@@ -2671,6 +2912,7 @@ def fellowships_list():
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
 
         "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
+        "knobs": _tpl_settings.get("bg_dynbg_knobs", {}),
     }
 
     width_mode = (site.frontend_fellowships_list_width_mode if site else None) or "boxed"
@@ -2740,9 +2982,11 @@ def events_list():
     # recent additions first regardless of when each event runs.
     # Past events still drop off so the public list stays "upcoming
     # only"; /archive is the home for ended events.
-    from datetime import datetime as _dt
+    from .timezone import now_local_naive
     from sqlalchemy import func as _sql_func
-    _now = _dt.utcnow()
+    # event_ends_at is naive site-local — compare in the same frame
+    # so events drop off at midnight local, not at midnight UTC.
+    _now = now_local_naive(site)
     _rows = (Post.query
              .filter(Post.is_event.is_(True),
                      Post.is_archived.is_(False),
@@ -2806,8 +3050,10 @@ def archive():
         abort(404)
     ctx = _frontend_context(site)
 
-    from datetime import datetime
-    now = datetime.utcnow()
+    from .timezone import now_local_naive
+    # event_ends_at is naive site-local — see _auto_archive_events
+    # for the canonical writeup.
+    now = now_local_naive(site)
 
     # Past events: ended OR is_archived. Skip the ones with no date.
     event_rows = (Post.query
@@ -3031,6 +3277,7 @@ def archive_detail(slug):
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
 
         "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
+        "knobs": _tpl_settings.get("bg_dynbg_knobs", {}),
     }
     og = _page_og(site, title=post.title,
                   description=post.summary or post.body,
@@ -3328,6 +3575,7 @@ def story_detail(slug):
                     else _story_cfg["animate"]),
 
         "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
+        "knobs": _tpl_settings.get("bg_dynbg_knobs", {}),
     }
     og = _page_og(site, title=story.title,
                   description=story.summary or story.body,
@@ -3489,6 +3737,7 @@ def blog_post_detail(slug):
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
 
         "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
+        "knobs": _tpl_settings.get("bg_dynbg_knobs", {}),
     }
 
     # Up to four related posts: prefer ones sharing a category, then
@@ -3697,6 +3946,7 @@ def event_detail(slug):
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
 
         "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
+        "knobs": _tpl_settings.get("bg_dynbg_knobs", {}),
     }
     og = _page_og(site, title=ev.title,
                   description=ev.summary or ev.body,
@@ -3809,6 +4059,7 @@ def announcement_detail(slug):
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
 
         "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
+        "knobs": _tpl_settings.get("bg_dynbg_knobs", {}),
     }
     # Pass the post in as `event` so the existing event-detail templates
     # (which all reference `event.*`) render unchanged.
@@ -3970,6 +4221,549 @@ def contact_submit():
                    or "Thanks — your message has been sent. We'll be in touch shortly.")
     flash(success_msg, "success")
     return redirect(url_for("frontend.contact"))
+
+
+@bp.route("/contactlist")
+@bp.route("/contactlist.pdf", endpoint="recovery_contacts_pdf")
+@public_section("Recovery Contacts", gate=lambda s: bool(getattr(s, "recovery_contacts_enabled", False)))
+def recovery_contacts():
+    """Public Recovery Contacts directory. Renders the approved entries
+    plus a submission form. Honors the ``recovery_contacts_enabled`` toggle —
+    returns 404 when the module is off, like every other admin-gated
+    surface. (Internal identifiers keep the legacy ``recovery_contacts`` name.)
+
+    Two endpoints share this view (mirrors the printlist pattern):
+      * ``/contactlist``     — the themed page (directory + search + form).
+      * ``/contactlist.pdf`` — a clean, branded WeasyPrint render of the
+                               directory for download/printing. Honors an
+                               optional ``?q=`` filter so a PDF of a
+                               searched view matches what's on screen."""
+    from .models import RecoveryContact
+    site = _site()
+    gate = _frontend_gate(site)
+    if gate is not None:
+        return gate
+    if not site or not getattr(site, "recovery_contacts_enabled", False):
+        abort(404)
+    entries = (RecoveryContact.query
+               .filter_by(approved=True)
+               .order_by(RecoveryContact.name.asc())
+               .all())
+
+    if request.endpoint == "frontend.recovery_contacts_pdf":
+        # Optional search filter, matching the on-screen client-side search
+        # (name / public phone / public email, case-insensitive).
+        q = (request.args.get("q") or "").strip().lower()
+        if q:
+            def _hit(e):
+                hay = " ".join(filter(None, [e.name, e.public_phone, e.public_email])).lower()
+                return q in hay
+            entries = [e for e in entries if _hit(e)]
+        from .timezone import now_in
+        import re as _re
+        heading = (getattr(site, "recovery_contacts_heading", None) or "Recovery Contacts")
+        site_title = (site.frontend_title if site else None) or "Trusted Servants"
+        # Public URL shown on the PDF header, with the scheme + trailing
+        # slash stripped (e.g. "riverside.org"). Falls back to the request
+        # host when no canonical Site URL is configured.
+        _purl = (getattr(site, "site_url", None) or "").strip() or request.url_root
+        display_url = _re.sub(r"^https?://", "", _purl).rstrip("/")
+        # Full canonical URL of the public directory page, e.g.
+        # "https://riverside.org/contactlist" — shown on listings that are
+        # reachable only via the site's "Contact me" button.
+        _base = _purl.rstrip("/")
+        if not _re.match(r"^https?://", _base):
+            _base = "https://" + _base
+        contact_url = _base + url_for("frontend.recovery_contacts")
+        generated_at = now_in(site)
+        html = render_template("frontend/recovery_contacts_pdf.html",
+                               site=site, entries=entries, heading=heading,
+                               frontend_title=site_title, display_url=display_url,
+                               contact_url=contact_url,
+                               query=q, generated_at=generated_at)
+        from weasyprint import HTML
+        from flask import current_app
+        pdf_bytes = HTML(string=html, base_url=request.url_root).write_pdf()
+        # Filename convention: <site-name-hyphenated>-Recovery-Contacts_<yyyymmdd>.pdf
+        name_slug = _re.sub(r"[^A-Za-z0-9]+", "-", site_title).strip("-") or "Site"
+        filename = f"{name_slug}-Recovery-Contacts_{generated_at.strftime('%Y%m%d')}.pdf"
+        resp = current_app.make_response(pdf_bytes)
+        resp.headers["Content-Type"] = "application/pdf"
+        resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return resp
+
+    ctx = _frontend_context(site)
+    return render_template("frontend/recovery_contacts.html", entries=entries, **ctx)
+
+
+@bp.route("/phonelist")
+def recovery_contacts_legacy_redirect():
+    """The page moved from /phonelist to /contactlist — keep any old
+    links / bookmarks / nav items working by redirecting."""
+    return redirect(url_for("frontend.recovery_contacts"))
+
+
+@bp.route("/contactlist/submit", methods=["POST"])
+def recovery_contacts_submit():
+    """Process a public Recovery Contacts submission.
+
+    Runs the honeypot + Turnstile guards, then writes an UNAPPROVED
+    ``RecoveryContact`` row (invisible to the public until an admin
+    approves it) and optionally emails the configured recipients so the
+    admin knows there's an entry awaiting review. The submitter picks a
+    starting phone/email display preference; the admin can override it.
+    """
+    from datetime import datetime as _dt, timedelta as _td
+    from flask import flash
+    from .auth import _verify_turnstile
+    from .mail import send_mail
+    from .models import (db as _db, RecoveryContact, log_recovery_contact,
+                         record_recovery_contact_abuse)
+
+    site = _site()
+    gate = _frontend_gate(site)
+    if gate is not None:
+        return gate
+    if not site or not getattr(site, "recovery_contacts_enabled", False):
+        abort(404)
+
+    success_msg = (getattr(site, "recovery_contacts_success_message", None)
+                   or "Thanks — your entry has been submitted and will appear once an admin approves it.")
+
+    f = request.form
+    # Honeypot — a non-empty hidden field means a bot. Silently flash the
+    # success message so it can't tell it was rejected; no row written.
+    if (f.get("website") or "").strip():
+        flash(success_msg, "success")
+        return redirect(url_for("frontend.recovery_contacts"))
+
+    name = (f.get("name") or "").strip()[:200]
+    email = (f.get("email") or "").strip()[:255]
+    phone = (f.get("phone") or "").strip()[:64]
+    # Submitter's starting display preference. The public form always
+    # renders both checkboxes pre-checked, so an unchecked box arrives
+    # as an ABSENT field — read absence as "hide", which both honours
+    # the visitor's choice and is the privacy-preserving default.
+    show_phone = f.get("show_phone") == "1"
+    show_email = f.get("show_email") == "1"
+    available_to_sponsor = f.get("available_to_sponsor") == "1"
+    contact_enabled = f.get("contact_enabled") == "1"
+    wants_update = f.get("wants_update") == "1"
+    wants_removal = f.get("wants_removal") == "1"
+
+    if not name:
+        flash("Your name is required.", "danger")
+        return redirect(url_for("frontend.recovery_contacts"))
+    # Email is mandatory — it's how the removal confirmation is sent and
+    # how the admin reaches the person.
+    if not email:
+        flash("An email address is required.", "danger")
+        return redirect(url_for("frontend.recovery_contacts"))
+    if "@" not in email or "." not in email.split("@", 1)[-1]:
+        flash("That email address doesn't look quite right — double-check it?", "danger")
+        return redirect(url_for("frontend.recovery_contacts"))
+
+    if site.turnstile_enabled:
+        token = f.get("cf-turnstile-response", "")
+        ok, err = _verify_turnstile(site, token, request.remote_addr)
+        if not ok:
+            flash(err or "Security check failed — please try again.", "danger")
+            return redirect(url_for("frontend.recovery_contacts"))
+
+    # Update + removal requests are matched to the existing listing by
+    # EMAIL (case-insensitive). Email is mandatory, and it's the stable
+    # key the confirmation link is tied to.
+    needs_confirm = wants_update or wants_removal
+    matched_id = None
+    if needs_confirm:
+        email_n = email.strip().lower()
+        if email_n:
+            for cand in RecoveryContact.query.filter_by(approved=True).all():
+                if (cand.email or "").strip().lower() == email_n:
+                    matched_id = cand.id
+                    break
+
+    # ── Anti-abuse on the self-service update/removal flow ──────────────
+    # Both checks need the matched (target) listing + the requestor's IP.
+    target = RecoveryContact.query.get(matched_id) if matched_id else None
+    now = _dt.utcnow()
+    req_ip = (request.remote_addr or "")[:64]
+    if needs_confirm and target is not None:
+        # 7-day disavow lock — refuses BOTH update and removal requests
+        # after the listing owner reported a prior request as not theirs.
+        if target.requests_locked_until and target.requests_locked_until > now:
+            kind_word = "removal" if wants_removal else "update"
+            record_recovery_contact_abuse(
+                "disavowed", target, req_ip,
+                f"Blocked {kind_word} request while the listing is locked "
+                "(owner previously reported a request as not theirs).",
+                locked_until=target.requests_locked_until)
+            log_recovery_contact(
+                "request_blocked",
+                f"{kind_word.capitalize()} request blocked — listing locked after a disavowed request",
+                entry_name=target.name, actor="Visitor", ip_address=req_ip)
+            flash("This listing is temporarily locked and can't accept update or "
+                  "removal requests right now. If this is your listing, please "
+                  "contact us directly.", "danger")
+            return redirect(url_for("frontend.recovery_contacts"))
+        # 24-hour update rate-limit (updates only). Discard the 2nd update
+        # — its data is never ingested — and flag it.
+        if (wants_update and target.last_update_request_at
+                and (now - target.last_update_request_at) < _td(hours=24)):
+            record_recovery_contact_abuse(
+                "rate_limited", target, req_ip,
+                "Second update request within 24 hours — discarded.")
+            log_recovery_contact(
+                "update_rate_limited",
+                "Update request blocked — submitted more than once in 24 hours",
+                entry_name=target.name, actor="Visitor", ip_address=req_ip)
+            flash("You can only request an update to a listing once every 24 hours. "
+                  "Please wait and try again later.", "danger")
+            return redirect(url_for("frontend.recovery_contacts"))
+
+    # Update + removal are both double opt-in: stash a confirmation token
+    # and email the submitter a link. Clicking it auto-applies the change
+    # (no admin approval). The request still shows in the admin panel so
+    # an admin can apply it manually if the person never confirms.
+    confirm_token = None
+    if needs_confirm:
+        import secrets
+        confirm_token = secrets.token_urlsafe(32)
+
+    entry = RecoveryContact(
+        name=name, email=email or None, phone=phone or None,
+        show_phone=show_phone, show_email=show_email,
+        available_to_sponsor=available_to_sponsor,
+        contact_enabled=contact_enabled,
+        wants_update=wants_update, wants_removal=wants_removal,
+        removal_token=confirm_token,
+        matched_entry_id=matched_id,
+        approved=False, ip_address=(request.remote_addr or "")[:64],
+    )
+    _db.session.add(entry)
+    _db.session.commit()
+
+    # Stamp the update rate-limit clock on the matched listing so a second
+    # update within 24 h is rejected above.
+    if wants_update and target is not None:
+        target.last_update_request_at = now
+        _db.session.commit()
+
+    site_label = (site.frontend_title or "Trusted Servants")
+
+    if needs_confirm:
+        # Email the submitter a confirmation link (the opt-in mechanism)
+        # plus a "this wasn't me" link that discards the request and locks
+        # the listing against further requests for 7 days.
+        if site.smtp_host and email:
+            try:
+                confirm_url = url_for("frontend.recovery_contacts_confirm",
+                                      token=confirm_token, _external=True)
+                disavow_url = url_for("frontend.recovery_contacts_disavow",
+                                      token=confirm_token, _external=True)
+            except Exception:  # noqa: BLE001
+                _root = request.url_root.rstrip("/")
+                confirm_url = _root + "/contactlist/confirm/" + confirm_token
+                disavow_url = _root + "/contactlist/disavow/" + confirm_token
+            if wants_removal:
+                subj = "Confirm your removal request"
+                msg = [f"Hi {name},", "",
+                       f"We received a request to remove you from the {site_label} Recovery Contacts list.",
+                       "Click the link below to confirm — you'll be removed automatically:", "",
+                       confirm_url]
+            else:
+                subj = "Confirm your listing update"
+                msg = [f"Hi {name},", "",
+                       f"We received an update to your {site_label} Recovery Contacts listing.",
+                       "Click the link below to confirm — your listing updates automatically:", "",
+                       confirm_url]
+            msg += ["", "Didn't request this?",
+                    "Someone may have submitted it without your permission. Click below to "
+                    "report it — the request will be discarded and your listing locked "
+                    "against further changes for 7 days:", "",
+                    disavow_url]
+            send_mail(site, email, subj, "\n".join(msg))
+        # NOTE: removal requests do NOT email the admin at submission time.
+        # The admin is only notified once the person clicks the confirmation
+        # link (see recovery_contacts_confirm) — so a bad actor can't get
+        # someone removed, or even prompt the admin to act, without the real
+        # owner confirming. Gated by the removal-alerts toggle there.
+        if wants_removal:
+            success_msg = ("Thanks — we've emailed you a confirmation link. Click it to confirm, "
+                           "and you'll be removed from the list automatically.")
+        else:
+            success_msg = ("Thanks — we've emailed you a confirmation link. Click it to confirm, "
+                           "and your listing updates automatically.")
+    else:
+        # Brand-new entry. Surfaces as a chip in the admin panel; only
+        # send an admin email when the new-submission alert is on.
+        recipients = (getattr(site, "recovery_contacts_to", None)
+                      or getattr(site, "access_request_to", None) or "").strip()
+        if getattr(site, "recovery_contacts_email_alerts", False) and site.smtp_host and recipients:
+            subject_line = f"New Recovery Contacts entry from {name}"
+            lines = [f"A new Recovery Contacts entry has been submitted on the public {site_label} site.",
+                     "It is awaiting your approval and is not yet visible to the public.",
+                     "", f"Name:  {name}"]
+            if phone:
+                lines.append(f"Phone: {phone}" + ("" if show_phone else "  (submitter asked to hide)"))
+            if email:
+                lines.append(f"Email: {email}" + ("" if show_email else "  (submitter asked to hide)"))
+            if available_to_sponsor:
+                lines.append("Available to sponsor: yes")
+            try:
+                lines += ["", f"Review: {url_for('main.recovery_contacts', _external=True)}"]
+            except Exception:  # noqa: BLE001
+                pass
+            send_mail(site, recipients, subject_line, "\n".join(lines))
+
+    # Audit log.
+    _ip = (request.remote_addr or "")[:64]
+    _sent = " — confirmation link sent" if (site.smtp_host and email) else ""
+    if wants_removal:
+        log_recovery_contact("removal_requested", f"Removal requested{_sent}",
+                             entry_name=name, actor="Visitor", ip_address=_ip)
+    elif wants_update:
+        log_recovery_contact("update_requested", f"Update requested{_sent}",
+                             entry_name=name, actor="Visitor", ip_address=_ip)
+    else:
+        log_recovery_contact("submitted", "New listing submitted",
+                             entry_name=name, actor="Visitor", ip_address=_ip)
+
+    flash(success_msg, "success")
+    return redirect(url_for("frontend.recovery_contacts"))
+
+
+@bp.route("/contactlist/confirm/<token>")
+@bp.route("/contactlist/confirm-removal/<token>", endpoint="recovery_contacts_confirm_removal")
+def recovery_contacts_confirm(token):
+    """Landing page for the confirmation link emailed to the submitter for
+    an update or a removal. Clicking it **auto-applies** the change — no
+    admin approval: a removal deletes the matched entry, an update writes
+    the submitted values onto the matched entry (or publishes the request
+    as a new listing if nothing matched). The request row is then cleared.
+    Until confirmed, the request stays visible in the admin panel so an
+    admin can apply it by hand if the person never clicks."""
+    from datetime import datetime as _dt
+    from .models import db as _db, RecoveryContact, log_recovery_contact
+    from .mail import send_mail
+    site = _site()
+    if not site:
+        abort(404)
+    entry = RecoveryContact.query.filter_by(removal_token=token).first() if token else None
+    if entry is None or not (entry.wants_update or entry.wants_removal):
+        return _render_rc_confirm(site, status="invalid", kind=None, name=None)
+
+    is_removal = bool(entry.wants_removal)
+    kind = "removal" if is_removal else "update"
+    name = entry.name
+    if entry.removal_confirmed_at:
+        return _render_rc_confirm(site, status="already", kind=kind, name=name)
+
+    entry.removal_confirmed_at = _dt.utcnow()
+    target = entry.matched_entry
+
+    if is_removal:
+        # Auto-remove: delete the matched entry + the request row.
+        _db.session.delete(entry)
+        if target is not None:
+            RecoveryContact.query.filter_by(matched_entry_id=target.id).update(
+                {"matched_entry_id": None})
+            _db.session.delete(target)
+        _db.session.commit()
+        log_recovery_contact("removal_confirmed",
+                             "Removal confirmed via email link — entry deleted automatically",
+                             entry_name=name, actor="Visitor")
+        # Optional admin FYI that the removal went through.
+        recipients = (getattr(site, "recovery_contacts_to", None)
+                      or getattr(site, "access_request_to", None) or "").strip()
+        if getattr(site, "recovery_contacts_removal_alerts", False) and site.smtp_host and recipients:
+            site_label = (site.frontend_title or "Trusted Servants")
+            send_mail(site, recipients,
+                      f"Recovery Contacts removal confirmed — {name}",
+                      "\n".join([f"{name} confirmed their removal from the {site_label} "
+                                 "Recovery Contacts list and has been taken off it automatically.",
+                                 "", "No action needed."]))
+    else:
+        # Auto-apply update onto the matched entry (or publish as new).
+        if target is not None:
+            target.name = entry.name
+            target.phone = entry.phone
+            target.email = entry.email
+            target.show_phone = entry.show_phone
+            target.show_email = entry.show_email
+            target.available_to_sponsor = entry.available_to_sponsor
+            target.contact_enabled = entry.contact_enabled
+            target.approved = True
+            target.approved_at = _dt.utcnow()
+            _db.session.delete(entry)
+            _db.session.commit()
+            log_recovery_contact("update_confirmed",
+                                 "Listing update confirmed via email link — applied automatically",
+                                 entry_name=name, actor="Visitor")
+        else:
+            # Nothing matched — confirming publishes it as a new listing.
+            entry.wants_update = False
+            entry.removal_token = None
+            entry.approved = True
+            entry.approved_at = _dt.utcnow()
+            _db.session.commit()
+            log_recovery_contact("update_confirmed",
+                                 "Update confirmed via email link — no match, published as a new listing",
+                                 entry_name=name, actor="Visitor")
+
+    return _render_rc_confirm(site, status="confirmed", kind=kind, name=name)
+
+
+def _render_rc_confirm(site, status, kind, name):
+    ctx = _frontend_context(site)
+    return render_template("frontend/recovery_contacts_confirm.html",
+                           status=status, kind=kind, confirm_name=name, **ctx)
+
+
+@bp.route("/contactlist/disavow/<token>")
+def recovery_contacts_disavow(token):
+    """The "I didn't submit this" link in a confirmation email. Discards
+    the pending update/removal request without applying it, locks the
+    matched listing against further update/removal requests for 7 days,
+    and records the requestor's IP as a flagged abuse event so an admin
+    can block it from Watchtower."""
+    from types import SimpleNamespace
+    from datetime import datetime as _dt, timedelta as _td
+    from .models import (db as _db, RecoveryContact, log_recovery_contact,
+                         record_recovery_contact_abuse)
+    from .mail import send_mail
+    site = _site()
+    if not site:
+        abort(404)
+    entry = RecoveryContact.query.filter_by(removal_token=token).first() if token else None
+    if entry is None or not (entry.wants_update or entry.wants_removal):
+        return _render_rc_confirm(site, status="invalid", kind=None, name=None)
+
+    kind = "removal" if entry.wants_removal else "update"
+    name = entry.name
+    if entry.removal_confirmed_at:
+        # Already confirmed/applied — too late to disavow.
+        return _render_rc_confirm(site, status="already", kind=kind, name=name)
+
+    target = entry.matched_entry
+    req_ip = (entry.ip_address or "")        # IP that filed the request
+    snap_email = entry.email
+    lock_until = _dt.utcnow() + _td(days=7)
+
+    if target is not None:
+        target.requests_locked_until = lock_until
+    # Discard the pending request — never apply it.
+    _db.session.delete(entry)
+    _db.session.commit()
+
+    abuse_target = target if target is not None else SimpleNamespace(
+        id=None, name=name, email=snap_email)
+    record_recovery_contact_abuse(
+        "disavowed", abuse_target, req_ip,
+        f"Listing owner reported a {kind} request as not theirs — request "
+        "discarded; listing locked against changes for 7 days.",
+        locked_until=lock_until)
+    log_recovery_contact(
+        "disavowed",
+        f"{kind.capitalize()} request reported as not submitted by the owner — "
+        "discarded; listing locked for 7 days",
+        entry_name=name, actor="Visitor", ip_address=req_ip)
+
+    # Optional admin alert (reuses the removal-alerts toggle).
+    recipients = (getattr(site, "recovery_contacts_to", None)
+                  or getattr(site, "access_request_to", None) or "").strip()
+    if getattr(site, "recovery_contacts_removal_alerts", False) and site.smtp_host and recipients:
+        site_label = (site.frontend_title or "Trusted Servants")
+        send_mail(site, recipients,
+                  f"Recovery Contacts: disavowed {kind} request — {name}",
+                  "\n".join([
+                      f"A {kind} request for the {site_label} Recovery Contacts "
+                      f"listing \"{name}\" was reported as not submitted by the owner.",
+                      "", f"Requestor IP: {req_ip or 'unknown'}",
+                      "The request has been discarded and the listing locked against "
+                      "further update/removal requests for 7 days.",
+                      "", "Open Watchtower to review it and block the IP if needed."]))
+    return _render_rc_confirm(site, status="disavowed", kind=kind, name=name)
+
+
+@bp.route("/contactlist/contact", methods=["POST"])
+def recovery_contacts_contact():
+    """Relay a visitor's message to a listed person who opted into
+    email contact. The recipient's address is never exposed — the email
+    is sent server-side to ``entry.email`` with Reply-To set to the
+    sender, so the person can reply directly. Bumps ``contact_count``."""
+    from flask import flash
+    from .auth import _verify_turnstile
+    from .mail import send_mail
+    from .models import db as _db, RecoveryContact, log_recovery_contact
+
+    site = _site()
+    gate = _frontend_gate(site)
+    if gate is not None:
+        return gate
+    if not site or not getattr(site, "recovery_contacts_enabled", False):
+        abort(404)
+    back = redirect(url_for("frontend.recovery_contacts"))
+    f = request.form
+
+    # Honeypot — silently accept so a bot can't tell.
+    if (f.get("website") or "").strip():
+        flash("Thanks — your message has been sent.", "success")
+        return back
+
+    try:
+        eid = int(f.get("eid") or 0)
+    except (ValueError, TypeError):
+        eid = 0
+    entry = RecoveryContact.query.filter_by(id=eid, approved=True).first() if eid else None
+    if entry is None or not entry.contact_enabled or not entry.email:
+        flash("Sorry — that person isn't reachable through the site.", "danger")
+        return back
+
+    vname = (f.get("name") or "").strip()[:200]
+    vemail = (f.get("email") or "").strip()[:255]
+    vmsg = (f.get("message") or "").strip()[:5000]
+    if not vname or not vemail or not vmsg:
+        flash("Please include your name, email, and a message.", "danger")
+        return back
+    if "@" not in vemail or "." not in vemail.split("@", 1)[-1]:
+        flash("That email address doesn't look quite right — double-check it?", "danger")
+        return back
+
+    if site.turnstile_enabled:
+        ok, err = _verify_turnstile(site, f.get("cf-turnstile-response", ""), request.remote_addr)
+        if not ok:
+            flash(err or "Security check failed — please try again.", "danger")
+            return back
+
+    if not site.smtp_host:
+        flash("Contact isn't available right now — please try again later.", "danger")
+        return back
+
+    site_label = (site.frontend_title or "Trusted Servants")
+    subject = f"{vname} would like to connect with you"
+    body = "\n".join([
+        f"Someone reached out to you through the {site_label} contact list.",
+        "Reply directly to this email to respond — it goes straight to them.",
+        "",
+        f"From: {vname} <{vemail}>",
+        "", "─" * 56, "", vmsg, "", "─" * 56,
+    ])
+    ok, err = _send_with_reply_to(site, entry.email, subject, body,
+                                  reply_to=vemail, reply_to_name=vname)
+    if not ok:
+        ok, err = send_mail(site, entry.email, subject, body)
+    if not ok:
+        flash("Sorry — we couldn't send your message. Please try again later.", "danger")
+        return back
+
+    entry.contact_count = (entry.contact_count or 0) + 1
+    _db.session.commit()
+    log_recovery_contact("contacted", f"Contacted via the site by {vname} <{vemail}>",
+                         entry_name=entry.name, actor="Visitor",
+                         ip_address=(request.remote_addr or "")[:64])
+    flash(f"Thanks — your message has been sent to {entry.name}.", "success")
+    return back
 
 
 def _render_custom_form(cf, ctx, errors=None, values=None, success_message=None):
@@ -4338,6 +5132,7 @@ def site_index():
         "animate": _tpl_settings.get("bg_dynbg_animate", True),
 
         "pastel_light": _tpl_settings.get("bg_dynbg_pastel_light", False),
+        "knobs": _tpl_settings.get("bg_dynbg_knobs", {}),
     }
     sort_mode = (site.frontend_site_index_sort_mode or "grouped") if site else "grouped"
     heading = (site.frontend_site_index_heading if site else None) or "Site index"

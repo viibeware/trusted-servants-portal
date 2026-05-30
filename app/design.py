@@ -148,6 +148,7 @@ THEME_DEFAULTS = {
         "color_surface_dark": "#0b1026",
         "color_border":       "#e2e8f0",
         "color_text":         "#0f172a",
+        "color_text_dark":    "#e2e8f0",
         "color_text_soft":    "#475569",
         "color_link":         "#0b5cff",
         "color_link_hover":   "#0844c2",
@@ -223,7 +224,7 @@ THEME_DEFAULTS = {
         "card_secondary_hover_transform": "lift-md",
 
         "section_gap":        "lg",
-        "container_max_px":   1160,
+        "container_max_px":   1400,
         # Horizontal padding applied inside `.fe-container`. Defaults
         # to 5vw on both viewports so content always carries a visible
         # gutter — important on intermediate widths (~768–1160 px) where
@@ -276,6 +277,7 @@ THEME_DEFAULTS = {
         "color_surface_dark": "#0b1026",
         "color_border":       "#cbd5e1",
         "color_text":         "#1e293b",
+        "color_text_dark":    "#e2e8f0",
         "color_text_soft":    "#64748b",
         "color_link":         "#0b5cff",
         "color_link_hover":   "#0844c2",
@@ -321,7 +323,7 @@ THEME_DEFAULTS = {
         "card_secondary_hover_transform": "lift-md",
 
         "section_gap":        "lg",
-        "container_max_px":   1200,
+        "container_max_px":   1400,
         "container_pad_desktop": "5vw",
         "container_pad_mobile":  "5vw",
         "card_radius":        "md",
@@ -352,6 +354,439 @@ THEME_DEFAULTS = {
         "text_size_base":     "1rem",
         "text_line_height":   "1.55",
     },
+    # ── Modern Dark ("Mission Control") ───────────────────────────────
+    # Deep-indigo, teal→cyan accent. Defaults to dark mode (see THEMES);
+    # the light-mode values below give a clean light companion so the
+    # visitor sun/moon toggle still resolves to a coherent palette. The
+    # signature flourishes (aurora bg, grain, gradient buttons, gradient
+    # headings, glass surfaces) live in static/css/themes/modern-dark.css.
+    "modern-dark": {
+        "color_brand":        "#6366f1",
+        "color_accent":       "#2dd4bf",
+        "color_surface":      "#f5f7fc",
+        "color_surface_alt":  "#ffffff",
+        "color_surface_dark": "#070a1f",
+        "color_border":       "#e3e7f3",
+        "color_text":         "#0e1330",
+        "color_text_dark":    "#eef0ff",
+        "color_text_soft":    "#4c5478",
+        "color_link":         "#4338ca",
+        "color_link_hover":   "#6366f1",
+        "color_nav_link":          "#0e1330",
+        "color_nav_link_hover":    "#4338ca",
+        "color_megamenu_link":       "#eef0ff",
+        "color_megamenu_link_hover": "#ffffff",
+        "color_btn_primary_bg":         "#2dd4bf",
+        "color_btn_primary_hover_bg":   "#38bdf8",
+        "color_btn_primary_text":       "#06241f",
+        "color_btn_secondary_bg":       "#eef0ff",
+        "color_btn_secondary_hover_bg": "#e2e6fb",
+        "color_btn_secondary_text":     "#0e1330",
+        "color_btn_primary_border":         "#2dd4bf",
+        "color_btn_primary_hover_border":   "#38bdf8",
+        "color_btn_secondary_border":       "#d8ddf2",
+        "color_btn_secondary_hover_border": "#6366f1",
+        "color_card_primary_bg":          "#ffffff",
+        "color_card_primary_bg_dark":     "#0c1130",
+        "color_card_primary_border":      "#e3e7f3",
+        "color_card_primary_border_dark": "#1d2547",
+        "color_card_secondary_bg":          "#f5f7fc",
+        "color_card_secondary_bg_dark":     "#0c1130",
+        "color_card_secondary_border":      "#e3e7f3",
+        "color_card_secondary_border_dark": "#1d2547",
+        "color_card_primary_hover_border":   "#2dd4bf",
+        "color_card_secondary_hover_border": "#6366f1",
+
+        "card_primary_border_width":     "1",
+        "card_primary_shadow":           "none",
+        "card_primary_hover_shadow":     "lg",
+        "card_primary_shadow_color":      "#0b1026",
+        "card_primary_shadow_color_dark": "#000000",
+        "card_primary_transition":       "normal",
+        "card_primary_hover_transform":  "lift-lg",
+
+        "card_secondary_border_width":    "1",
+        "card_secondary_shadow":          "none",
+        "card_secondary_hover_shadow":    "lg",
+        "card_secondary_shadow_color":      "#0b1026",
+        "card_secondary_shadow_color_dark": "#000000",
+        "card_secondary_transition":      "normal",
+        "card_secondary_hover_transform": "lift-lg",
+
+        "section_gap":        "xl",
+        "container_max_px":   1400,
+        "container_pad_desktop": "5vw",
+        "container_pad_mobile":  "5vw",
+        "card_radius":        "lg",
+        "card_shadow":        "md",
+
+        "btn_radius":         "pill",
+        "btn_padding_x":      "30px",
+        "btn_padding_y":      "15px",
+        "btn_primary_border_width":         "0",
+        "btn_primary_hover_border_width":   "0",
+        "btn_secondary_border_width":       "1",
+        "btn_secondary_hover_border_width": "1",
+        "btn_weight":         "600",
+        "btn_text_transform": "none",
+        "btn_decoration":     "none",
+        "btn_shadow":           "on",
+        "btn_hover_transform":  "on",
+        "btn_hover_glow":       "on",
+
+        "link_decoration":       "none",
+        "link_decoration_hover": "underline",
+        "megamenu_link_decoration":       "none",
+        "megamenu_link_decoration_hover": "none",
+
+        "text_size_base":     "1.0625rem",
+        "text_line_height":   "1.6",
+    },
+    # ── Cyberpunk ("Neon Grid") ───────────────────────────────────────
+    # Near-black HUD canvas, neon cyan + magenta, sharp (zero-radius)
+    # edges, monospace display. Defaults to dark mode. Scanlines, grid
+    # backdrop, glitch headings, corner-bracket cards live in
+    # static/css/themes/cyberpunk.css.
+    "cyberpunk": {
+        "color_brand":        "#00eaff",
+        "color_accent":       "#ff2d95",
+        "color_surface":      "#eef0f6",
+        "color_surface_alt":  "#ffffff",
+        "color_surface_dark": "#05060f",
+        "color_border":       "#c7cce0",
+        "color_text":         "#10121d",
+        "color_text_dark":    "#d7e6ff",
+        "color_text_soft":    "#565d76",
+        "color_link":         "#c026d3",
+        "color_link_hover":   "#ff2d95",
+        "color_nav_link":          "#10121d",
+        "color_nav_link_hover":    "#c026d3",
+        "color_megamenu_link":       "#cfeaff",
+        "color_megamenu_link_hover": "#ffffff",
+        "color_btn_primary_bg":         "#ff2d95",
+        "color_btn_primary_hover_bg":   "#00eaff",
+        "color_btn_primary_text":       "#05060f",
+        "color_btn_secondary_bg":       "#0e1124",
+        "color_btn_secondary_hover_bg": "#161a33",
+        "color_btn_secondary_text":     "#cfeaff",
+        "color_btn_primary_border":         "#ff2d95",
+        "color_btn_primary_hover_border":   "#00eaff",
+        "color_btn_secondary_border":       "#00eaff",
+        "color_btn_secondary_hover_border": "#ff2d95",
+        "color_card_primary_bg":          "#ffffff",
+        "color_card_primary_bg_dark":     "#0a0c1a",
+        "color_card_primary_border":      "#00eaff",
+        "color_card_primary_border_dark": "#1b2342",
+        "color_card_secondary_bg":          "#eef0f6",
+        "color_card_secondary_bg_dark":     "#0a0c1a",
+        "color_card_secondary_border":      "#c7cce0",
+        "color_card_secondary_border_dark": "#1b2342",
+        "color_card_primary_hover_border":   "#ff2d95",
+        "color_card_secondary_hover_border": "#00eaff",
+
+        "card_primary_border_width":     "1",
+        "card_primary_shadow":           "none",
+        "card_primary_hover_shadow":     "none",
+        "card_primary_shadow_color":      "#00eaff",
+        "card_primary_shadow_color_dark": "#00eaff",
+        "card_primary_transition":       "fast",
+        "card_primary_hover_transform":  "lift-sm",
+
+        "card_secondary_border_width":    "1",
+        "card_secondary_shadow":          "none",
+        "card_secondary_hover_shadow":    "none",
+        "card_secondary_shadow_color":      "#00eaff",
+        "card_secondary_shadow_color_dark": "#00eaff",
+        "card_secondary_transition":      "fast",
+        "card_secondary_hover_transform": "lift-sm",
+
+        "section_gap":        "lg",
+        "container_max_px":   1400,
+        "container_pad_desktop": "5vw",
+        "container_pad_mobile":  "5vw",
+        "card_radius":        "none",
+        "card_shadow":        "none",
+
+        "btn_radius":         "none",
+        "btn_padding_x":      "26px",
+        "btn_padding_y":      "13px",
+        "btn_primary_border_width":         "1",
+        "btn_primary_hover_border_width":   "1",
+        "btn_secondary_border_width":       "1",
+        "btn_secondary_hover_border_width": "1",
+        "btn_weight":         "700",
+        "btn_text_transform": "uppercase",
+        "btn_decoration":     "none",
+        "btn_shadow":           "on",
+        "btn_hover_transform":  "on",
+        "btn_hover_glow":       "on",
+
+        "link_decoration":       "none",
+        "link_decoration_hover": "underline",
+        "megamenu_link_decoration":       "none",
+        "megamenu_link_decoration_hover": "none",
+
+        "text_size_base":     "1rem",
+        "text_line_height":   "1.6",
+    },
+    # ── Sanctuary (warm light) ────────────────────────────────────────
+    # Calm, organic: sand/cream canvas, sage-green brand + clay accent,
+    # warm humanist serif headings, soft rounded cards, airy spacing.
+    # Defaults to light mode; a warm dark companion is in the theme CSS.
+    "sanctuary": {
+        "color_brand":        "#5e7d6a",
+        "color_accent":       "#c07a4e",
+        "color_surface":      "#faf6ee",
+        "color_surface_alt":  "#f1e9da",
+        "color_surface_dark": "#221d16",
+        "color_border":       "#e4d9c5",
+        "color_text":         "#3a3127",
+        "color_text_dark":    "#ece3d2",
+        "color_text_soft":    "#7c6f5d",
+        "color_link":         "#5e7d6a",
+        "color_link_hover":   "#496353",
+        "color_nav_link":          "#3a3127",
+        "color_nav_link_hover":    "#5e7d6a",
+        "color_megamenu_link":       "#3a3127",
+        "color_megamenu_link_hover": "#5e7d6a",
+        "color_btn_primary_bg":         "#5e7d6a",
+        "color_btn_primary_hover_bg":   "#496353",
+        "color_btn_primary_text":       "#faf6ee",
+        "color_btn_secondary_bg":       "#f1e9da",
+        "color_btn_secondary_hover_bg": "#e8dcc7",
+        "color_btn_secondary_text":     "#3a3127",
+        "color_btn_primary_border":         "#5e7d6a",
+        "color_btn_primary_hover_border":   "#496353",
+        "color_btn_secondary_border":       "#e4d9c5",
+        "color_btn_secondary_hover_border": "#5e7d6a",
+        "color_card_primary_bg":          "#fffdf8",
+        "color_card_primary_bg_dark":     "#2a2319",
+        "color_card_primary_border":      "#e4d9c5",
+        "color_card_primary_border_dark": "#3a3022",
+        "color_card_secondary_bg":          "#f7f1e6",
+        "color_card_secondary_bg_dark":     "#2a2319",
+        "color_card_secondary_border":      "#e4d9c5",
+        "color_card_secondary_border_dark": "#3a3022",
+        "color_card_primary_hover_border":   "#c07a4e",
+        "color_card_secondary_hover_border": "#5e7d6a",
+
+        "card_primary_border_width":     "1",
+        "card_primary_shadow":           "sm",
+        "card_primary_hover_shadow":     "lg",
+        "card_primary_shadow_color":      "#6b5a3f",
+        "card_primary_shadow_color_dark": "#000000",
+        "card_primary_transition":       "normal",
+        "card_primary_hover_transform":  "lift-md",
+
+        "card_secondary_border_width":    "1",
+        "card_secondary_shadow":          "none",
+        "card_secondary_hover_shadow":    "md",
+        "card_secondary_shadow_color":      "#6b5a3f",
+        "card_secondary_shadow_color_dark": "#000000",
+        "card_secondary_transition":      "normal",
+        "card_secondary_hover_transform": "lift-md",
+
+        "section_gap":        "xl",
+        "container_max_px":   1400,
+        "container_pad_desktop": "5vw",
+        "container_pad_mobile":  "5vw",
+        "card_radius":        "lg",
+        "card_shadow":        "md",
+
+        "btn_radius":         "pill",
+        "btn_padding_x":      "30px",
+        "btn_padding_y":      "14px",
+        "btn_primary_border_width":         "1",
+        "btn_primary_hover_border_width":   "1",
+        "btn_secondary_border_width":       "1",
+        "btn_secondary_hover_border_width": "1",
+        "btn_weight":         "600",
+        "btn_text_transform": "none",
+        "btn_decoration":     "none",
+        "btn_shadow":           "on",
+        "btn_hover_transform":  "on",
+        "btn_hover_glow":       "off",
+
+        "link_decoration":       "none",
+        "link_decoration_hover": "underline",
+        "megamenu_link_decoration":       "none",
+        "megamenu_link_decoration_hover": "none",
+
+        "text_size_base":     "1.0625rem",
+        "text_line_height":   "1.7",
+    },
+    "terminal": {
+        # A utilitarian terminal: phosphor-green on near-black, all-monospace,
+        # flat boxy panels with visible 1px borders, zero radius, no shadows.
+        # Defaults to dark; the light values are a clean "printout" paper.
+        "color_brand":        "#2fae5d",
+        "color_accent":       "#2a9b54",
+        "color_surface":      "#edf0ec",
+        "color_surface_alt":  "#e2e7e1",
+        "color_surface_dark": "#0a0e0c",
+        "color_border":       "#cfd8d1",
+        "color_text":         "#14201a",
+        "color_text_dark":    "#cdd8d0",
+        "color_text_soft":    "#586860",
+        "color_link":         "#1f7a44",
+        "color_link_hover":   "#155c33",
+        "color_nav_link":          "#14201a",
+        "color_nav_link_hover":    "#1f7a44",
+        "color_megamenu_link":       "#14201a",
+        "color_megamenu_link_hover": "#1f7a44",
+        "color_btn_primary_bg":         "#2fae5d",
+        "color_btn_primary_hover_bg":   "#259150",
+        "color_btn_primary_text":       "#04130b",
+        "color_btn_secondary_bg":       "#e2e7e1",
+        "color_btn_secondary_hover_bg": "#d6ded7",
+        "color_btn_secondary_text":     "#14201a",
+        "color_btn_primary_border":         "#2fae5d",
+        "color_btn_primary_hover_border":   "#259150",
+        "color_btn_secondary_border":       "#c2ccc4",
+        "color_btn_secondary_hover_border": "#2fae5d",
+        "color_card_primary_bg":          "#ffffff",
+        "color_card_primary_bg_dark":     "#0f1512",
+        "color_card_primary_border":      "#d3dbd5",
+        "color_card_primary_border_dark": "#1e2b24",
+        "color_card_secondary_bg":          "#f4f6f3",
+        "color_card_secondary_bg_dark":     "#0c110e",
+        "color_card_secondary_border":      "#d3dbd5",
+        "color_card_secondary_border_dark": "#1e2b24",
+        "color_card_primary_hover_border":   "#2fae5d",
+        "color_card_secondary_hover_border": "#2fae5d",
+
+        "card_primary_border_width":     "1",
+        "card_primary_shadow":           "none",
+        "card_primary_hover_shadow":     "none",
+        "card_primary_shadow_color":      "#0a0e0c",
+        "card_primary_shadow_color_dark": "#000000",
+        "card_primary_transition":       "fast",
+        "card_primary_hover_transform":  "none",
+
+        "card_secondary_border_width":    "1",
+        "card_secondary_shadow":          "none",
+        "card_secondary_hover_shadow":    "none",
+        "card_secondary_shadow_color":      "#0a0e0c",
+        "card_secondary_shadow_color_dark": "#000000",
+        "card_secondary_transition":      "fast",
+        "card_secondary_hover_transform": "none",
+
+        "section_gap":        "xl",
+        "container_max_px":   1400,
+        "container_pad_desktop": "5vw",
+        "container_pad_mobile":  "5vw",
+        "card_radius":        "none",
+        "card_shadow":        "none",
+
+        "btn_radius":         "none",
+        "btn_padding_x":      "24px",
+        "btn_padding_y":      "12px",
+        "btn_primary_border_width":         "1",
+        "btn_primary_hover_border_width":   "1",
+        "btn_secondary_border_width":       "1",
+        "btn_secondary_hover_border_width": "1",
+        "btn_weight":         "600",
+        "btn_text_transform": "uppercase",
+        "btn_decoration":     "none",
+        "btn_shadow":           "off",
+        "btn_hover_transform":  "off",
+        "btn_hover_glow":       "off",
+
+        "link_decoration":       "none",
+        "link_decoration_hover": "underline",
+        "megamenu_link_decoration":       "none",
+        "megamenu_link_decoration_hover": "none",
+
+        "text_size_base":     "0.95rem",
+        "text_line_height":   "1.6",
+    },
+    "neobrutal": {
+        # Neobrutalism: colourful flat surfaces, thick black borders, hard
+        # offset shadows, chunky Archivo Black headings. Defaults to light; a
+        # dark companion keeps the bright blocks on a near-black canvas.
+        # (Borders + hard shadows are painted by the theme CSS; the tokens
+        # carry the bold palette + radius.)
+        "color_brand":        "#ff4d8d",
+        "color_accent":       "#ffd23f",
+        "color_surface":      "#faf4e6",
+        "color_surface_alt":  "#f0e9d6",
+        "color_surface_dark": "#17151f",
+        "color_border":       "#111111",
+        "color_text":         "#15110a",
+        "color_text_dark":    "#f7f3e8",
+        "color_text_soft":    "#6b6152",
+        "color_link":         "#d6006e",
+        "color_link_hover":   "#a8005a",
+        "color_nav_link":          "#15110a",
+        "color_nav_link_hover":    "#d6006e",
+        "color_megamenu_link":       "#15110a",
+        "color_megamenu_link_hover": "#d6006e",
+        "color_btn_primary_bg":         "#ff4d8d",
+        "color_btn_primary_hover_bg":   "#ff2d77",
+        "color_btn_primary_text":       "#111111",
+        "color_btn_secondary_bg":       "#ffffff",
+        "color_btn_secondary_hover_bg": "#ffe14d",
+        "color_btn_secondary_text":     "#111111",
+        "color_btn_primary_border":         "#111111",
+        "color_btn_primary_hover_border":   "#111111",
+        "color_btn_secondary_border":       "#111111",
+        "color_btn_secondary_hover_border": "#111111",
+        "color_card_primary_bg":          "#ffd23f",
+        "color_card_primary_bg_dark":     "#ffd23f",
+        "color_card_primary_border":      "#111111",
+        "color_card_primary_border_dark": "#111111",
+        "color_card_secondary_bg":          "#8fe3ef",
+        "color_card_secondary_bg_dark":     "#8fe3ef",
+        "color_card_secondary_border":      "#111111",
+        "color_card_secondary_border_dark": "#111111",
+        "color_card_primary_hover_border":   "#111111",
+        "color_card_secondary_hover_border": "#111111",
+
+        "card_primary_border_width":     "1",
+        "card_primary_shadow":           "none",
+        "card_primary_hover_shadow":     "none",
+        "card_primary_shadow_color":      "#111111",
+        "card_primary_shadow_color_dark": "#111111",
+        "card_primary_transition":       "fast",
+        "card_primary_hover_transform":  "none",
+
+        "card_secondary_border_width":    "1",
+        "card_secondary_shadow":          "none",
+        "card_secondary_hover_shadow":    "none",
+        "card_secondary_shadow_color":      "#111111",
+        "card_secondary_shadow_color_dark": "#111111",
+        "card_secondary_transition":      "fast",
+        "card_secondary_hover_transform": "none",
+
+        "section_gap":        "xl",
+        "container_max_px":   1400,
+        "container_pad_desktop": "5vw",
+        "container_pad_mobile":  "5vw",
+        "card_radius":        "md",
+        "card_shadow":        "none",
+
+        "btn_radius":         "md",
+        "btn_padding_x":      "26px",
+        "btn_padding_y":      "13px",
+        "btn_primary_border_width":         "1",
+        "btn_primary_hover_border_width":   "1",
+        "btn_secondary_border_width":       "1",
+        "btn_secondary_hover_border_width": "1",
+        "btn_weight":         "700",
+        "btn_text_transform": "uppercase",
+        "btn_decoration":     "none",
+        "btn_shadow":           "off",
+        "btn_hover_transform":  "off",
+        "btn_hover_glow":       "off",
+
+        "link_decoration":       "none",
+        "link_decoration_hover": "underline",
+        "megamenu_link_decoration":       "none",
+        "megamenu_link_decoration_hover": "none",
+
+        "text_size_base":     "1.0625rem",
+        "text_line_height":   "1.6",
+    },
 }
 
 
@@ -375,6 +810,9 @@ DESIGN_FIELDS = [
      "help": "Default dark-mode background for pages, containers, and any element without an explicit colour. Sections that hardcoded #0b1026 also inherit this token."},
     {"key": "color_border",      "kind": "color",  "group": "Colors", "label": "Border"},
     {"key": "color_text",        "kind": "color",  "group": "Colors", "label": "Text"},
+    {"key": "color_text_dark",   "kind": "color",  "group": "Colors",
+     "label": "Text — Darkmode",
+     "help": "Body/text colour used site-wide in dark mode. Anywhere the Text token is consumed, this value takes over when the site renders in dark mode."},
     {"key": "color_text_soft",   "kind": "color",  "group": "Colors", "label": "Text — muted"},
     {"key": "color_link",        "kind": "color",  "group": "Colors", "label": "Link"},
     {"key": "color_link_hover",  "kind": "color",  "group": "Colors", "label": "Link — hover"},
@@ -685,7 +1123,7 @@ def design_css_vars(site):
     # Colors (raw hex).
     for key in ("color_brand", "color_accent", "color_surface", "color_surface_alt",
                 "color_surface_dark",
-                "color_border", "color_text", "color_text_soft",
+                "color_border", "color_text", "color_text_dark", "color_text_soft",
                 "color_link", "color_link_hover",
                 "color_nav_link", "color_nav_link_hover",
                 "color_megamenu_link", "color_megamenu_link_hover",
@@ -776,6 +1214,20 @@ def design_css_vars(site):
         # SHADOW_SCALE value if the colour can't be parsed.
         _shadow_color_light = chosen.get('card_' + which + '_shadow_color', '#0f172a')
         _shadow_color_dark  = chosen.get('card_' + which + '_shadow_color_dark', _shadow_color_light)
+        # Raw shadow-colour vars (no alpha applied) so callers that need
+        # to compose a custom shadow size while STILL tracking the
+        # admin's shadow_color choice (e.g. the featured-image
+        # elevation on event/announcement/archive detail pages) can
+        # mix in their own alpha via color-mix(). The full
+        # `--fe-card-...-shadow` var below bakes the colour + the
+        # scale's offset/blur/alpha together; this raw pair gives a
+        # second handle for size-customised consumers.
+        parts.append(
+            f"--fe-color-card-{which}-shadow: {_shadow_color_light};"
+        )
+        parts.append(
+            f"--fe-color-card-{which}-shadow-dark: {_shadow_color_dark};"
+        )
         parts.append(
             f"--fe-card-{which}-shadow: "
             f"{shadow_with_color(chosen['card_' + which + '_shadow'], _shadow_color_light)};"
@@ -802,3 +1254,30 @@ def design_css_vars(site):
         )
 
     return " ".join(parts)
+
+
+def neobrutal_hero_css_vars(site):
+    """Per-request random positions for the Neobrutal hero's geometric
+    primitives. Returns a CSS custom-property string when the active theme is
+    Neobrutal (empty otherwise), so each page load scatters the shapes anew.
+    Each shape roams a generous region in its own corner so the centred
+    headline always stays clear of them.
+
+    Consumed by neobrutal.css's ``.fe-hero::before`` (four outlined circles)
+    and ``::after`` (the tilted square) via ``var(--nb-s*-*, <default>)`` — the
+    defaults keep a sensible static layout if this ever returns empty.
+    """
+    if not site or (getattr(site, "frontend_theme", "") or "") != "neobrutal":
+        return ""
+    import random
+    def p(lo, hi):
+        return f"{random.randint(lo, hi)}%"
+    parts = [
+        f"--nb-s1-x: {p(5, 20)}",  f"--nb-s1-y: {p(12, 42)}",
+        f"--nb-s2-x: {p(80, 94)}", f"--nb-s2-y: {p(8, 30)}",
+        f"--nb-s3-x: {p(80, 94)}", f"--nb-s3-y: {p(68, 90)}",
+        f"--nb-s4-x: {p(8, 28)}",  f"--nb-s4-y: {p(70, 92)}",
+        f"--nb-sq-right: {p(4, 14)}",
+        f"--nb-sq-rot: {random.randint(-18, 18)}deg",
+    ]
+    return "; ".join(parts) + ";"

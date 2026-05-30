@@ -37,6 +37,7 @@ _MAIN_CATALOG = [
     {"key": "stories",        "label": "Stories",              "endpoint": "main.stories",        "active_kind": "prefix:main.story"},
     {"key": "blog",           "label": "Blog",                 "endpoint": "main.blog_index",     "active_kind": "prefix:main.blog_"},
     {"key": "trusted_servants", "label": "Email List",         "endpoint": "main.trusted_servants_list", "active_kind": "prefix:main.trusted_servants"},
+    {"key": "recovery_contacts",     "label": "Recovery Contacts",    "endpoint": "main.recovery_contacts",     "active_kind": "prefix:main.recovery_contacts"},
     {"key": "web_frontend",   "label": "Web Frontend",         "endpoint": "main.frontend_dashboard", "active_kind": "prefix:main.frontend_"},
 ]
 
@@ -72,6 +73,7 @@ _DYNAMIC_SECTION_ITEMS = {
     "stories":          "stories_required_role",
     "blog":             "blog_required_role",
     "trusted_servants": "trusted_servants_required_role",
+    "recovery_contacts":       "recovery_contacts_required_role",
     "web_frontend":     "frontend_module_required_role",
 }
 
@@ -125,6 +127,9 @@ def _is_visible(key, site, user):
     if key == "trusted_servants":
         return bool(site and getattr(site, "trusted_servants_enabled", False)
                     and user_meets_role(user, getattr(site, "trusted_servants_required_role", "admin")))
+    if key == "recovery_contacts":
+        return bool(site and getattr(site, "recovery_contacts_enabled", False)
+                    and user_meets_role(user, getattr(site, "recovery_contacts_required_role", "admin")))
     # Watchtower and Web Frontend both render as pinned sidebar-quicknav
     # buttons above the search bar (see base.html). Hiding them from
     # the regular catalog avoids two entry points for the same

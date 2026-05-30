@@ -6,6 +6,313 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [2.9.5] — 2026-05-30
+
+### Added
+
+- **Guided Zoom Meeting launcher — a stepped, blur-backdrop wizard on the backend meeting detail page.** Online/hybrid meetings gain a **Launch Zoom Meeting (Guided)** button above the Zoom ID/passcode block that opens a modal walking a host through three steps: **Sign in** (warns hosting needs a Mac/Windows/Linux desktop — not iOS/Android/Chromebook — and shows the assigned account login + click-to-copy password with reveal), **Get code** (reminds the user to click *"Or alternatively, Verify via one-time passcode"* rather than "Allow on other devices", then retrieves the OTP — see below), and **Start the meeting** (a Launch button on the start URL plus Meeting ID/passcode to copy, and a caveat to sign out of any other Zoom account in the browser first). Each step carries an annotated screenshot that opens in a lightbox; the stepper circles at the top are clickable (and keyboard-accessible) to jump between steps.
+- **Automatic OTP-code retrieval over IMAP (`app/otp_fetch.py`).** A new fetcher logs into the shared OTP inbox read-only (IMAP `EXAMINE` — never marks mail read), finds the freshest Zoom sign-in code, parses the 6-digit passcode, and returns it with the email's own timestamp. Stripping `<head>`/`<style>`/`<script>` first keeps embedded CSS/font-URL digits from polluting the search, and a hint-scored extractor (anchored on "expire", "passcode", "verification"…) isolates the real code over stray numbers (map coordinates, dates, phone numbers, zips). Backs the wizard's Step 2, an inline **Retrieve latest code** button on the meeting detail OTP Email section, and the OTP Email widget on the **Zoom Accounts** page — all sharing one `initOtpFetch()` handler via a `[data-otp-widget]` container, so seasoned hosts can pull a code in place without opening the wizard.
+- **IMAP mailbox settings in Settings → Security → Zoom OTP Email.** The existing OTP-email credentials gained IMAP server / port / SSL / optional username / mailbox / optional app-password fields (encrypted via Fernet, additively migrated). Username/password fall back to the email + password above when left blank.
+- **Location now resolves to its full address with an Open-in-Maps link.** The meeting detail Location card shows the saved Location's complete address (not just the name) plus an **Open in Maps** button (the record's `maps_url`, else a Google Maps search). Resolution moved to the route with tolerant matching (exact normalized match, then a difflib similarity ≥ 0.86 fallback) so a one-character typo in the meeting's free-text location still resolves.
+
+### Changed
+
+- **Meeting detail page restyled into a balanced two-column card layout.** The Zoom section is wrapped in its own `data-card` (brand-accent panel) in the right column, the full-height vertical divider is gone, the logo moved into the left column so the Zoom card rises to the top, and the Schedule and Location sections sit in their own card-style containers. The 50/50 grid is preserved even for in-person meetings (the right column simply renders blank).
+- **OTP code freshness window tightened to 10 minutes, and the newest code always wins** when several arrive in the window (ranked by Zoom-origin, then code confidence, then recency — so a genuine code can't be hijacked by a stray number in a newer non-code notice).
+- **Click-to-copy chips render in Inter with normal letter spacing, and the "Click to copy" tooltip now has a green background.**
+
+### Fixed
+
+- **OTP search no longer misses codes near the UTC midnight boundary.** IMAP `SINCE` compares against each message's `INTERNALDATE` in the *mail server's* timezone (DreamHost is US-Pacific), so a code arriving just after UTC midnight was dated the previous day server-side and excluded. The `SINCE` window is widened by a day to absorb any server offset; the precise per-message UTC timestamp check still enforces the real freshness window.
+- **`/api/live-meeting` (and any `/api/*` background poll) no longer skews visitor metrics.** The utility bar polls `/api/live-meeting` every 30s on every public visitor; those machine requests were being recorded as `VisitorEvent` rows and inflating totals and the top-paths list. `_should_skip` now drops all `/api/*` requests at record time, and a shared `_NO_API` clause excludes any historical `/api/*` rows from every aggregation (totals, daily series, uniques, top paths/referrers, device/browser/OS donuts, hourly distribution) — non-destructively, without deleting the rows.
+
+## [2.9.4] — 2026-05-29
+
+### Added
+
+- **Dynamic-background picker reorganised into Background + Options tabs with a live preview.** The modal now leads with a fixed preview band (`.dynbg-modal-preview`, a sibling between `.modal-head` and the scroll body so it sits flush under the title bar and nothing scrolls above it) that re-renders on every settings change — preset, overlay, colours, pastel strength, randomize toggles, and per-preset knobs all repaint the sample in place. The **Options** tab merges the former Overlay + Colours panels and only shows the controls that apply to the active preset (driven by a new `PRESET_CAPS` capability spec stamped onto the panel as `data-dynbg-preset-caps` JSON), so admins never see a knob that does nothing for the chosen background.
+- **Per-preset tuning knobs.** A generic `knobs` JSON dimension (validated/scoped by `dynbg.normalize_knobs` against `PRESET_CAPS`, stamped as CSS custom properties by `knobs_to_css_vars`) carries each preset's sliders without per-field plumbing. Dotted grid exposes Dot size / Spacing / **Rotation** / Opacity; diagonal lines exposes Angle / Spacing / Opacity / Thickness. Round-tripped end-to-end through `routes.py`, `frontend.py` template settings, the block editor, and the page-hero modal.
+- **Size + Intensity on every texture overlay.** Previously only Noise grain was tunable; Scanlines, Linen, Vignette, Crosshatch, and Dot weave now each expose a Scale (`--fe-dynbg-ov-scale`) and Intensity (`--fe-dynbg-ov-opacity`) slider via the new `OVERLAY_KNOBS` spec, with per-overlay slider bounds set in the modal. Defaults of ×1 reproduce the original look so existing saves render unchanged.
+- **Foreground/background colours for the pattern presets.** Dotted grid and diagonal lines are now two-colour presets labelled **Dots/Lines** + **Background** — Colour 1 (`--fe-dynbg-c1`) drives the dot/stroke colour and Colour 2 (`--fe-dynbg-c2`) the surface fill (light + dark). Custom colours now actually affect these patterns; leaving a slot blank falls through to the brand token.
+- **Server-randomised picker thumbnails.** `dynbg.thumb_style()` seeds each catalog tile with a fresh random palette + random positions per page load, so the picker reads as a lively sample set rather than identical brand-default renders.
+- **Animated mobile menu reveal (Recovery Blue).** Tapping the hamburger now slides the primary nav dropdown down with an eased fade (`@keyframes feMobileMenuDrop`, 280 ms `cubic-bezier(0.2, 0.8, 0.2, 1)`), and the mega-menu panel uses the SAME entrance on mobile (≤ 880 px) regardless of the desktop panel-fade toggle, so opening either reads as one consistent motion instead of a hard cut. Both replay on each open via their `.fe-nav-open` / `.open` class; gated by `prefers-reduced-motion`.
+
+### Changed
+
+- **Dynamic-background recipes extracted into a shared `app/static/css/dynbg.css`**, now linked by both the admin shell (`base.html`) and the public frontend templates so the picker's live preview and thumbnails render the real recipes. These rules are no longer duplicated in `frontend.css` — single source of truth.
+- **Unset custom-colour slots display a ∅ null glyph** in the picker chips instead of the brand-default blue swatch, so an admin can tell at a glance which slots are overridden vs. falling through to the theme token.
+- **Default randomize-on for the presets that have movable parts.** Aurora blobs / mesh / bands default the randomize-colours (and positions, where applicable) toggles on when first picked; the deliberate fg/bg pattern presets default them off.
+- **Footer signed-in auth buttons are left-aligned and wrap.** The "Return to dashboard" + "Logout" pair in the `admin_login` footer block now sits left-aligned with a 1 rem gap (was pushed to opposite column edges via `justify-content: space-between` + `margin-left: auto`) and wraps to a second line when the block is too narrow.
+- **More breathing room under the mobile hamburger dropdown.** The Recovery Blue mobile nav panel gained an extra 1 rem of bottom padding (`8px 20px calc(16px + 1rem)`) below its last button.
+
+### Removed
+
+- **Retired the Starfield, Noise paper, and Spotlight glow base backgrounds.** All of their catalog entries, CSS recipes, and supporting code were removed. The six texture *overlays* (Noise grain, Scanlines, Linen, Vignette, Crosshatch, Dot weave) are unaffected. Any surface previously set to one of the three retired presets falls back to "no dynamic background" (its solid colour / uploaded image still renders).
+
+### Fixed
+
+- **Dotted-grid rotation now tiles across the whole surface instead of a narrow band.** The dots layer was only oversized `inset: -30%` (≈1.6×), so on a wide/short (or tall/narrow) surface a near-90° rotation shrank the dotted region to a band the width of the *short* side — a per-axis-percentage limitation (`inset`/`width %` can't size off the *longer* dimension). `.fe-dynbg-dotted-grid` is now a CSS size query container and the dots layer is a centred square sized `200cqmax` (2× the host's longest side); a centred square of side 2·max always exceeds the host's diagonal, so the lattice fully covers at any angle and aspect ratio.
+- **The pastel-strength slider now live-updates the picker preview.** Dragging it re-pastelises the in-modal sample immediately (the admin shell is light mode, so the preview applies the pastel directly to `--fe-dynbg-cN`) instead of only taking effect after save.
+- **Recovery Blue header is now fully sticky on mobile.** The shared headroom script still slides the header up on scroll-down at desktop widths, but the transform is neutralised at ≤ 880 px (`.fe-header-recovery.fe-header-hidden { transform: none }`) so the helpline bar + hamburger stay pinned and reachable while scrolling instead of hiding.
+- **Mobile utility bar no longer reveals a neighbouring item's pill at rest.** The horizontal swipe strip's snap "pages" were sizing to their content width — a percentage `flex-basis` collapses to content inside a horizontal scroll container — and the strip retained the header's inline side gutter, so each page was inset and the gutter exposed the adjacent item. Pages now pin to the full viewport via `min-width: 100%` (which resolves against the container's definite width), the strip is forced full-bleed with `padding: 0 !important` (beating the inline gutter, mirroring the existing `max-width: none !important`), and `overflow: hidden` clips any container wider than the viewport so nothing bleeds past a page edge.
+
+## [2.9.3] — 2026-05-28
+
+### Added
+
+- **Per-template "Card body preview" setting on the announcements_list and events_list customize panels.** New radio + character-count input on `tpl_customize_panel` (gated on `kind in ('announcements_list', 'events_list')`) stores `card_body_mode` (`'full' | 'truncated'`) and `card_body_max_chars` (clamped 50..2000, default 200) into the per-template settings leaf via `frontend_template_settings_save`. The character input is `disabled` until the truncated radio is selected; an inline IIFE re-gates it on the fly. `frontend.py::template_settings` was extended to include the two new keys in its passthrough allowlist — without this the loader silently dropped the keys and persisted saves wouldn't apply on the public render. **(Fixed in same commit.)**
+- **`_announcement_card.html` reads the mode + char cap from `_announcements_list_tpl`** (the dispatcher template's scoped variable). Truncated mode slices `ann.body` via Jinja's `truncate(N, True, '…')` BEFORE piping through `markdown_block`, so the trailing ellipsis lands inside the rendered paragraph. Default mode = `full` — preserves the legacy render for sites that haven't touched the setting.
+- **`_event_card.html` adds a new `.fe-events-card-body-preview` block** rendering `ev.body` under the existing `ev.summary` line, controlled by the same mode + cap pair read from `_events_list_tpl`. Default mode = `truncated` at 200 chars — events historically rendered only `summary`, so an unbounded body would balloon every card; the opinionated default keeps cards compact while letting admins flip to full for long-form previews. The Magazine "More events" tiles force-compact via the include's `compact=true` and bypass the new block entirely.
+- **"Read more ›" link on every list card.** Renders unconditionally at the bottom of `.fe-announcements-card-body` and `.fe-events-card-body` (and on the Timeline layout's `.fe-events-tl-card`), independent of body length or truncation setting. Targets the post's detail URL via `post_url(...)`. New `.fe-card-read-more` CSS class — accent-coloured weight 600 text with a `›` chevron that slides 3px on `:hover` / `:focus-visible` (motion gated by `prefers-reduced-motion`). Timeline variant carries `position: relative; z-index: 2` so the visible link's pointer events win over the card's absolute `.fe-events-tl-card-link` overlay.
+
+## [2.9.2] — 2026-05-28
+
+### Added
+
+- **Pastel-strength slider on the dynamic-background picker.** Replaces the previous binary "Use pastels in light mode only" checkbox with an integer 0-100 slider + live numeric readout. `dynbg.normalize_pastel_strength()` accepts and coerces legacy booleans (`True` → 100, `False` → 0), ints, and numeric strings; `pastelize(hex_str, strength=100)` lerps between the source HSL values and the full pastel target so intermediate slider positions produce intermediate paleness. `encode_config()` persists the int (omits when 0); `decode_config()` returns the int (legacy boolean records resolve to 100). `colors_to_css_vars()` and the per-template settings JSON leaf (`bg_dynbg_pastel_light`) carry the strength end-to-end. Form-parse paths in `routes.py` now pass the raw form value through and let `encode_config` clamp.
+- **Themed featured-image elevation on detail pages.** New CSS rule on `.fe-event-detail-cover` (Classic) and `.fe-event-time-cover` (Timeline) emits an `lg` shadow at rest, expanding to `xl` on `:hover` / `:focus-visible` / `:focus-within`, with the colour driven by new `--fe-color-card-primary-shadow` + `--fe-color-card-primary-shadow-dark` CSS variables emitted from `design.py::card_chrome_css_vars`. Light/dark variants composed via `color-mix(in oklab, var(--…) <alpha>%, transparent)`. Transition is a flat `box-shadow 200ms ease` (no theme-token indirection so the timing stays predictable across themes). Border on the Classic cover stripped (`border: 0`) and the legacy `translateY(-3px)` hover lift overridden with `transform: none` — elevation now reads as pure shadow expansion, no jumping.
+
+### Changed
+
+- **Detail-page hero is now a 33 % / 66 % split** between the featured-image column and the body column (previously a fixed 427 px / 1fr). The fixed `height: 320px` on `.fe-event-detail-cover` was also dropped so the cover scales with the column width via its `aspect-ratio: 4/3` instead.
+- **Pastel target at strength 100 is now ~50 % paler than the previous all-or-nothing pastel band.** The legacy full-pastel target (`min(sat, 0.339)`, lightness 0.69–0.75) is now halved on saturation and pushed halfway toward pure white on lightness, landing in cream / blush / mint territory. `#ff0000` at strength 100 now resolves to `#ded0d0` (was `#ca9595`).
+- **Meeting detail logo bumped to 240 px on desktop** across all four meeting-detail layouts. Both the classic-specific `.fe-meeting-detail-head-logo .fe-meeting-logo` rule and the shared base `.fe-meeting-logo` rule updated; the `max-width: 600px` mobile override (140 px) is preserved.
+
+## [2.9.1] — 2026-05-28
+
+### Fixed
+
+- **Dynamic Background picker rendered BEHIND the template-edit modal that triggered it.** Both modals had `z-index: 100`; same-z-index siblings stack by DOM order. The `#dynbg-picker-modal` lives in `base.html` (early DOM), but the per-template settings modal on `frontend_templates.html` is built dynamically via JS and `document.body.appendChild`'d at runtime — landing AFTER the picker in the DOM, so the picker painted under it. Bumped `#dynbg-picker-modal`, `#media-picker-modal`, and `#icon-picker-modal` to `z-index: 105` (above content modals at 100, below the sticky save bar at 110). Future global pickers should join the same selector.
+- **Authenticated users with a public tab open showed as "persistently online on `/api/live-meeting`".** The utility bar's poller fetches `/api/live-meeting` every 30 s (and on every visibility change) when the LIVE-badge toggle is on, and `_track_last_seen` in `routes.py` only skipped `main.api_*` endpoints — but the live-meeting endpoint lives on the **frontend** blueprint as `frontend.api_live_meeting`, so each poll rewrote `last_path` to `/api/live-meeting` and refreshed `last_seen_at`, keeping the user warm forever. Added a path-based skip (`request.path.startswith("/api/")`) so background polls on any blueprint's `/api/*` route are excluded from location tracking. Match by path (not endpoint name) so future API routes on any blueprint inherit the skip automatically.
+
+## [2.9.0] — 2026-05-28
+
+### Added
+
+- **Page draft slot for already-published pages.** New `Page.draft_json` (TEXT) + `Page.draft_saved_at` (DATETIME) columns capture an in-flight snapshot of every editable field (title, slug, blocks_json, layout, background, padding, SEO, colors, fonts) without touching the live row. `frontend_page_save` reads a `save_action` form field (`publish` | `draft`); the `draft` branch writes a typed snapshot dict to `draft_json` and clears it on the next publish, while the `publish` branch keeps the existing column writes and now also nulls out the draft slot atomically. Uploaded draft assets (bg / og images) still land on disk so a Publish later can reference them; un-published draft uploads are picked up by the daily orphan-cleanup pass. `frontend_page_edit` detects a stashed draft, deserialises it, expunges the Page from the session, and overlays the draft values onto the in-memory object so autoflushes during the rest of the view can't accidentally persist draft values to the live row. New `frontend_page_discard_draft` endpoint clears the slot.
+- **Edit history for pages with one-click restore.** New `PageRevision` model — `page_id` FK with cascade delete, `action` ('draft' | 'publish'), `snapshot_json` (same shape as `draft_json`), `created_at`, `created_by_id` (FK to User). `_record_page_revision()` is called from both save branches; `_PAGE_REVISION_LIMIT = 50` per page, older rows trimmed in the same transaction. New `frontend_page_revisions` endpoint returns a JSON list for the editor modal; `frontend_page_revision_restore` writes the chosen snapshot into `draft_json` (non-destructive — the live row is untouched until the admin Publishes) and logs the restore as its own draft revision for audit. New `History` button + `#page-history-modal` in the editor renders the list with Draft/Published chips, local-time timestamps, author, and a Restore form per row.
+- **Live-update preview window via opener polling.** `frontend/page.html` injects a poller (in `preview_mode` only) that reads `window.opener.document.getElementById('page-blocks-json').value`, debounces to 500ms ticks, and silently re-POSTs to `/_preview/page/<id>` when the JSON changes. The fetched HTML replaces `document.body.innerHTML` in place — inline scripts are cloned+replaced so lottie / dynbg / copy-script init code re-runs. Poller state lives on `window.__tspPreviewState` so it survives the body swap; an immediate post-fetch re-poll catches keystrokes that landed during the in-flight fetch. Scroll position snapshotted across each swap. Editor side just opens the named preview window once and never re-submits — the preview pulls instead of the editor pushing.
+- **Throttled BlockEditor → hidden-input sync.** `editModal` input/change listeners now `editor.serialize()` and write to `#page-blocks-json` on a leading-edge + trailing-edge 150 ms throttle so continuous typing in a heading / paragraph keeps the hidden field fresh (and therefore the preview poller's reads accurate). Pure debounce previously only flushed on a typing pause; a long sentence typed without breaks left the preview stuck at the pre-typing value.
+- **Yellow save bar reskinned for the page editor.** The page-edit IIFE relabels `#fe-save-bar-btn` to "Publish", injects a sibling "Save Draft" button (ghost-style, text + border tinted with the Publish button's fill `#422006` for a matched-pair look), and wires both to flip `#page-save-action` before triggering the shared `feSaveBar` save loop. A `__tspViaDraft` flag short-circuits the capture-phase reset so the draft proxy click doesn't get overwritten back to publish.
+- **Top-level "Publish draft" shortcut.** Conditionally rendered in `top_actions` when `draft_active` is true — same submission path as the yellow bar's Publish button, but visible without needing a dirty edit to expose the save bar. Lets admins publish a stashed draft exactly as-is.
+
+### Fixed
+
+- **Two-column container scrambled child blocks on save when the cells had different lengths.** The save path round-robin-flattened cells into `data.blocks` and the load path round-robin-redistributed them, so `left=[A,B]` + `right=[C,D,E]` round-tripped to `left=[A,B,E]` + `right=[C,D]`. CSS grid's `auto-flow: row` can't express unequal columns; the fix persists cell membership explicitly as `data.cell_lengths: [2, 3]` (concat-by-cell flat list + per-cell counts). All four touchpoints updated: `page_structure.js::rebuildContainerFromRow` writes `cell_lengths`, `makeRowSplit` slices by it on initial draw, `routes.py::_page_active_tree` uses it for the structure card render, and the public `templates/frontend/page.html` + `templates/_blocks.html` container blocks emit a `.fe-pp-grid-cell` flex-column sub-wrapper per cell carrying `grid-column: N` so the actual page renders the layout as built. Legacy data without `cell_lengths` falls through to the previous round-robin distribution on every path, so existing pages are unaffected until their first save.
+- **Unplaced blocks bin pills had no background / chrome and blended into the bin.** Base `.fe-page-structure .fe-page-structure-block` styles are scoped to the structure card, but the orphan bin renders inside a separate `.fe-page-orphans` section (siblings, not nested), so orphan pills inherited none of the base flex / padding / border / brand-soft bg styling — only my earlier padding override. Added dedicated `.fe-page-orphans-list .fe-page-structure-block` rules mirroring the structure card's pill chrome with `var(--panel)` background so pills read as discrete cards against the bin's `var(--panel-2)` bg, plus an explicit `gap: 8px` on the list container.
+- **Status chips on the Pages list collided when a row had both a visibility chip and an "Unpublished changes" chip.** Wrapped them in `.fe-page-status-pills` (`display: flex; gap: 6px; flex-wrap: wrap`).
+
+## [2.8.3] — 2026-05-28
+
+### Added
+
+- **Content-page Preview live-updates.** The Preview button on the page editor (`frontend_page_edit.html`) now opens the preview into a fixed, named window (`tsp-page-preview-<page_id>`) and the editor re-POSTs the current `blocks_json` to that window on every change to the edit form, debounced 700 ms. The structure card already dispatches `input` events from the hidden `#page-blocks-json` field whenever pills are dragged / removed / edited, so the live-update wiring just listens for those at the form level. Live-update only fires when the preview window is still open (`win.closed` check) so editing without an open preview costs nothing. Scroll position is preserved across reloads by a small companion script injected into `frontend/page.html` (preview-mode only) that stashes `window.scrollY` in `sessionStorage` on `beforeunload` and restores it on next load.
+
+### Fixed
+
+- **Markdown lists in admin-authored post / meeting bodies didn't render unless the author left a blank line before the dash.** The detail templates piped these fields through the `markdown` Jinja filter, which is bare Python-Markdown with no preprocessing — Python-Markdown requires a blank line before a list / heading / blockquote when it follows a paragraph, so `intro⏎- item` rendered inline. Switched to the existing `markdown_block` filter, which inserts the required blank line for the user before any list / heading / blockquote that directly follows non-blank content. Affects all four meeting-detail templates (`frontend/meetings/classic.html`, `card_stack.html`, `magazine.html`, `minimal.html`) for `meeting.description` and all four event-detail templates (`frontend/events/classic.html`, `minimal.html`, `poster.html`, `timeline.html`) for `event.body`. Event templates are reused by `/announcement/<slug>` (see `frontend.announcement_detail`), so this covers announcement bodies too.
+- **SVG image blocks rendered at the SVG's intrinsic width instead of the admin-chosen `max_width_pct`** when the block sat inside a flex container with `align-items: center`. Block-level `<figure>` children of a centered flex parent only stretch when given an explicit width — `max-width` alone has nothing to clamp because the figure shrink-wraps to the SVG's intrinsic dimensions (e.g. `<svg width="452">`). The image-block renderer in both `templates/frontend/page.html` and `templates/_blocks.html` now appends `width: <pct>%` to the figure's inline styles when the src ends in `.svg` (case-insensitive, query/fragment stripped), and `width: 100%; height: auto` to the img, so SVGs scale to fill the chosen percentage regardless of their source dimensions. Raster images keep the existing `max-width: 100%` semantics so a small image in a wide figure doesn't get upscaled.
+- **Unplaced blocks bin on the page builder wrapped pills horizontally with a different background**, making mixed-length labels jumble. The `.fe-page-orphans-list` zone now stacks pills vertically (`flex-direction: column; gap: 6px`) matching the structure tree, the `background: var(--panel)` per-pill override was dropped so orphan pills inherit the same `var(--brand-soft)` tint as placed pills, pill padding bumped to `10px 12px` with radius `10px`, and the bin container's radius bumped to `12px`.
+
+## [2.8.2] — 2026-05-26
+
+### Added
+
+- **CSV export on Watchtower → Visitors.** New **Export CSV** button in the tab's top actions downloads the current window's metrics — daily traffic, top paths, top referrers, devices/browsers/OS — as a single CSV. Server-side aggregation reuses the same `visitor_metrics` helpers the page renders from, and the export honours the active **Unique visitors / Hits** mode so the export numbers match what was on screen.
+
+### Fixed
+
+- **Events auto-archive sweep was running on the server's UTC clock instead of the site-configured timezone.** `event_ends_at` is stored as naive site-local (parsed straight from the admin's HTML5 `datetime-local` input), but `_auto_archive_events` was building its cutoff from `datetime.utcnow().date()` — so an event ending at 9 pm Pacific would be flagged "past" any time after 1 am UTC the same day, and conversely a 2 am Eastern end-time wouldn't sweep until UTC midnight rolled past it. Cutoff is now `now_local_naive(site).date()`. Same fix applied to the four other places that gate on "is this event past?": `frontend._post_in_archive`, the `events_list` route, the `archive` route, `blocks.filtered_events`, and `search._events_source` + `search._archive_source`. Watchtower / visitor-metrics callers also use `datetime.utcnow().date()` but compare against UTC-stamped system rows so they're correct as-is and not touched.
+- **Watchtower → Visitors daily-traffic chart polish:** legend back on the right, donut grid lines up at all viewport widths, and hover tooltips now show the exact count + date on the daily chart and the full slice breakdown on the donuts.
+
+### Internal
+
+- **Video Streamer module parked under `archive/video_streamer/`** — full implementation (Flask routes, `flask-sock` WebSocket ingest, ffmpeg `StreamManager`, admin UI, public HLS viewer with `hls.js`, sidebar entry, file-upload source, browser-camera source) preserved as a self-contained archive plus an `integration.patch` capturing the seven touchpoints. Not on the active code path; the archive's README documents the restore recipe (`git apply` + four `mv`s) for a future release. SiteSetting columns and the `video_stream` table left in `_migrate_sqlite` history so an upgraded DB stays compatible if the module is reinstated.
+
+## [2.8.1] — 2026-05-26
+
+### Added
+
+- **Source IPs visible on Watchtower → 404s with one-click blocking.** Every row in **Top missing URLs** now has an **IPs** chevron button (route icon) that lazily fetches and inlines a panel listing the distinct IPs hitting that URL in the current window — IP, hit count, last-seen timestamp, and a per-IP **Block IP** button. Already-blocked IPs render as a red "Blocked" chip instead. The **Recent 404s** table gained a **Source IP** column plus a per-row **Block** button. Blocking from either surface reuses the existing `/watchtower/ban-ip` endpoint and returns the admin to the 404s tab; the ban reason is auto-populated with the 404 path. Powered by a new `not_found_ips_for_path()` aggregator + `GET /watchtower/not-found/path-ips` HTML-fragment endpoint; one batched `IPBlock` lookup populates the "Blocked vs Block" state per page load so there are no N+1 queries. New `NotFoundEvent.ip` column (`VARCHAR(45)`, indexed) captures source IP on every public 404 going forward — existing rows display "—" since they predate the column.
+
+## [2.8.0] — 2026-05-26
+
+### Added
+
+- **Cookie Compliance module** — new "Cookie Compliance" entry under **Web Frontend → Setup** that runs a privacy/cookie banner on the public site. Module-level on/off toggle. Three prompt modes: **Notice** (informational, single dismiss), **Consent** (Accept / Reject equally prominent), and **Strict opt-in** (GDPR-compliant — non-essential cookies blocked until accept). Three regional quick-start presets (GDPR/UK GDPR, CCPA/CPRA, Generic) apply best-practice defaults — mode, copy, position — in one click. Auto-region inference (Cloudflare/Fastly/Vercel country headers + `Accept-Language` fallback) escalates EU/UK visitors to strict and California visitors to consent regardless of the configured mode (auto can only escalate, never relax). Banner copy is fully customizable (title, body, accept/reject/more labels, position: bottom-bar / bottom-left / bottom-right / modal). Visitor choice persists in a first-party `tsp_cookie_consent` cookie for a configurable lifetime (default 365 days, max 730, `SameSite=Lax`, `Secure` on HTTPS). Three **starter privacy policy generators** (GDPR / CCPA / Generic) create a fully-seeded Page and link it as the policy with one click — admin just fills in placeholder fields (organisation name, contact email, retention periods). 13 new `cookie_compliance_*` columns on `SiteSetting` with matching `_migrate_sqlite` entries; new module `app/cookie_compliance.py` owns region inference + presets + templates.
+- **Privacy & cookies footer block** — draggable from the footer builder palette. Renders a "Privacy policy" pill linking to whatever's configured under Cookie Compliance plus a "Cookie settings" pill that clears the consent cookie and re-prompts the banner so visitors can change their mind later. Both pills only render when the corresponding piece is configured — the block gracefully no-ops if dragged in before Cookie Compliance is set up.
+- **Unique visitors / Hits toggle** on the Watchtower **Visitors** tab and (then-renamed) Web Frontend Metrics page. Default emphasis switched from hits to **unique visitors** — the more meaningful number for "how many real people". Segmented pill toggle with a `?` tooltip explaining each mode; preference persists in `localStorage` and is restored before paint so the page never flashes the wrong side. Both sets pre-render server-side so the toggle flips instantly. KPI tiles, daily traffic chart, top paths, top referrers, devices, browsers, OS, and hour-of-day all swap their counts (and re-rank where applicable) when toggled.
+- **"Manage redirects" button** on the Watchtower **404s** tab top actions, links straight to `/tspro/frontend/redirects` so the admin can hop from spotting a 404 to managing redirects without navigating.
+
+### Changed
+
+- **Web Frontend Visitor Metrics page is now the Watchtower Visitors tab.** All panels (rich daily-traffic chart with hover tooltips, hour-of-day strip, Devices/Browsers/Operating systems donuts, expandable Top paths / Top referrers lists, summary KPI tiles) live in one place. `/tspro/frontend/metrics` 301-redirects to `/tspro/watchtower/visitors` with the query string preserved. The Web Frontend admin subnav's "Visitor Metrics" entry, the main `/tspro` dashboard widget's "Open metrics" button, and the Web Frontend dashboard widget's "Full metrics" button all link to the new home. Both dashboard widgets now show **unique visitors** as the headline (sub-line still surfaces hits + hits/visitor ratio); the sparkline in the Web Frontend widget switched from hits to uniques to match.
+
+### Fixed
+
+- **Sidebar quicknav pills (Web / View / Watchtower) no longer get an underline on hover.** They inherited an underline from the global `a:hover { text-decoration: underline }` rule because `.sidebar-quicknav-btn:hover` was setting bg/color/border but not `text-decoration`. Added the explicit override.
+
+## [2.7.5] — 2026-05-26
+
+### Added
+
+- **Create a redirect from any 404 in one click** — every row in the **Top missing URLs** and **Recent 404s** sections of Watchtower → 404s now has a **Redirect** button. Clicking it opens a modal pre-filled with the source path; type the target, save, and a 301 is added to the `UrlRedirect` table without taking you off the page. The row in-place swaps to a "redirected" chip so you can immediately spot which URLs you've handled and keep going through the list. New JSON endpoint `POST /watchtower/not-found/redirect` (CSRF-protected via the global `X-CSRFToken` fetch wrapper); validation mirrors the full Redirects admin page.
+- **Wildcard redirects** — source paths ending in `/*` (e.g. `/swag/*`) now match every URL under that prefix and land them all on the literal target. Exact-match rules always win over wildcards; among wildcards the longest prefix wins, and the `/` boundary keeps `/swag/*` from accidentally catching `/swagger`. The Watchtower modal grew a **Use `/*`** helper button that converts the clicked 404 path into a parent-prefix wildcard, and the Redirects admin page (`/tspro/frontend/redirects`) explains the syntax. Validation rejects `*` anywhere other than a trailing `/*`, a bare `/*`, `*` in the target, and self-loops where the target falls under the wildcard prefix.
+- **Expandable Top missing URLs / Top paths / Top referrers cards** on both the Watchtower **404s** and **Visitors** tabs. Each card shows 30 rows initially and a **Show 30 more** button below the list reveals the next batch with a quick fade/slide-down keyframe (220 ms cubic-bezier, ~8 ms per-row stagger; respects `prefers-reduced-motion`). The card-head meta updates live to "showing X of Y" and the button hides itself when the pool is exhausted. Server now fetches up to 300 rows for these lists so most expand sessions don't need another round-trip. The expander lives in `app/static/js/app.js` and matches any `[data-wt-expand]` / `[data-wt-expand-btn]` pair.
+
+### Fixed
+
+- **Watchtower → Visitors "Hour of day" chart was rendering as 24 flat 1-px ticks** even with thousands of views in the window. Root cause: `.wt-hourly` was using `align-items: flex-end`, which sized each column to its tiny tick label instead of stretching to the 140 px container; the inner `flex: 1` track then collapsed to ~1 px, leaving the bars' percentage heights with no reference. Changed to `align-items: stretch` (with `min-height: 0` on the column + track for safe flex shrinking); tracks keep their own internal `align-items: flex-end` so bars still bottom-align. Hour labels now show under **every** column (was every 4th).
+
+## [2.7.4] — 2026-05-26
+
+### Added
+
+- **Recovery Contacts page template on Web Frontend → Templates** — the public `/contactlist` page now has its own card in the Templates list, modelled on the Contact page template and uniform with every other template: a "Directory + form" style card, the shared Customize panel (background / fonts / sizes), and page-level controls for the heading / subheading / Markdown intro plus container width. These appearance settings moved here out of the Forms admin (new `frontend_recovery_contacts_template_save` route; `recovery_contacts` registered as a template kind). The Forms page keeps the form mechanics (visibility, admin alerts + recipient, submit-button label, success message, bot protection) and links up to the new section — and no longer writes the moved fields, so saving it can't clobber them. No schema changes: reuses the existing `recovery_contacts_*` columns + `frontend_template_settings_json`.
+
+### Changed
+
+- **Template Edit modals show a single save bar.** Editing inside a template modal previously surfaced two "Unsaved changes" bars — the global yellow bar pinned to the page *and* a second one in the modal footer. The redundant in-modal bar is gone; modal edits now commit through the one global save bar (`#fe-save-bar`), which already stacks above the modal, batches every dirty section, and keeps the modal open after saving. Inline per-section Save buttons stay hidden inside the modal and a stray Enter routes through the global Save instead of a full-page reload.
+- **More breathing room between paragraphs** in the body text of announcement cards on the `/announcements` list (cards view) — `1.1em` paragraph margins, with the first/last paragraph still flush to the card edges.
+
+### Fixed
+
+- **"Contact us" button on the Recovery Contacts page no longer shows an underline on hover.** Being an `<a>` styled as a button, it was inheriting the generic frontend link-hover underline (`.fe-page a:hover`); a higher-specificity rule now suppresses it. (The Contact page's submit is a `<button>`, so it was never affected.)
+
+## [2.7.3] — 2026-05-25
+
+### Added
+
+- **Phone numbers are formatted for display** on the public Recovery Contacts directory + PDF (stored values are untouched). North American numbers are hyphenated — `202-555-0100`, or `1-202-555-0100` with a leading 1 — and numbers carrying any other country code are rendered in that country's standard international style via libphonenumber (e.g. `+44 20 7946 0958`), even when the `+` was omitted. Unparseable/partial numbers show exactly as entered. New dependency: `phonenumbers` (`app/phone.py`, registered as the `phone_fmt` Jinja filter).
+- **"Contact us" call-to-action on the Recovery Contacts page** — a divider-topped section showing the Contact page's subheading and a button through to the public contact form. On desktop it sits under the directory cards; on mobile it moves to the bottom of the page, below the form. Only shown when the contact form is enabled.
+
+### Fixed
+
+- **Utility-bar button labels no longer wrap on mobile** — items like "Print List" / "Contact List" stay on one line (the bar is already a horizontal swipe strip), via `white-space: nowrap` on the utility-bar leaf items.
+
+## [2.7.2] — 2026-05-25
+
+### Changed
+
+- **Signed-in admin button renamed to "Return to dashboard"** (was "Back to TS Pro dashboard") across all three mega-menu variants (`classic`, `recovery-blue`, `themed`) and the footer admin block. The admin nav-link editor help text was updated to match.
+- **Recovery Contacts form settings** — added a 1 rem gap between the two toggle rows in the "Admin email alerts" section, and clarified the removal-alerts toggle copy to make explicit that the admin is emailed **only after** the person clicks the confirmation link (so you're never asked to remove someone who hasn't confirmed they want off the list — no behaviour change from 2.7.1).
+
+## [2.7.1] — 2026-05-25
+
+### Added — Recovery Contacts: anti-abuse on self-service update/removal
+
+Hardens the public update/removal flow against malicious requests aimed at a listing's owner, and surfaces what it catches in Watchtower.
+
+- **24-hour update rate-limit** — a second update request against the same listing within 24 h is rejected with a "wait 24 hours" message; the second submission's data is **never ingested**, and the attempt is flagged. Tracked via `RecoveryContact.last_update_request_at`. The "I'm updating my existing entry" block now states the once-per-24h limit.
+- **"I didn't submit this" link** — every update/removal confirmation email now carries a second link beside the confirm link. Clicking it discards the pending request and **locks the listing against any update/removal request for 7 days** (`RecoveryContact.requests_locked_until`); the confirmation page reports the request was discarded. While locked, both update and removal requests are refused.
+- **Watchtower panel + attention chip** — a "Recovery Contacts · flagged requests" panel on the Watchtower **Overview** tab lists each flagged request (rate-limited 2nd update or owner-disavowed) with the requestor's IP, a one-click **Block IP** (reusing the IP blocklist), and **Resolve**. Unresolved flags drive a red attention chip on the Watchtower sidebar quicknav and an anomaly callout. Listings with flags/locks also show **Flagged** / **Locked until …** badges in the Recovery Contacts admin table.
+- **Data model** — new `RecoveryContactAbuse` table (kind, targeted listing snapshot, requestor IP, attempt count, lock deadline, resolved state) + a `record_recovery_contact_abuse()` helper that bumps an existing unresolved row instead of duplicating. New `recovery_contact` columns patched in via `_migrate_sqlite()`; the abuse table is created by `db.create_all()`. New audit-log events: `update_rate_limited`, `disavowed`, `request_blocked`.
+
+### Added — Recovery Contacts form & directory refinements
+
+- **"Contact me by email through the site" is on by default**, and is **force-checked + locked** whenever a member hides both their phone and email — so there's always a way to reach them.
+- **"Need help?" link** at the foot of the form, pointing to the public `/contact` page.
+- The **"available to sponsor"** checkbox now sits below the "contact me by email" option.
+
+### Changed — Recovery Contacts polish
+
+- **Directory cards adopt the Primary card design tokens** (`--fe-color-card-primary-bg/border`, plus the `-dark` variants) and join the shared `.fe-card-primary` shadow/hover aggregator, so they match meeting/submission cards in every theme and dark mode.
+- **Pale-green tint** on the "I'm updating my existing entry" block (mirrors the pale-pink removal block); checking **"Remove me from the list"** now greys out and disables every other field except Name + Email.
+- **PDF**: contact-only listings (phone + email both hidden) now print **"Contact through the site — <site>/contactlist"** as a clickable link — the visible text drops the `https://` while the link still targets the full `https://` URL.
+- Removal-block copy now ends "Use the email from your listing."
+
+### Fixed — Recovery Contacts live search
+
+- Typing in the directory search now actually **hides non-matching cards** until the box is cleared — the card's `display: flex` had been overriding the `[hidden]` attribute, so excluded entries stayed visible.
+
+## [2.7.0] — 2026-05-25
+
+### Added — Recovery Contacts module
+
+A new self-service member directory: visitors add themselves (name + phone + email), pick exactly what shows publicly, and reach each other directly. Public page served at **`/contactlist`**; admin management lives at **TS Pro → Recovery Contacts**; settings live under **Web Frontend → Forms → Recovery Contacts**. Off by default and 404s when disabled, like every other module surface.
+
+- **Public directory + submission form** (`app/frontend.py`, `templates/frontend/recovery_contacts.html`). Two-column layout inside the shared dynbg section so themes + dark mode flow through automatically: the member list (with header chip/title/subheading) on the left, the submission form on the right. Email is required; phone is optional. Entries appear only after an admin approves them.
+- **Per-entry display control** — each member chooses to show their phone, email, both, or neither (`show_phone` / `show_email`, surfaced via the `public_phone` / `public_email` model properties). An admin can adjust visibility per row afterward.
+- **"Available to sponsor"** opt-in adds a red-heart badge to the listing so members seeking a sponsor can spot them.
+- **Private "Contact me" relay** — opting into *Let people contact me by email through the site* adds a **Contact me** button that opens a modal; the message is emailed to the member with **Reply-To set to the sender** so their address is never exposed (`_send_with_reply_to`). Honeypot + Turnstile protected. The backend shows a contact-count chip per member. This box is **checked by default**, and is **forced on + locked** whenever the member hides both phone and email — so there's always a way to reach them.
+- **Double opt-in update & removal** — checking *I'm updating my existing entry* or *Remove me from the list* matches the member **by email** and sends a confirmation link. Clicking the link **applies the change automatically** (update overwrites the matched entry; removal deletes it) with **no admin approval** (`/contactlist/confirm/<token>`). Unconfirmed requests still surface to the admin to action manually. The removal block greys out and disables every other field except Name + Email; the update block is tinted pale green, the removal block pale pink.
+- **Live search** filters the directory as you type (name / phone / email, plus the keyword **"sponsor"**) and hides non-matching cards until cleared.
+- **Branded PDF** of the directory via WeasyPrint at **`/contactlist.pdf`** — honours the active `?q=` filter, stacks the logo over the public URL, centres the title, and downloads as `<Site-Name>-Recovery-Contacts_<yyyymmdd>.pdf`. Listings reachable only through the site (phone + email both hidden) note **"Contact through the site — https://<site>/contactlist"** in place of empty phone/email cells.
+- **Admin backend** (`app/routes.py`, `templates/recovery_contacts.html`): pending-review table with per-request match panels (Apply update / Approve as new / Remove / Dismiss), a published table with inline visibility toggles + per-row edit, a **manual add** modal, and an **Activity log** (audit trail) of submissions, email confirmations, relayed contacts, and every admin action — each row carrying the actor (visitor vs named admin), timestamp, and IP.
+- **Integrations** — sidebar entry with a pending-count badge, inclusion in the dashboard **Forms** widget, an entry in **Web Frontend → Forms** (`app/forms_registry.py`), and **admin email alerts** (toggleable for new entries and for removals).
+- **Data model** (`app/models.py`) — new `RecoveryContact` table (display flags, sponsor/contact opt-ins, contact count, shared confirmation token for update+removal, self-referential `matched_entry_id`) and `RecoveryContactLog` table for the audit log, plus a `log_recovery_contact()` helper. New `recovery_contacts_*` columns on `SiteSetting`. Tables are created by `db.create_all()`; all additive columns are patched in via `_migrate_sqlite()` (race-tolerant for the 2-worker gunicorn setup). Legacy `/phonelist` 302-redirects to `/contactlist`.
+
+### Changed — Directory cards adopt the Primary card design tokens
+
+The Recovery Contacts list cards now read surface + border from the Primary card tokens (`--fe-color-card-primary-bg` / `--fe-color-card-primary-border`, with the `-dark` variants) and join the shared `.fe-card-primary` shadow/hover/transition aggregator, so they match meeting/submission cards in every theme and dark mode.
+
+## [2.6.1] — 2026-05-24
+
+### Added — Neobrutal theme
+
+A seventh frontend theme: **neobrutalism** — colourful flat surfaces (yellow / pink / cyan / lime), thick black borders, hard offset drop-shadows (no blur), chunky Archivo Black headings, and controls that "press" on click (translate + shadow shrink). Styles every region — header, mega menu, homepage, footer, list/detail pages — in both light and dark; in dark mode the canvas goes near-black while the bright blocks stay colourful with their text pinned to ink for legibility (`app/static/css/themes/neobrutal.css`).
+
+- **Geometric hero backdrop** — a faint graph grid plus bold black-outlined shapes (circles + a tilted square) scattered to the corners, drawn entirely in CSS on the hero's `::before` / `::after`.
+- **Randomised on each load** — `neobrutal_hero_css_vars(site)` (`app/design.py`, registered as a Jinja global and injected onto `<body>` in `frontend/base.html`) emits fresh random positions per request, so the primitives re-scatter on every refresh. Each shape roams a generous region within its own corner so the centred headline always stays clear; the square's rotation randomises too. No JavaScript — server-rendered, so no flash.
+- Newly vendored font: **Archivo Black** (`app/static/fonts/archivo-black/`). Registered in the font catalog + theme registries (`fonts.py`, `frontend.py`) with full design tokens (`design.py`, default light mode).
+
+### Fixed
+
+- Neobrutal footer location cards no longer darken to near-black on hover (the shared force-dark hover rule was burying the black card text) — the hover now re-asserts the bright surface; its feedback is the lift + larger hard shadow.
+
+## [2.6.0] — 2026-05-24
+
+### Added — Four new frontend themes (Modern Dark, Cyberpunk, Sanctuary, Terminal)
+
+Beyond Classic and Recovery Blue, the Web Frontend now ships four complete themes, each styling every public region — header, mega menu, homepage, footer, and all list/detail pages — in both light and dark mode:
+
+- **Modern Dark** — deep-indigo "mission control" canvas with a diffuse aurora, film grain, teal→cyan gradient buttons, Fraunces display over Inter.
+- **Cyberpunk** — near-black neon-grid HUD with scanlines, cyan/magenta, sharp zero-radius edges, and Orbitron/Chakra Petch type.
+- **Sanctuary** — warm sand/cream canvas, sage-green + clay accents, Lora humanist serif, soft rounded cards.
+- **Terminal** — utilitarian command line: phosphor-green on near-black, all-monospace, flat boxy panels, prompt-prefixed headings + a blinking cursor.
+
+Themes apply non-destructively via theme-scoped CSS (`app/static/css/themes/<key>.css`) loaded only for the active theme — switching never rewrites page/block content. Shared `frontend/headers/themed.html` + `frontend/megamenus/themed.html` partials drive every alternate theme. Newly vendored fonts: Orbitron, Chakra Petch, Lora.
+
+### Added — Per-theme saved state
+
+Switching themes auto-saves the outgoing theme's appearance fields (design tokens, fonts, default mode, per-template settings, mega-menu colours) into the new `SiteSetting.frontend_theme_states_json` and restores the incoming theme's last state, so returning to a theme brings it back exactly as left. The theme switcher modal gained a **When applying** chooser — *Return to last saved state* / *Reset to default* — pinned as a fixed band so it and the Apply button stay visible as the theme grid scrolls.
+
+### Added — Mega-menu dynamic backgrounds, dark-mode colours, and blend
+
+- **Dynamic background** picker for the mega-menu panel (the same `dynbg` system the hero/pages use), rendered behind the links via an `fe-dynbg-host` panel and clipped to its rounded corners.
+- **Render dark in light mode** toggle — forces the dynbg's dark variant in light mode so a dark panel sits behind light text.
+- **Independent light/dark colour pickers** — separate background + text colours per mode.
+- **Background ↔ dynamic blend** slider — the dynbg layer's opacity over the solid colour (0 = colour only, 100 = dynbg only).
+- Mega-menu **headings, links, and buttons** (including the admin "Back to TS Pro dashboard" button) now obey the configured Text colour; the Logout pill keeps its distinct amber. Dark mode auto-lightens the text colour for legibility.
+
+New additive `SiteSetting` columns (all via `_migrate_sqlite`): `frontend_mega_bg_dynamic_key`, `frontend_mega_bg_dynbg_config_json`, `frontend_mega_bg_dynbg_dark`, `frontend_mega_bg_color_dark`, `frontend_mega_text_color_dark`, `frontend_mega_bg_dynbg_blend`.
+
+### Added — "Text — Darkmode" design token
+
+A new Colors token controls dark-mode text site-wide: anywhere the **Text** token is used, this value takes over in dark mode (body, headings, card/event titles, page-builder content). Hardcoded neutral dark-text colours (`#e2e8f0` / `#f1f5f9` / `#cbd5e1`) are routed through a `--fe-text-dark-active` channel defined only in dark mode, so light mode is untouched.
+
+### Changed — Recovery Blue: frosted-glass header + footer cards
+
+The Recovery Blue header is now a translucent frosted-glass bar (`backdrop-filter: blur + saturate`), and the footer location cards use a light frosted-glass surface — both light and dark. The desktop nav no longer draws a dark navy box behind its links (scoped to the mobile dropdown).
+
+### Fixed — Dark-mode token connections + Modern Dark polish
+
+- Hardcoded recovery-blue dark values now resolve through the active theme's dark tokens: card hover borders → `--fe-dm-border-hover`, the Files & Readings panel + events/announcements active tab + section dividers + meeting-type badges.
+- The derived dark primary-button colour is re-resolved on `<body>` so it tracks the theme instead of falling back to blue.
+- Themed-header nav links default to the dark-mode text colour (no more dark-on-dark).
+- Modern Dark: fresh teal/violet hero scene (dropping leftover recovery-blue particles), rebuilt footer, and removed the white box around the "What is CMA" / "Additional Resources" sections in light mode.
+- The Design page's per-token **Reset** now dispatches input/change events so the unsaved-changes save bar appears.
+
+### Backup
+
+Every new frontend setting scopes into the frontend export/import automatically (the field list is prefix-derived from `SiteSetting` columns); the `color_text_dark` token rides inside the exported `frontend_design_json`.
+
+## [2.5.1] — 2026-05-23
+
+### Changed — "Powered by" footer block links to gettspro.com
+
+The footer builder's **Powered by** attribution block now links to `https://gettspro.com` instead of the project's GitHub repo (`templates/frontend/footers/blocks/_powered_by.html`). The block's description in the footer builder palette was updated to match (`app/frontend.py`).
+
 ## [2.5.0] — 2026-05-22
 
 ### Added — Popups: site-wide modal popups built with the page builder

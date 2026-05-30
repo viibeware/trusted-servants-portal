@@ -7,7 +7,158 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.5.0 — 2026-05-22 (latest) — Popups you build like a page
+## 2.9.5 — 2026-05-30 (latest) — Guided Zoom launcher + automatic OTP-code retrieval
+
+- **A step-by-step "Launch Zoom Meeting (Guided)" wizard on the meeting detail page.** New to hosting? Online and hybrid meetings now have a guided launcher (a focused, blur-the-background popup) that walks a trusted servant through opening Zoom: **(1) Sign in** — reminds you to host from a Mac/Windows/Linux computer (not a phone, tablet, or Chromebook) and shows the assigned Zoom account's login with one-click copy; **(2) Get the code** — reminds you to choose *"Verify via one-time passcode"* (not "Allow on other devices") and fetches the latest sign-in code for you (see below); **(3) Start** — a big Launch button plus the Meeting ID and passcode to copy, and a reminder to sign out of any other Zoom account in your browser first. Each step has a screenshot you can click to enlarge, and you can jump between steps with the numbered circles at the top.
+- **The app can now retrieve the Zoom one-time passcode for you, automatically.** Add your OTP inbox's IMAP details once under **Settings → Security → Zoom OTP Email**, and a **Retrieve latest code** button appears in the wizard, on the meeting's OTP Email section, and on the **Zoom Accounts** page. Click it and the newest sign-in code is pulled from the inbox and shown with a timestamp — no more logging into webmail and hunting for it. Only codes from the last 10 minutes are shown, and if several arrive you always get the newest one. (Your webmail login is still shown as a fallback.)
+- **Meeting detail page tidied up.** The Zoom details now live in their own card on the right, the Schedule and Location each sit in a clean card, and the Location shows the full address with an **Open in Maps** button (it even matches a saved location through a small typo).
+- **Fixed: the live-meeting badge's background poller no longer skews your visitor metrics.** The `/api/live-meeting` check the public site makes every 30 seconds was being counted as page views, padding your totals and showing up in Top Paths. It's now excluded from visitor metrics entirely — both new hits and any already-recorded ones — so your numbers reflect real visits.
+
+## 2.9.4 — 2026-05-29 — Dynamic-background picker overhaul + mobile polish
+
+- **The Dynamic Background picker is reorganised into Background + Options tabs with a live preview** that repaints as you change presets, overlays, colours, and pastel strength — so you can see exactly what you'll get before saving. Each preset only shows the knobs that apply to it.
+- **More control over backgrounds:** per-preset sliders (dot size/spacing/rotation, line angle/thickness, etc.), a Scale + Intensity slider on every texture overlay, and real foreground/background colours for the dotted-grid and diagonal-lines patterns.
+- **Retired the Starfield, Noise paper, and Spotlight glow base backgrounds** (the six texture overlays are unaffected; any surface using a retired preset falls back to its solid colour / image).
+- **Mobile polish (Recovery Blue):** the header now stays fully sticky on phones, the hamburger menu slides open with a smooth animation, the swipe utility bar no longer peeks the next item at rest, and the signed-in footer auth buttons left-align and wrap cleanly.
+
+## 2.9.3 — 2026-05-28 — Card body preview controls + "Read more" links on list templates
+
+- **New setting on the announcements and events list templates: pick how much of each post's body shows on the card.** Web Frontend → Templates → Customize panel on either list template now has a **Card body preview** control with two modes: **Full body** (renders the entire body on each card) or **Truncated body** capped at a character count you set (50–2000, default 200). The character input is greyed out unless truncated is selected. Announcements default to full (no change for existing sites); events default to truncated 200 chars (events now show their body alongside the existing summary line, capped so cards stay compact).
+- **"Read more ›" link added to every announcement and event card.** Every card in the announcements list and every card-shaped event card (Cards layout, Magazine "More events" tiles, Timeline cards) now ships with a Read more link pointing at the post's detail page. The link is shown regardless of body length or truncation setting — the title is still the primary affordance, this is the explicit secondary call-to-action. Magazine hero events keep their existing "View event" primary button; Calendar view has no cards (chips + list) so it's unchanged.
+
+## 2.9.2 — 2026-05-28 — Pastel strength slider, themed image elevation, detail-page polish
+
+- **Dynamic background pastel intensity is now a slider, not a toggle.** Pull the slider in the Dynamic Background picker between 0 and 100 to dial how soft your light-mode palette gets — at 0 the colours stay fully saturated, at 100 they land in true cream / blush / mint pastels. Old saves that had the checkbox on still load with full strength. The strength-100 endpoint was also rebalanced to be visibly paler than the previous all-or-nothing setting, so even a maxed slider reads as a soft wash rather than a punchy tinted block.
+- **Featured images on announcement, event, and archive detail pages now elevate with a themed shadow.** A clearly visible `lg` shadow sits behind the image at rest and expands to an `xl` shadow on hover, with the shadow colour automatically following whatever you set under **Design → Card shadow colour** — change the theme tint and the image shadow retints to match. The border that used to outline the image is gone, the hover lift is dropped (the shadow alone does the work, no jumping), and the transition runs a flat 200 ms.
+- **Detail-page layout reshaped for better balance.** The featured-image column on announcement / event / archive detail pages (Classic layout) is now 33 % of the page width and the body column is 66 %, with the image height following the column width instead of being pinned to a fixed pixel value. Reads cleaner on wide screens where the previous fixed-width cover used to feel cramped next to a long body.
+- **Meeting detail logo bumped to 240 px on desktop** (was 180 px) across all four meeting-detail layouts (classic, card stack, magazine, minimal). Mobile keeps the existing narrower size so it still fits below 600 px wide.
+
+## 2.9.1 — 2026-05-28 — Dynamic-background picker layering + phantom "online" users fix
+
+- **Fixed: the Dynamic Background picker opened behind the modal that launched it** on the frontend templates page. The picker is a shared body-level dialog and was getting stacked under the template-edit modal (which is appended at runtime). The picker (along with the global media + icon pickers) now layers cleanly on top of any content modal that triggered it.
+- **Fixed: users appeared "persistently online" on `/api/live-meeting`.** The utility bar polls that endpoint every 30 seconds when the live-meeting badge is enabled, and the online-users tracker was treating each poll as a real page view — pinning the user's last-seen location to `/api/live-meeting` forever. Background polls on any `/api/*` endpoint are now skipped, so the Currently Online widget reflects actual navigation again. After deploying, lingering phantom-online users should drop off within your usual idle cutoff.
+
+## 2.9.0 — 2026-05-28 — Page drafts, edit history, and a live-updating preview
+
+- **Save pages as drafts without publishing.** Already-published pages can now stash in-progress edits in a draft slot without touching the live page. The yellow save bar in the page editor now has two buttons — **Save Draft** and **Publish** — so it's always clear what's about to happen, and an amber banner appears at the top whenever you're editing draft content. When a draft is loaded, a top-of-screen **Publish draft** button lets you push it live without having to make a fake edit first to expose the save bar. The pages list shows an "Unpublished changes" chip on any row that has a stashed draft.
+- **Full edit history with one-click rollback.** Every Save Draft and Publish is recorded — up to the last 50 entries per page. A new **History** button on the page editor opens a chronological list (newest first) with Draft / Published chips, timestamps, and the author of each save. Clicking **Restore** loads any past revision back into a draft for review; your live page stays unchanged until you click Publish, so rollbacks are always safe to preview before committing.
+- **Live preview that actually updates as you type.** The Preview window on the page editor now updates itself silently as you keep editing — no new popup, no focus stealing, no flicker. Open Preview once and keep editing; the preview tab quietly re-renders in place every ~700ms (with scroll position preserved across each update) so you can watch your changes flow through in near real time.
+- **Fixed: two-column containers used to scramble blocks across columns on save.** A common report — putting two blocks in the left column and three in the right of a two-column container, hitting Save, and watching the last right-column block jump to the left — is gone. Columns now save exactly the way you arranged them in the editor, even when the two sides have different numbers of blocks.
+- **Unplaced blocks bin is readable again.** Block pills parked in the Unplaced bin on the page builder now have proper cards with their own background, icon, and a clear gap between them, so the bin reads as a stack of distinct items instead of a wall of text.
+- **Polish.** Status chips on the Pages list no longer collide when a row has both a visibility chip and an "Unpublished changes" chip — they wrap with breathing room. The Save Draft button in the yellow save bar now uses the same brown as the Publish button for its text and outline, so the two read as a matched pair.
+
+## 2.8.3 — 2026-05-28 — Live-update content-page preview + markdown lists + SVG image scaling
+
+- **Content-page Preview now updates live.** Open the preview tab once and keep editing — the preview reloads automatically (debounced) every time you change a block, no need to keep clicking Preview. The preview window remembers your scroll position across reloads so you stay in the spot you were inspecting. Nothing gets saved to the live page until you hit Save — the preview is purely a render of your current, in-progress edits.
+- **Markdown lists in announcement and meeting bodies render properly.** Typing `intro line` ⏎ `- item` directly under a paragraph now renders as a real bulleted list on the public site (announcement detail pages, event detail pages, and all four meeting-detail templates). Previously you had to remember to leave a blank line before the `-` for the list to render; the field now handles that for you.
+- **SVG image blocks now respect the width setting.** An SVG dropped into an image block was sometimes capping at its source file's intrinsic size instead of scaling up to the chosen width — particularly inside flex containers with centered alignment. SVGs now scale up to fill the percentage you picked (50%, 80%, 100%, etc.) regardless of the source file's pixel dimensions, while raster images keep their existing "don't upscale past natural size" behaviour.
+- **Unplaced blocks bin reads more cleanly.** Pills in the Unplaced bin on the page builder now stack vertically with the same tint and spacing as placed blocks, instead of wrapping into a horizontal row with a different background — easier to scan and to drag back into the active layout.
+
+## 2.8.2 — 2026-05-26 — Visitor metrics export + timezone fix for events
+
+- **Export visitor metrics to CSV.** A new **Export CSV** button on **Watchtower → Visitors** downloads everything in the current window — daily traffic, top paths, top referrers, devices/browsers/OS breakdowns — in one spreadsheet-friendly file. The export respects whichever **Unique visitors / Hits** mode you have selected so the numbers match what's on the page.
+- **Tooltips and chart polish on Watchtower → Visitors.** Hovering any bar in the daily-traffic chart now shows the exact count and date in a small tooltip. The legend on the chart is back to the right side, the Devices/Browsers/Operating systems donut grid lines up cleanly on every screen width, and hover states on the donut slices show the full breakdown.
+- **Fixed: events were sometimes auto-archiving on the wrong day.** The "cut off past events" sweep was using server-clock UTC instead of your fellowship's configured timezone, so an event ending at, say, 9 pm Pacific would either disappear early (UTC was already on the next day) or hang around in the live list past midnight local. The sweep now compares against site-local time, so events drop off at midnight in your timezone — same as you'd expect.
+
+## 2.8.1 — 2026-05-26 — See who's hitting 404s and block them in one click
+
+- **The 404s tab now shows who's actually hitting each dead URL.** Every row in **Top missing URLs** has a small "route" icon that opens an inline panel listing the IP addresses hitting that URL, how many times each, and when they last tried. The **Recent 404s** table got a **Source IP** column too.
+- **One-click block.** Beside each IP — both in the inline panel and in the Recent 404s table — there's a **Block** button that adds the IP to your Watchtower blocklist permanently. The ban reason auto-fills with the 404 path so it's obvious in the log later why you blocked them. Already-blocked IPs show a red "Blocked" chip instead of the button.
+- New 404s capture the IP automatically — older entries (from before this update) show "—" in the IP column.
+
+## 2.8.0 — 2026-05-26 — Cookie Compliance + unified Watchtower visitor metrics
+
+- **New: Cookie Compliance module** under **Web Frontend → Setup**. Turn it on with a single toggle and the public site shows a privacy banner until visitors make a choice — their answer is remembered in their browser for a year by default.
+  - Three quick-start presets you can apply with one click: **GDPR / UK GDPR**, **CCPA / CPRA (California)**, or **Generic notice** — each one sets best-practice defaults for the prompt mode, wording, and position.
+  - Three prompt modes to choose: **Notice** (just a heads-up), **Consent** (Accept / Reject buttons), or **Strict opt-in** (the GDPR-compliant version).
+  - **Auto-adapt to visitor region.** When on, EU/UK visitors automatically see the strict GDPR flow and California visitors see the CCPA flow — your chosen mode is the minimum; auto only escalates.
+  - **Generate a starter privacy policy in one click.** Pick GDPR, CCPA, or Generic and a fresh policy page is created and linked as your privacy policy — you just need to fill in a few placeholders (organisation name, contact email, retention periods) before publishing.
+  - Banner copy is fully editable: title, body, button labels, position (bottom bar, corner, or modal).
+- **New: Privacy & cookies footer block** — drag it into your footer from the builder palette. It adds a "Privacy policy" link plus a "Cookie settings" button visitors can click any time to revisit their cookie choice.
+- **Visitor metrics moved to Watchtower.** The Web Frontend "Visitor Metrics" page has been folded into the **Watchtower → Visitors** tab — same charts, same data, one place. The old URL still works (it just redirects), and every link that used to point there now goes to Watchtower.
+- **Unique visitors is now the default headline number** on the visitor metrics tab, with a clear pill toggle to flip to "Hits" (every page load). The choice sticks in your browser. The dashboard widgets that show traffic also lead with unique visitors now — more useful for "how many real people".
+- **Fixed:** the Web / View / Watchtower pills at the top of the sidebar no longer get an underline when you hover them.
+
+## 2.7.5 — 2026-05-26 — Turn 404s into redirects without leaving the page
+
+- **The 404s tab can now create redirects in one click.** Beside every row in **Top missing URLs** and **Recent 404s**, a **Redirect** button opens a small dialog already filled in with the missing URL — just type the destination and save. The row instantly shows a green "redirected" chip so you know which ones you've handled, and you can keep working through the list without ever leaving the page.
+- **Wildcard redirects.** Source paths ending in `/*` (e.g. `/swag/*`) now match every URL under that prefix and land them all on the same target. Exact-match rules always win, and the matcher is boundary-safe (so `/swag/*` doesn't accidentally catch `/swagger`). The dialog has a **Use `/*`** helper that turns the clicked 404 into a parent-prefix wildcard for you.
+- **Show more 404s at once.** The **Top missing URLs** and **Top referrers** cards (on both the 404s and Visitors tabs) now show 30 rows by default and have a **Show 30 more** button to keep expanding — handy when you've got a long tail of broken links to triage.
+- **Fixed:** the **Hour of day** chart on Watchtower → Visitors was rendering as 24 flat lines even when there was real traffic — it now shows the actual bar heights again. Hour labels now appear under every column, not just every fourth.
+
+## 2.7.4 — 2026-05-26 — Recovery Contacts page styling + save-bar tidy-up
+
+- **Style the Recovery Contacts page from the Templates screen.** The public `/contactlist` page now shows up in **Web Frontend → Templates** like every other page, with its own appearance controls: heading, subheading, intro, container width, and the background/fonts/sizes Customize panel. These moved out of the Forms settings, which now focus on the form's plumbing — on/off, email alerts, button label, confirmation message, and bot protection.
+- **One save bar, not two.** Editing a template in its pop-up no longer shows a duplicate "Unsaved changes" bar inside the dialog — you'll just see the usual yellow save bar at the bottom of the screen, and the dialog stays open after you save.
+- **Fixed:** the "Contact us" button on the Recovery Contacts page no longer gets underlined when you hover over it.
+- **Tidied:** a little more space between paragraphs in the announcement cards on the Announcements page.
+
+## 2.7.3 — 2026-05-25 — Phone formatting + a contact call-to-action
+
+- **Phone numbers look tidy automatically.** On the Recovery Contacts directory (and its PDF), numbers are formatted as you'd expect — `202-555-0100` for US/Canada (or `1-202-555-0100`), and the correct international style for numbers from other countries. People can still type however they like; only the display is cleaned up.
+- **A "Contact us" prompt on the Recovery Contacts page** — a short line (pulled from your Contact page settings) and a button that takes visitors to your contact form. On phones it appears neatly at the bottom of the page, below the sign-up form.
+- **Fixed:** on phones, the utility-bar buttons (like "Print List" and "Contact List") no longer wrap onto two lines.
+
+## 2.7.2 — 2026-05-25 — Small refinements
+
+- The signed-in admin button in your menus and footer now reads **"Return to dashboard"** (instead of "Back to TS Pro dashboard").
+- Tidier spacing between the two email-alert switches on the **Recovery Contacts** form settings, and clearer wording confirming the admin is emailed about a removal **only after** the person clicks their confirmation link — so a bad actor can never get someone taken off the list.
+
+## 2.7.1 — 2026-05-25 — Recovery Contacts: abuse protection + polish
+
+Builds on the new **Recovery Contacts** directory with protection against malicious "update" and "remove" requests, plus a round of refinements.
+
+- **No more spammed listing owners.** Someone can only request an update to a listing **once every 24 hours** — a second attempt is turned away and never applied. The form now tells people about this limit.
+- **"I didn't submit this."** Every update/removal confirmation email now has a second link for the listing's owner to click if they didn't make the request. One click throws the request away and **locks that listing against any changes for 7 days**.
+- **A new Watchtower view.** Flagged requests show up on the Watchtower **Overview** with the requestor's IP address and one-click **Block IP** + **Resolve** buttons, a red alert badge on the Watchtower button so you notice right away, and **Flagged / Locked** markers on the affected listings in the Recovery Contacts page.
+- **Form refinements:** the "let people contact me by email through the site" option is now on by default (and stays on automatically if someone hides both their phone and email), a **"Need help?"** link sits at the bottom of the form, and the layout/copy got small clarity tweaks.
+- **PDF:** listings reachable only through the site now print a tidy, clickable link to your contact page (the printed text drops the `https://` but the link still works).
+- **Fixed:** the directory's live search now properly hides the entries that don't match what you've typed.
+
+## 2.7.0 — 2026-05-25 — Recovery Contacts: a self-service member directory
+
+A new **Recovery Contacts** module lets members add themselves to a shared directory and reach each other directly — turn it on under **Web Frontend → Forms → Recovery Contacts**. Once enabled, your public page lives at **`/contactlist`** and you manage entries under **Recovery Contacts** in the dashboard.
+
+- **Members add themselves.** A simple form takes their name, phone, and email, and they choose exactly what shows publicly — phone, email, both, or neither. You approve each entry before it appears, and can adjust anyone's visibility later.
+- **"Available to sponsor"** puts a red-heart badge on a listing so people looking for a sponsor can find them at a glance.
+- **Stay reachable without exposing your details.** Members can switch on a **Contact me** button — visitors send them a message through the site and the email is relayed privately (the member's address is never shown, and they can just hit reply). It's on by default, and it's kept on automatically for anyone who hides both their phone and email, so there's always a way to reach them.
+- **Self-service updates and removals.** When a member updates their listing or asks to be removed, we email them a confirmation link; one click applies the change automatically — no admin action needed. (You can still action requests yourself from the dashboard if someone never clicks.)
+- **Find anyone fast.** Live search filters the list as you type — by name, phone, or email — and you can type **"sponsor"** to show only members available to sponsor.
+- **Print or share a PDF.** One click downloads a clean, branded PDF of the directory (it respects whatever you've searched for). Members who are reachable only through the site show a note pointing to your `/contactlist` page instead of a blank phone/email.
+- **A full activity log.** The dashboard keeps an audit trail of everything — new entries, confirmed updates and removals, relayed "Contact me" messages, and every admin action — each with who did it and when.
+- Plus: a pending-count badge in the sidebar, an entry in your dashboard Forms widget, optional **email alerts** when someone joins or asks to be removed, and built-in bot protection (Turnstile).
+
+## 2.6.1 — 2026-05-24 — Neobrutal theme
+
+A bold new **Neobrutal** theme joins the lineup under **Web Frontend → Design → Theme**.
+
+- **Neobrutalism**, done properly: colourful flat blocks (yellow, pink, cyan, lime), thick black borders, chunky **hard drop-shadows**, big **Archivo Black** headings, and buttons that visibly **press in** when you click them.
+- It styles your whole site — header, menus, homepage, footer, every page — in both light and dark. In dark mode the page goes near-black while the bright cards keep popping.
+- The **hero gets a geometric backdrop** — a faint grid with bold outlined shapes — and those shapes **re-scatter to new spots on every page refresh**, so the homepage feels alive without ever covering your headline.
+
+Also fixed: the Neobrutal footer's location cards no longer turn black on hover.
+
+## 2.6.0 — 2026-05-24 — New site themes + a deeper dark-mode toolkit
+
+Your public site gains **four new ready-made themes** plus much finer control over dark mode and the mega menu.
+
+- **Four new themes** under **Web Frontend → Design → Theme**, alongside Classic and Recovery Blue — each styles your whole site (header, menus, homepage, footer, every page) in both light and dark:
+  - **Modern Dark** — a sleek deep-indigo "mission control" look with a soft aurora glow and teal/cyan buttons.
+  - **Cyberpunk** — a neon-grid, near-black look in cyan/magenta with sharp edges and a techno typeface.
+  - **Sanctuary** — a warm, calm sand-and-sage palette with a friendly serif.
+  - **Terminal** — a green-on-black, all-monospace "command line" look with a blinking cursor.
+- **Themes remember their settings.** When you switch themes, the one you're leaving is saved automatically and the one you return to comes back exactly how you left it. The theme switcher now lets you choose **Return to last saved state** or **Reset to default** before applying — and those buttons stay visible no matter how far you scroll the theme list.
+- **The mega menu, leveled up** (Web Frontend → Navigation → Mega menu appearance):
+  - Give it a **dynamic background** — the same animated backdrops you can already use on the hero and pages.
+  - Set **separate background and text colours for light and dark mode**.
+  - A **blend slider** mixes between your background colour and the dynamic background.
+  - A **“Render dark in light mode”** switch keeps a dark panel behind light text.
+  - Its **headings, links, and buttons** now all follow your chosen text colour.
+- **New “Text — Darkmode” colour** on the Design page sets your site's dark-mode text everywhere at once.
+- **Recovery Blue** now has a **frosted-glass header** and frosted footer cards.
+- Plus a long list of dark-mode polish so colours stay consistent across cards, menus, buttons, and the homepage in every theme.
+
+## 2.5.0 — 2026-05-22 — Popups you build like a page
 
 You can now create **popups** — modal windows that appear over your public site — using the **same drag-and-drop builder you already use for pages**.
 

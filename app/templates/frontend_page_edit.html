@@ -22,9 +22,25 @@
                     "site-theme-modal", "page", "Site theme", label="Theme") }}
 <a class="btn" href="{{ url_for('main.frontend_pages') }}">← All pages</a>
 {% if page %}
+<button type="button" class="btn" id="page-history-btn"
+        data-history-url="{{ url_for('main.frontend_page_revisions', page_id=page.id) }}"
+        data-restore-url-template="{{ url_for('main.frontend_page_revision_restore', page_id=page.id, rev_id=0) }}"
+        title="Browse past saves of this page and roll back to any of them.">
+  {{ icon('clock') }} History
+</button>
 <button type="button" class="btn btn-primary" id="page-preview-btn"
         data-preview-url="{{ url_for('frontend.page_preview', page_id=page.id) }}"
         title="Open a preview of your current (unsaved) changes in a new tab">Preview ↗</button>
+{% if draft_active and page.is_published %}
+{# Top-level Publish — same effect as the yellow bar's Publish button,
+   but visible without first making a dirty edit. Lets the admin push
+   a stashed draft live exactly as-is. Mirrors the bar's styling so the
+   two read as the same primitive action. #}
+<button type="button" class="btn fe-save-bar-btn fe-save-bar-btn-publish" id="page-publish-top-btn"
+        title="Publish the current draft to the live page exactly as it stands.">
+  Publish draft
+</button>
+{% endif %}
 <a class="btn" href="{{ url_for('frontend.page_detail', slug=page.slug) }}" target="_blank" rel="noopener" title="Open the live published page">View ↗</a>
 {% endif %}
 {% endblock %}
@@ -40,6 +56,7 @@
    flex item that shoves content sideways when enabled. The
    homepage admin already does this for the same reason. #}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/frontend.css', v=app_build_id) }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dynbg.css', v=app_build_id) }}">
 <div class="fe-admin-layout">
   {% include "_frontend_subnav.html" %}
   <div class="fe-admin-main">
@@ -94,6 +111,30 @@
         </button>
         {% endfor %}
       </div>
+    </div>
+    {% endif %}
+
+    {# ── Pending-draft banner ───────────────────────────────────────
+       Surfaces when the page has a stashed `draft_json` and the edit
+       screen is loaded against it. The published page is unchanged
+       until "Save & Publish"; the admin can also abandon the draft
+       via the Discard form. The banner sits above the editor cards so
+       it's unmissable on every load. #}
+    {% if draft_active and page %}
+    <div class="fe-page-draft-banner" role="status">
+      <span class="fe-page-draft-banner-icon" aria-hidden="true">{{ icon('clipboard') }}</span>
+      <div class="fe-page-draft-banner-text">
+        <strong>You're editing a private draft.</strong>
+        {% if draft_saved_at %}<span class="muted">Last saved {{ draft_saved_at.strftime('%b %d, %Y at %I:%M %p') }} UTC.</span>{% endif %}
+        The live page <code>/{{ page.slug }}</code> is unchanged until you click <b>Save &amp; Publish</b>.
+      </div>
+      <form method="post" class="fe-page-draft-banner-discard"
+            action="{{ url_for('main.frontend_page_discard_draft', page_id=page.id) }}"
+            onsubmit="return confirm('Discard this draft? Any unpublished changes will be lost and the editor will reload with the live page.');"
+            data-fe-skip-save-bar>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-sm">Discard draft</button>
+      </form>
     </div>
     {% endif %}
 
@@ -159,9 +200,20 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% if page %}<input type="hidden" name="page_id" value="{{ page.id }}">{% endif %}
 
-      {# blocks_json hidden input — populated by the modal's BlockEditor
-         on submit / formdata so the save round-trips the latest tree. #}
-      <input type="hidden" name="blocks_json" id="page-blocks-json">
+      {# `save_action` switches the save endpoint between publishing
+         (writes to live columns) and stashing a private draft (writes
+         to `draft_json`). Default 'publish' so the standard save bar
+         click goes live exactly as it always did; the Save-Draft
+         button flips this to 'draft' just before submitting. #}
+      <input type="hidden" name="save_action" id="page-save-action" value="publish">
+
+      {# blocks_json hidden input — seeded server-side with the current
+         tree so a Publish that doesn't open the BlockEditor modal (e.g.
+         publishing a draft straight from Save & Publish without
+         touching anything) still carries the live JSON to the route.
+         The structure-card / BlockEditor JS overwrite this on edits;
+         the seed is just for the "no JS edit happened" path. #}
+      <input type="hidden" name="blocks_json" id="page-blocks-json" value="{{ blocks_json|e }}">
 
       {# Single "Page settings" card — title / URL / publish toggle,
          then page-width controls, then background. Three subsections
@@ -508,6 +560,34 @@
    The modal panel scrolls; the BlockEditor mounts on its root div
    on first open. JS scrolls the editor to a specific block when
    the admin clicks a structure-card pill carrying data-page-block-id. #}
+{# ── Edit history modal ──────────────────────────────────────────
+   Opened by the "History" button in the top actions. Renders a
+   chronological list (newest first) of past saves; clicking Restore
+   on any entry POSTs to the restore endpoint, which writes the
+   snapshot into `draft_json` so the admin can review before
+   publishing. Empty state renders when the page has no revisions
+   yet (brand new pages, or after a clear).  #}
+{% if page %}
+<div class="modal" id="page-history-modal" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="page-history-modal-title">
+    <div class="modal-head">
+      <h2 id="page-history-modal-title">Edit history</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close">{{ icon('x') }}</button>
+    </div>
+    <div class="modal-body">
+      <p class="muted small">Every Save Draft and Publish is recorded. Restore loads the chosen revision back into a draft for review — your live page stays unchanged until you click <b>Publish</b>. History keeps up to {{ 50 }} entries per page.</p>
+      <div id="page-history-list" data-fe-skip-save-bar>
+        <p class="muted small fe-page-history-loading">Loading history…</p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-close>Close</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="modal fe-page-edit-modal fe-page-edit-modal--wide" id="page-layout-edit-modal" aria-hidden="true">
   <div class="modal-backdrop" data-close></div>
   <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="page-layout-edit-modal-title">
@@ -753,6 +833,48 @@ window.tspBlogTags = [
   // typography panel, etc.) lights up the yellow bar exactly like
   // a structure-card drop. Capture so we still see the event if a
   // child stops propagation.
+  // Throttled serialiser — keeps the hidden `#page-blocks-json` input
+  // in sync with the modal-based BlockEditor's authoritative state as
+  // the admin types / picks icons / etc. Previously this only ran on
+  // form submit, so the live-preview poller (which reads the hidden
+  // input via `window.opener`) saw stale JSON until Save was clicked.
+  //
+  // Why throttle (not debounce): pure debounce only fires AFTER the
+  // user pauses, so continuous typing of a long sentence leaves the
+  // hidden input stuck at the pre-typing value until they take a
+  // breath — and the preview shows only what made it through. Throttle
+  // guarantees a flush at least every SYNC_MS while typing, so the
+  // poller always sees a steady stream of incremental updates.
+  const SYNC_MS = 150;
+  let _syncTimer = null;
+  let _syncLast = 0;
+  function flushHiddenNow() {
+    _syncLast = Date.now();
+    try {
+      if (editor && typeof editor.serialize === 'function') {
+        const v = editor.serialize();
+        if (v != null && v !== hidden.value) hidden.value = v;
+      }
+    } catch (_) {}
+  }
+  function scheduleHiddenSync() {
+    const since = Date.now() - _syncLast;
+    if (since >= SYNC_MS && !_syncTimer) {
+      // Leading edge — flush immediately so the first keystroke after
+      // a quiet period propagates without a lag.
+      flushHiddenNow();
+      return;
+    }
+    if (!_syncTimer) {
+      // Trailing edge — schedule the next flush at the end of the
+      // throttle window. Continuous typing rides this branch every
+      // tick so the preview sees ~6-7 updates / second.
+      _syncTimer = setTimeout(() => {
+        _syncTimer = null;
+        flushHiddenNow();
+      }, Math.max(0, SYNC_MS - since));
+    }
+  }
   editModal.addEventListener('input', () => {
     try { form.dispatchEvent(new Event('input', { bubbles: true })); }
     catch (_) {}
@@ -775,7 +897,11 @@ window.tspBlogTags = [
         window.tspSyncStructurePayloadsFromState(editor.getState());
       }
     } catch (_) {}
+    scheduleHiddenSync();
   }, true);
+  // `change` covers blur/commit-style controls (selects, color picker
+  // confirm, etc.) that don't always emit `input`. Same debounced sync.
+  editModal.addEventListener('change', () => { scheduleHiddenSync(); }, true);
   editModal.addEventListener('change', () => {
     try { form.dispatchEvent(new Event('change', { bubbles: true })); }
     catch (_) {}
@@ -1260,16 +1386,21 @@ window.tspBlogTags = [
 
 <script>
 // Preview button — opens the current (unsaved) editor state in a new tab
-// via the editor-gated preview route. Building a FormData from the edit
-// form fires its `formdata` listener, which serialises the live block
-// editor into the blocks_json field — so the preview reflects the exact
-// in-progress content without saving anything.
+// via the editor-gated preview route. After the initial open, the
+// preview window itself polls back into THIS window (via `window.opener`)
+// for live edits and re-fetches its own content silently — no new POST
+// from the editor, no focus-steal, no popup-window flicker. The poller
+// lives in `frontend/page.html` and only runs when `preview_mode` is on.
 (function () {
   var btn = document.getElementById('page-preview-btn');
   var form = document.getElementById('page-edit-form');
   if (!btn || !form) return;
-  btn.addEventListener('click', function () {
-    var url = btn.getAttribute('data-preview-url');
+  var url = btn.getAttribute('data-preview-url');
+  var pageId = (url.match(/\/(\d+)(?:$|\?)/) || [])[1] || 'x';
+  var WIN_NAME = 'tsp-page-preview-' + pageId;
+  var previewWin = null;
+
+  function submitToPreview() {
     var fd;
     try { fd = new FormData(form); } catch (_) { fd = null; }
     var blocks = (fd && fd.get('blocks_json'))
@@ -1278,8 +1409,11 @@ window.tspBlogTags = [
     var tmp = document.createElement('form');
     tmp.method = 'POST';
     tmp.action = url;
-    tmp.target = '_blank';
-    tmp.rel = 'noopener';
+    tmp.target = WIN_NAME;
+    // NB: deliberately NOT setting rel="noopener" — the preview window
+    // needs `window.opener` set so its live-update poller can read the
+    // current `#page-blocks-json` value from this editor window. Same
+    // origin, so this is safe.
     tmp.style.display = 'none';
     function add(name, value) {
       var i = document.createElement('input');
@@ -1291,7 +1425,181 @@ window.tspBlogTags = [
     document.body.appendChild(tmp);
     tmp.submit();
     tmp.remove();
+  }
+
+  btn.addEventListener('click', function () {
+    if (!previewWin || previewWin.closed) {
+      previewWin = window.open('about:blank', WIN_NAME);
+    } else {
+      try { previewWin.focus(); } catch (_) {}
+    }
+    submitToPreview();
   });
 })();
+</script>
+
+<script>
+// History modal — opens via the top-actions History button, fetches the
+// page's revision list, and renders a row per save with a Restore form
+// that POSTs to the matching restore endpoint. Restore is non-
+// destructive: it writes the snapshot into the draft slot and reloads
+// the editor; the live page stays unchanged until the admin Publishes.
+(function () {
+  var btn = document.getElementById('page-history-btn');
+  var modal = document.getElementById('page-history-modal');
+  if (!btn || !modal) return;
+  var listEl = modal.querySelector('#page-history-list');
+  var url = btn.getAttribute('data-history-url');
+  var restoreTpl = btn.getAttribute('data-restore-url-template'); // ends with `/0/restore`
+  var csrf = (document.querySelector('[name="csrf_token"]') || {}).value || '';
+  var loaded = false;
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function formatWhen(iso) {
+    if (!iso) return 'Unknown';
+    var d = new Date(iso + (iso.endsWith('Z') ? '' : 'Z'));
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleString(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+    });
+  }
+  function actionChip(action) {
+    if (action === 'publish') {
+      return '<span class="fe-page-history-chip fe-page-history-chip-publish">Published</span>';
+    }
+    return '<span class="fe-page-history-chip fe-page-history-chip-draft">Draft</span>';
+  }
+  function render(payload) {
+    var revs = (payload && payload.revisions) || [];
+    if (!revs.length) {
+      listEl.innerHTML = '<p class="muted small">No saved revisions yet. Save a draft or publish a change to start the history.</p>';
+      return;
+    }
+    var rows = revs.map(function (r, idx) {
+      var restoreUrl = restoreTpl.replace(/\/0\/restore$/, '/' + r.id + '/restore');
+      // The newest entry IS the current state — no point restoring to it.
+      var isCurrent = idx === 0;
+      return ''
+        + '<li class="fe-page-history-row' + (isCurrent ? ' is-current' : '') + '">'
+        + '  <div class="fe-page-history-meta">'
+        + '    ' + actionChip(r.action)
+        + '    <div class="fe-page-history-when">' + escapeHtml(formatWhen(r.created_at)) + '</div>'
+        + (r.created_by ? '    <div class="fe-page-history-who muted smaller">by ' + escapeHtml(r.created_by) + '</div>' : '')
+        + (isCurrent ? '    <span class="fe-page-history-current-tag muted smaller">current</span>' : '')
+        + '  </div>'
+        + (isCurrent ? '  <span class="muted smaller">No restore — this is what you\'re editing now.</span>'
+                     : '  <form method="post" action="' + escapeHtml(restoreUrl) + '" class="fe-page-history-restore"'
+                       + ' onsubmit="return confirm(\'Restore this revision as a draft? Your current unsaved/draft changes will be replaced.\');"'
+                       + ' data-fe-skip-save-bar>'
+                       + '    <input type="hidden" name="csrf_token" value="' + escapeHtml(csrf) + '">'
+                       + '    <button type="submit" class="btn btn-sm">Restore</button>'
+                       + '  </form>')
+        + '</li>';
+    }).join('');
+    listEl.innerHTML = '<ul class="fe-page-history-list">' + rows + '</ul>';
+  }
+  function loadHistory() {
+    listEl.innerHTML = '<p class="muted small fe-page-history-loading">Loading history…</p>';
+    fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (payload) {
+        if (!payload) { listEl.innerHTML = '<p class="muted small">Failed to load history.</p>'; return; }
+        loaded = true;
+        render(payload);
+      })
+      .catch(function () {
+        listEl.innerHTML = '<p class="muted small">Failed to load history.</p>';
+      });
+  }
+  btn.addEventListener('click', function () {
+    // Open the modal via the project's standard pattern: add `open`
+    // and clear `aria-hidden`. The global modal-dismiss handlers in
+    // app.js handle backdrop / × close via the `data-close` attribute.
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    // Re-fetch on every open so a Save→reopen reflects the new entry.
+    loadHistory();
+  });
+})();
+</script>
+
+<script>
+// Augment the global yellow save bar (rendered by _frontend_subnav.html)
+// with TWO buttons for published-page editing: "Save Draft" + "Publish".
+// Each flips the form's hidden `save_action` field before triggering the
+// shared save-bar handler in app.js (`feSaveBar` IIFE), which iterates
+// every dirty form on the screen and POSTs each one — so any
+// concurrently-dirty side forms (status pill, layout picker) save in
+// the same round-trip too.
+//
+// The proxy uses a tiny flag (`__tspViaDraft`) so the capture-phase
+// listener on the primary Publish button doesn't reset save_action back
+// to 'publish' when the Save Draft button programmatically clicks it.
+{% if page and page.is_published %}
+(function () {
+  var bar = document.getElementById('fe-save-bar');
+  var primary = document.getElementById('fe-save-bar-btn');
+  var sa = document.getElementById('page-save-action');
+  if (!bar || !primary || !sa) return;
+
+  // Re-label the existing primary button to "Publish" so the action is
+  // unambiguous. The original "Save" text covered both "save settings"
+  // and "save content"; on a draft-capable page only one of those
+  // (publish to live) makes sense for this button.
+  primary.textContent = 'Publish';
+  primary.title = 'Publish these changes to the live page. Clears any pending draft.';
+  primary.classList.add('fe-save-bar-btn-publish');
+
+  // Inject the secondary "Save Draft" button immediately before the
+  // primary one so it reads left-to-right as "Save Draft → Publish".
+  var draft = document.createElement('button');
+  draft.type = 'button';
+  draft.id = 'fe-save-bar-draft-btn';
+  draft.className = 'btn fe-save-bar-btn fe-save-bar-btn-draft';
+  draft.textContent = 'Save Draft';
+  draft.title = 'Save changes as a private draft — the live page stays unchanged until you click Publish.';
+  primary.parentNode.insertBefore(draft, primary);
+
+  draft.addEventListener('click', function () {
+    sa.value = 'draft';
+    bar.__tspViaDraft = true;
+    primary.click();
+  });
+  // Capture phase so this runs before app.js's feSaveBar handler reads
+  // the form's blocks_json (and before our reset would override it).
+  // For draft-proxied clicks the flag short-circuits; user-driven
+  // clicks fall through and reset save_action to 'publish'.
+  primary.addEventListener('click', function () {
+    if (bar.__tspViaDraft) {
+      bar.__tspViaDraft = false;
+      return;
+    }
+    sa.value = 'publish';
+  }, true);
+
+  // Top-level "Publish draft" button — only rendered when a draft is
+  // currently active. The yellow save bar only appears once something
+  // is dirty, so without this button the admin would have to make a
+  // throwaway edit just to expose Publish. Sets save_action and
+  // submits the page form directly (form's own submit listener still
+  // runs editor.serialize() to flush any pending in-modal edits).
+  var publishTop = document.getElementById('page-publish-top-btn');
+  if (publishTop) {
+    var formEl = document.getElementById('page-edit-form');
+    publishTop.addEventListener('click', function () {
+      if (!formEl) return;
+      sa.value = 'publish';
+      if (typeof formEl.requestSubmit === 'function') formEl.requestSubmit();
+      else formEl.submit();
+    });
+  }
+})();
+{% endif %}
 </script>
 {% endblock %}

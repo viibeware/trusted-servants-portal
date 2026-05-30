@@ -338,6 +338,13 @@ def create_app():
         h12 = h % 12 or 12
         return f"{h12}:{m:02d} {suffix}"
 
+    @app.template_filter("phone_fmt")
+    def phone_fmt(value):
+        """Display-only phone formatting — hyphenated NANP, international
+        style for other country codes. See app/phone.py."""
+        from .phone import format_phone
+        return format_phone(value)
+
     @app.template_filter("fmt_site_local")
     def fmt_site_local(value, fmt="%Y-%m-%d %H:%M %Z"):
         """Format a naive-UTC datetime in the site's configured timezone.
@@ -508,9 +515,16 @@ def create_app():
         Redirects (covers legacy WordPress URLs, renamed pages,
         external short-links, etc.).
 
+        Two match modes:
+        - Exact (with trailing-slash tolerance) — O(log n) on the
+          unique `source_path` index. Tried first; an exact rule
+          always wins over a wildcard.
+        - Wildcard (`/prefix/*`) — full scan of the (small,
+          admin-curated) set of wildcard rows, longest-prefix winner.
+          Lands every URL under the prefix on the literal target.
+
         Cheap early-out for static-asset prefixes so the assets path
-        doesn't pay the indexed lookup. The query itself is O(log n)
-        on the unique `source_path` index.
+        doesn't pay either lookup.
         """
         p = request.path or ""
         # Skip asset paths — these never redirect, but they're the
@@ -530,6 +544,20 @@ def create_app():
         if rows:
             row = next((r for r in rows if r.source_path == p), rows[0])
             return redirect(row.target_path, code=301)
+        # Wildcard fallback. Source paths of the form "/foo/*" match
+        # any request whose path starts with "/foo/" (the "/" boundary
+        # prevents "/foo/*" from accidentally matching "/foobar").
+        # Longest prefix wins so "/swag/sale/*" beats "/swag/*".
+        wild = UrlRedirect.query.filter(
+            UrlRedirect.source_path.endswith("/*")).all()
+        best = None
+        for r in wild:
+            prefix = r.source_path[:-1]  # strip the trailing "*", keep the "/"
+            if p == prefix[:-1] or p.startswith(prefix):
+                if best is None or len(r.source_path) > len(best.source_path):
+                    best = r
+        if best:
+            return redirect(best.target_path, code=301)
         return None
 
     # Cache-bust token (?v=) on image + static asset URLs. See app/imgcache.py.
@@ -597,6 +625,22 @@ def create_app():
         # The loser sees "table already exists" — tolerate it rather than
         # crashing.
         from sqlalchemy.exc import OperationalError
+        # Pre-create_all: rename the legacy ``phone_list_entry`` table to
+        # ``recovery_contact`` BEFORE create_all runs, so create_all never
+        # makes an empty ``recovery_contact`` that would then need dropping
+        # (dropping it is a data-loss hazard under the two-worker boot
+        # race). Rename only — never drop — and tolerate the race (the
+        # loser sees "no such table" / "already exists"). No-op once
+        # migrated and on fresh installs.
+        from sqlalchemy import text as _text
+        try:
+            with db.engine.begin() as _c:
+                _names = {r[0] for r in _c.execute(_text(
+                    "SELECT name FROM sqlite_master WHERE type='table'"))}
+                if "phone_list_entry" in _names and "recovery_contact" not in _names:
+                    _c.execute(_text("ALTER TABLE phone_list_entry RENAME TO recovery_contact"))
+        except OperationalError:
+            pass
         try:
             db.create_all()
         except OperationalError as e:
@@ -708,6 +752,18 @@ def create_app():
     app.jinja_env.globals["dynbg_resolve_colors"] = _dynbg.resolve_colors
     app.jinja_env.globals["dynbg_resolve_positions"] = _dynbg.resolve_positions_css
     app.jinja_env.globals["dynbg_noise_url"] = _dynbg.noise_grain_data_url
+    # Per-render randomised inline-style for a preset thumbnail (fresh
+    # palette + positions each load) — drives the picker grid thumbs.
+    app.jinja_env.globals["dynbg_thumb_style"] = _dynbg.thumb_style
+    # Per-preset knob CSS-vars (dot size/gap, line angle/thickness, …)
+    # stamped on a surface's dynbg-host so the recipe reads them.
+    app.jinja_env.globals["dynbg_knobs_css"] = _dynbg.knobs_to_css_vars
+    # Per-preset capability spec (which Options controls + knobs apply
+    # to each background) — the modal stamps this as JSON to drive
+    # show/hide + slider rendering. Also the overlay Size/Intensity
+    # spec keyed by overlay so the modal can set per-overlay bounds.
+    app.jinja_env.globals["dynbg_preset_caps"] = lambda: _dynbg.PRESET_CAPS
+    app.jinja_env.globals["dynbg_overlay_knobs"] = lambda: _dynbg.OVERLAY_KNOBS
     # Per-template settings dict — list-page shells read this so the
     # admin's customize-panel choices (font / size / dynbg) take
     # effect on the public site. Falls back to flat columns inside
@@ -1032,6 +1088,7 @@ def create_app():
     # public base template inlines on <body>.
     from .design import (
         design_css_vars as _design_css_vars,
+        neobrutal_hero_css_vars as _neobrutal_hero_css_vars,
         resolve_design as _resolve_design,
         derive_dark_color as _derive_dark_color,
         DESIGN_FIELDS as _DESIGN_FIELDS,
@@ -1046,6 +1103,7 @@ def create_app():
         THEME_DEFAULTS as _DESIGN_THEME_DEFAULTS,
     )
     app.jinja_env.globals["design_css_vars"] = _design_css_vars
+    app.jinja_env.globals["neobrutal_hero_css_vars"] = _neobrutal_hero_css_vars
     app.jinja_env.globals["resolve_design"] = _resolve_design
     app.jinja_env.globals["derive_dark_color"] = _derive_dark_color
     app.jinja_env.globals["design_fields"] = _DESIGN_FIELDS
@@ -1295,6 +1353,37 @@ def _migrate_sqlite(app):
             except OperationalError as e:
                 if "duplicate column" not in str(e).lower():
                     raise
+
+        # ── Recovery Contacts rename (dev-era) ───────────────────────
+        # The module shipped as "Phone List": ``site_setting.phone_list_*``
+        # columns (and table ``phone_list_entry``, renamed to
+        # ``recovery_contact`` pre-create_all in create_app). Rename the
+        # columns to ``recovery_contacts_*`` in place. Race-tolerant: with
+        # two workers booting, the loser's RENAME raises "no such column" /
+        # "duplicate" after the winner committed — caught and treated as
+        # already-done (RENAME COLUMN never loses data). No-op once
+        # migrated and on fresh installs.
+        def rename_col(table, old, new):
+            cols = {r[1] for r in conn.execute(text(f"PRAGMA table_info({table})"))}
+            if old in cols and new not in cols:
+                try:
+                    conn.execute(text(f'ALTER TABLE {table} RENAME COLUMN {old} TO {new}'))
+                except OperationalError:
+                    pass
+        for _old, _new in (
+                ("phone_list_enabled", "recovery_contacts_enabled"),
+                ("phone_list_required_role", "recovery_contacts_required_role"),
+                ("phone_list_heading", "recovery_contacts_heading"),
+                ("phone_list_subheading", "recovery_contacts_subheading"),
+                ("phone_list_intro", "recovery_contacts_intro"),
+                ("phone_list_success_message", "recovery_contacts_success_message"),
+                ("phone_list_submit_label", "recovery_contacts_submit_label"),
+                ("phone_list_to", "recovery_contacts_to"),
+                ("phone_list_width_mode", "recovery_contacts_width_mode"),
+                ("phone_list_max_width", "recovery_contacts_max_width"),
+                ("phone_list_padding_pct", "recovery_contacts_padding_pct")):
+            rename_col("site_setting", _old, _new)
+
         for col, ddl in (("zoom_meeting_id", "VARCHAR(64)"),
                          ("zoom_passcode", "VARCHAR(128)"),
                          ("zoom_opens_time", "VARCHAR(16)"),
@@ -1358,6 +1447,13 @@ def _migrate_sqlite(app):
             add("meeting_file", col, ddl)
         for col, ddl in (("opens_time", "VARCHAR(8)"),):
             add("meeting_schedule", col, ddl)
+        for col, ddl in (("imap_host", "VARCHAR(255)"),
+                         ("imap_port", "INTEGER DEFAULT 993"),
+                         ("imap_ssl", "BOOLEAN NOT NULL DEFAULT 1"),
+                         ("imap_username", "VARCHAR(255)"),
+                         ("imap_password_enc", "BLOB"),
+                         ("imap_mailbox", "VARCHAR(128) DEFAULT 'INBOX'")):
+            add("zoom_otp_email", col, ddl)
         for col, ddl in (("location_type", "VARCHAR(16) NOT NULL DEFAULT 'in_person'"),
                          ("address", "VARCHAR(500)"),
                          ("maps_url", "VARCHAR(1000)"),
@@ -1484,6 +1580,20 @@ def _migrate_sqlite(app):
                          ("frontend_404_image_filename", "VARCHAR(500)"),
                          ("frontend_module_enabled", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("frontend_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+                         # Cookie & privacy compliance — see app/cookie_compliance.py
+                         # and SiteSetting.cookie_compliance_* commentary.
+                         ("cookie_compliance_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("cookie_compliance_mode", "VARCHAR(16) NOT NULL DEFAULT 'notice'"),
+                         ("cookie_compliance_auto_region", "BOOLEAN NOT NULL DEFAULT 1"),
+                         ("cookie_compliance_title", "VARCHAR(200)"),
+                         ("cookie_compliance_body", "TEXT"),
+                         ("cookie_compliance_accept_label", "VARCHAR(60)"),
+                         ("cookie_compliance_reject_label", "VARCHAR(60)"),
+                         ("cookie_compliance_more_label", "VARCHAR(60)"),
+                         ("cookie_compliance_position", "VARCHAR(16) NOT NULL DEFAULT 'bottom-bar'"),
+                         ("cookie_compliance_policy_page_id", "INTEGER REFERENCES page(id) ON DELETE SET NULL"),
+                         ("cookie_compliance_policy_external_url", "VARCHAR(500)"),
+                         ("cookie_compliance_remember_days", "INTEGER NOT NULL DEFAULT 365"),
                          # Which `Page` row renders at the public `/` root.
                          # Nullable for the brief window between column add
                          # and the auto-seed running; in normal operation
@@ -1577,6 +1687,7 @@ def _migrate_sqlite(app):
                          ("frontend_event_template", "VARCHAR(64) NOT NULL DEFAULT 'classic'"),
                          ("frontend_template_settings_json", "TEXT"),
                          ("frontend_theme", "VARCHAR(64) NOT NULL DEFAULT 'classic'"),
+                         ("frontend_theme_states_json", "TEXT"),
                          ("frontend_default_theme", "VARCHAR(16) NOT NULL DEFAULT 'system'"),
                          ("frontend_footer_width_mode", "VARCHAR(16) NOT NULL DEFAULT 'boxed'"),
                          ("frontend_footer_max_width", "INTEGER NOT NULL DEFAULT 1160"),
@@ -1592,6 +1703,12 @@ def _migrate_sqlite(app):
                          ("frontend_mega_text_color", "VARCHAR(16) NOT NULL DEFAULT '#ffffff'"),
                          ("frontend_mega_radius_bl", "INTEGER NOT NULL DEFAULT 18"),
                          ("frontend_mega_radius_br", "INTEGER NOT NULL DEFAULT 18"),
+                         ("frontend_mega_bg_dynamic_key", "TEXT"),
+                         ("frontend_mega_bg_dynbg_config_json", "TEXT"),
+                         ("frontend_mega_bg_dynbg_dark", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("frontend_mega_bg_color_dark", "VARCHAR(16)"),
+                         ("frontend_mega_text_color_dark", "VARCHAR(16)"),
+                         ("frontend_mega_bg_dynbg_blend", "INTEGER NOT NULL DEFAULT 100"),
                          ("frontend_megamenu_animate", "BOOLEAN NOT NULL DEFAULT 1"),
                          ("frontend_megamenu_animate_ms", "INTEGER NOT NULL DEFAULT 320"),
                          ("frontend_megamenu_panel_fade", "BOOLEAN NOT NULL DEFAULT 1"),
@@ -1767,6 +1884,20 @@ def _migrate_sqlite(app):
                          ("contact_form_width_mode",   "VARCHAR(16) NOT NULL DEFAULT 'boxed'"),
                          ("contact_form_max_width",    "INTEGER NOT NULL DEFAULT 1160"),
                          ("contact_form_padding_pct",  "INTEGER NOT NULL DEFAULT 5"),
+                         # Recovery Contacts module (public /contactlist directory).
+                         ("recovery_contacts_enabled",        "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("recovery_contacts_required_role",  "VARCHAR(32) NOT NULL DEFAULT 'admin'"),
+                         ("recovery_contacts_heading",        "VARCHAR(200)"),
+                         ("recovery_contacts_subheading",     "VARCHAR(500)"),
+                         ("recovery_contacts_intro",          "TEXT"),
+                         ("recovery_contacts_success_message", "VARCHAR(500)"),
+                         ("recovery_contacts_submit_label",   "VARCHAR(100)"),
+                         ("recovery_contacts_to",             "VARCHAR(500)"),
+                         ("recovery_contacts_width_mode",     "VARCHAR(16) NOT NULL DEFAULT 'boxed'"),
+                         ("recovery_contacts_max_width",      "INTEGER NOT NULL DEFAULT 1160"),
+                         ("recovery_contacts_padding_pct",    "INTEGER NOT NULL DEFAULT 5"),
+                         ("recovery_contacts_email_alerts",   "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("recovery_contacts_removal_alerts", "BOOLEAN NOT NULL DEFAULT 0"),
                          ("frontend_meetings_list_bg_dynamic_key", "VARCHAR(64)"),
                          ("frontend_events_list_bg_dynamic_key", "VARCHAR(64)"),
                          ("frontend_announcements_list_bg_dynamic_key", "VARCHAR(64)"),
@@ -1805,6 +1936,23 @@ def _migrate_sqlite(app):
                          ("media_cache_version", "INTEGER NOT NULL DEFAULT 1"),
                          ("media_cache_cleared_at", "DATETIME")):
             add("site_setting", col, ddl)
+        # Recovery Contacts entries — columns added after the table shipped, so
+        # existing installs need them patched on (fresh installs get them
+        # from db.create_all()). matched_entry_id is a self-referential FK
+        # used by the public "update my entry" flow.
+        for col, ddl in (("available_to_sponsor", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("wants_update", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("wants_removal", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("removal_token", "VARCHAR(64)"),
+                         ("removal_confirmed_at", "DATETIME"),
+                         ("contact_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+                         ("contact_count", "INTEGER NOT NULL DEFAULT 0"),
+                         ("matched_entry_id", "INTEGER REFERENCES recovery_contact(id) ON DELETE SET NULL"),
+                         # Anti-abuse on the self-service update/removal flow
+                         # (24 h update rate-limit + 7-day disavow lock).
+                         ("last_update_request_at", "DATETIME"),
+                         ("requests_locked_until", "DATETIME")):
+            add("recovery_contact", col, ddl)
         for col, ddl in (("kind", "VARCHAR(16) NOT NULL DEFAULT 'link'"),
                          ("button_style", "VARCHAR(16) NOT NULL DEFAULT 'pill'"),
                          ("open_in_new_tab", "BOOLEAN NOT NULL DEFAULT 0"),
@@ -1843,8 +1991,16 @@ def _migrate_sqlite(app):
                          ("is_private", "BOOLEAN NOT NULL DEFAULT 0"),
                          ("og_title", "VARCHAR(200)"),
                          ("og_description", "TEXT"),
-                         ("og_image_filename", "VARCHAR(500)")):
+                         ("og_image_filename", "VARCHAR(500)"),
+                         ("draft_json", "TEXT"),
+                         ("draft_saved_at", "DATETIME")):
             add("page", col, ddl)
+
+        # NotFoundEvent — added in 2.8.1. Captures the source IP on
+        # public 404s so the Watchtower 404s tab can show "who's hitting
+        # this URL" and offer a one-click block. Existing rows get NULL
+        # IPs (the column was added after the fact); new 404s carry IPs.
+        add("not_found_event", "ip", "VARCHAR(45)")
 
         # One-shot data migration: when the new frontend_og_* columns are
         # added on an existing deployment, seed them from the legacy og_*

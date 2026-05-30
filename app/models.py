@@ -807,6 +807,45 @@ class SiteSetting(db.Model):
     # Public visibility: when False (but module is enabled), signed-in editors
     # and admins can still preview while the public root redirects to login.
     frontend_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    # ── Cookie & privacy compliance (managed from Web Frontend → Cookie Compliance) ──
+    # Module gate. When False, no banner is rendered and the public site
+    # behaves as it did before the feature existed.
+    cookie_compliance_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    # Prompt behaviour. Trade-off ladder:
+    #   notice  — informational banner ("we use cookies"), one button to dismiss
+    #   consent — opt-in by default (Accept / Reject non-essential) with an
+    #             explicit choice required before the banner disappears
+    #   strict  — opt-in, AND non-essential cookies are blocked entirely until
+    #             accept is clicked. Closest to GDPR Article 7 (informed,
+    #             unambiguous, freely-given consent)
+    cookie_compliance_mode = db.Column(db.String(16), nullable=False, default="notice")
+    # When True, the server uses Accept-Language + CDN country headers to
+    # auto-pick a mode per visitor — EU/UK → strict, California (where
+    # detectable) → consent, else → the configured `cookie_compliance_mode`.
+    # The admin's choice is the floor: auto can only escalate, never relax.
+    cookie_compliance_auto_region = db.Column(db.Boolean, nullable=False, default=True)
+    # Banner copy. Defaults filled in at first load so admins see a sensible
+    # banner immediately even before they customise.
+    cookie_compliance_title = db.Column(db.String(200))
+    cookie_compliance_body = db.Column(db.Text)
+    cookie_compliance_accept_label = db.Column(db.String(60))
+    cookie_compliance_reject_label = db.Column(db.String(60))
+    cookie_compliance_more_label = db.Column(db.String(60))
+    # Where the banner anchors on screen. Values: bottom-bar (full-width
+    # strip), bottom-left, bottom-right, modal (centered backdrop).
+    cookie_compliance_position = db.Column(db.String(16), nullable=False, default="bottom-bar")
+    # Privacy policy link. Either an internal Page (preferred — admin can
+    # generate one with a click) or an external URL. Both nullable; the
+    # banner just hides the "More info" link when neither is set.
+    cookie_compliance_policy_page_id = db.Column(
+        db.Integer, db.ForeignKey('page.id', ondelete='SET NULL'),
+        nullable=True, index=True)
+    cookie_compliance_policy_external_url = db.Column(db.String(500))
+    # How long a remembered choice survives in the visitor's browser
+    # before they're prompted again. Default 365 days — long enough to
+    # respect their answer without violating common practice (most
+    # jurisdictions recommend re-prompting at least once a year).
+    cookie_compliance_remember_days = db.Column(db.Integer, nullable=False, default=365)
     # ── Frontend asset caching (managed from Web Frontend → Caching) ──
     # Master switch. When on, image/static responses get long-lived
     # public Cache-Control so returning visitors serve them straight from
@@ -1103,6 +1142,13 @@ class SiteSetting(db.Model):
     # template_* fields above act as overrides when the user picks a layout
     # different from the active theme on a specific page.
     frontend_theme = db.Column(db.String(64), nullable=False, default="classic")
+    # Per-theme saved state. JSON map of theme_key -> snapshot of the
+    # theme-stateful SiteSetting fields (design tokens, fonts, default mode,
+    # per-template settings, mega-menu colours). On theme switch the outgoing
+    # theme's state is snapshotted here and the incoming theme's saved state
+    # restored, so returning to a theme brings back how it was left. The
+    # theme switcher modal exposes Reset-to-default and Return-to-last-state.
+    frontend_theme_states_json = db.Column(db.Text)
     # Default appearance mode for first-time visitors: 'light', 'dark',
     # or 'system' (follows the visitor's OS preference). A returning
     # visitor's localStorage choice always wins over this default.
@@ -1152,6 +1198,22 @@ class SiteSetting(db.Model):
     frontend_mega_text_color = db.Column(db.String(16), nullable=False, default="#ffffff")
     frontend_mega_radius_bl = db.Column(db.Integer, nullable=False, default=18)
     frontend_mega_radius_br = db.Column(db.Integer, nullable=False, default=18)
+    # Optional dynamic background for the mega-menu panel (same dynbg system as
+    # the hero / pages). When a key is set, the panel renders the animated
+    # backdrop behind its links and the solid bg-colour above steps aside.
+    frontend_mega_bg_dynamic_key = db.Column(db.String(64))
+    frontend_mega_bg_dynbg_config_json = db.Column(db.Text)
+    # Render the mega-menu dynamic background in its dark variant even when the
+    # site is in light mode (so a dark panel sits behind light mega-menu text).
+    frontend_mega_bg_dynbg_dark = db.Column(db.Boolean, nullable=False, default=False)
+    # Independent dark-mode mega-menu colours. When unset, the renderer falls
+    # back to a sensible dark surface + the auto dark_variant of the light text.
+    frontend_mega_bg_color_dark = db.Column(db.String(16))
+    frontend_mega_text_color_dark = db.Column(db.String(16))
+    # Blend between the solid background colour (0) and the dynamic background
+    # (100). Implemented as the dynbg layer's opacity over the solid colour, so
+    # the admin can dial the effect from "just the colour" to "just the dynbg".
+    frontend_mega_bg_dynbg_blend = db.Column(db.Integer, nullable=False, default=100)
     # Staggered reveal animation when the mega menu opens (titles/links/buttons
     # fade in one after the other with a small slide + rotate).
     frontend_megamenu_animate = db.Column(db.Boolean, nullable=False, default=True)
@@ -1265,6 +1327,37 @@ class SiteSetting(db.Model):
     contact_form_max_width = db.Column(db.Integer, nullable=False, default=1160)
     contact_form_padding_pct = db.Column(db.Integer, nullable=False, default=5)
 
+    # ── Recovery Contacts module (public /contactlist page) ─────────────────
+    # A public directory of names + phone/email that visitors submit
+    # themselves; entries stay hidden until an admin approves them.
+    # Module toggle + role gate mirror the other module pairs (Stories,
+    # Blog, Trusted Servants). The page-config columns below drive the
+    # public page chrome; per-entry rows live in ``RecoveryContact``.
+    # Turnstile + the hidden honeypot guard the public submission form.
+    recovery_contacts_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    recovery_contacts_required_role = db.Column(db.String(32), nullable=False, default="admin")
+    recovery_contacts_heading = db.Column(db.String(200))
+    recovery_contacts_subheading = db.Column(db.String(500))
+    recovery_contacts_intro = db.Column(db.Text)
+    recovery_contacts_success_message = db.Column(db.String(500))
+    recovery_contacts_submit_label = db.Column(db.String(100))
+    # Optional recipient(s) emailed when a new entry is submitted —
+    # comma-separated, falls back to ``access_request_to`` so the admin
+    # gets a heads-up that something's waiting to be approved.
+    recovery_contacts_to = db.Column(db.String(500))
+    # Admin email-alert toggles. New submissions always surface as a chip
+    # in the admin panel; these decide whether an email is *also* sent.
+    # ``email_alerts`` covers new entries + update requests; removal
+    # alerts fire only after the submitter confirms via the emailed link.
+    # Both default off so the portal stays quiet unless the admin opts in.
+    recovery_contacts_email_alerts = db.Column(db.Boolean, nullable=False, default=False)
+    recovery_contacts_removal_alerts = db.Column(db.Boolean, nullable=False, default=False)
+    # Container width — same boxed/full + max-width + side-padding shape
+    # every other public list surface uses (contact_form, events_list…).
+    recovery_contacts_width_mode = db.Column(db.String(16), nullable=False, default="boxed")
+    recovery_contacts_max_width = db.Column(db.Integer, nullable=False, default=1160)
+    recovery_contacts_padding_pct = db.Column(db.Integer, nullable=False, default=5)
+
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -1325,6 +1418,17 @@ class ZoomOtpEmail(db.Model):
     email = db.Column(db.String(255))
     password_enc = db.Column(db.LargeBinary)
     login_url = db.Column(db.String(1000))
+    # IMAP mailbox settings — let the app log in and pull OTP codes
+    # directly instead of the user opening webmail. The IMAP login can
+    # differ from the human-facing `email`/`password` (e.g. an app
+    # password or a service login), so they're stored separately; when
+    # blank, the fetcher falls back to `email` / `password_enc`.
+    imap_host = db.Column(db.String(255))
+    imap_port = db.Column(db.Integer, default=993)
+    imap_ssl = db.Column(db.Boolean, nullable=False, default=True)
+    imap_username = db.Column(db.String(255))
+    imap_password_enc = db.Column(db.LargeBinary)
+    imap_mailbox = db.Column(db.String(128), default="INBOX")
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
@@ -1506,6 +1610,197 @@ class ContactSubmission(db.Model):
     email_sent = db.Column(db.Boolean, nullable=False, default=False)
     email_error = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class RecoveryContact(db.Model):
+    """A single entry on the public Recovery Contacts directory.
+
+    Visitors submit their name plus a phone number and/or email via the
+    public ``/contactlist`` page. New rows land with ``approved=False`` and
+    are invisible to the public until an admin approves them from the
+    Recovery Contacts admin section. ``name`` always renders on the public list;
+    ``show_phone`` / ``show_email`` give per-entry granular control over
+    whether the phone, the email, or both are displayed — the submitter
+    picks a starting preference on the form and the admin can override
+    either one at any time. Mirrors ``ContactSubmission``'s audit shape
+    (ip_address + created_at) plus an ``approved_at`` stamp."""
+    __tablename__ = "recovery_contact"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    email = db.Column(db.String(255))
+    phone = db.Column(db.String(64))
+    # Per-entry public display gates. Name is always shown; these decide
+    # whether the matching contact field renders on the public list.
+    show_phone = db.Column(db.Boolean, nullable=False, default=True)
+    show_email = db.Column(db.Boolean, nullable=False, default=True)
+    # When True, the entry advertises that the person is open to
+    # sponsoring. Set on the public form (a checkbox) and editable by the
+    # admin; rendered as a badge on the public list. No separate show
+    # toggle — it's a yes/no attribute rather than contact info.
+    available_to_sponsor = db.Column(db.Boolean, nullable=False, default=False)
+    # "Contact me through the site" opt-in. When True (and an email is on
+    # file), a Contact button shows on the public list; the visitor's
+    # message is relayed to ``email`` server-side with Reply-To set to the
+    # sender, so the address is never exposed. Lets people who hide their
+    # phone/email stay reachable. ``contact_count`` tracks how many times
+    # they've been contacted this way (shown as a chip in the admin).
+    contact_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    contact_count = db.Column(db.Integer, nullable=False, default=0)
+    # Approval workflow. False = pending review (hidden from public);
+    # True = approved (rendered on the public directory).
+    approved = db.Column(db.Boolean, nullable=False, default=False)
+    # Update-request workflow. When the submitter ticks "I'm updating my
+    # existing entry" on the public form, ``wants_update`` is set and the
+    # submit handler cross-references the directory by email/phone. If a
+    # match is found, ``matched_entry_id`` points at the existing
+    # (approved) entry so the admin sees the submission is *both* a new
+    # row AND a proposed update to an existing one, and can apply it.
+    wants_update = db.Column(db.Boolean, nullable=False, default=False)
+    # Set when the submitter ticks "Remove me from the list" — a pending
+    # request (matched to the existing entry by name) that an admin
+    # actions by deleting the matched entry. A confirmation email is sent
+    # to the submitter when the request is filed.
+    wants_removal = db.Column(db.Boolean, nullable=False, default=False)
+    # Double opt-in for BOTH update and removal requests (kept on these
+    # legacy ``removal_*`` columns). The token powers the confirmation
+    # link emailed to the submitter; clicking it auto-applies the change
+    # (update overwrites the matched entry / removal deletes it) — no
+    # admin approval. ``removal_confirmed_at`` is stamped at that point.
+    # Until then the request shows in the admin panel so an admin can
+    # apply it by hand if the person never confirms.
+    removal_token = db.Column(db.String(64))
+    removal_confirmed_at = db.Column(db.DateTime)
+    matched_entry_id = db.Column(db.Integer,
+                                 db.ForeignKey("recovery_contact.id", ondelete="SET NULL"))
+    # Admin-only note (e.g. why an entry was held). Never public.
+    note = db.Column(db.Text)
+    ip_address = db.Column(db.String(64))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    approved_at = db.Column(db.DateTime)
+    # Anti-abuse on the self-service update/removal flow.
+    #  • ``last_update_request_at`` stamps when an update request was last
+    #    filed against this listing; the public form rejects a second update
+    #    within 24 h (and flags it) so a malicious actor can't spam the
+    #    listing owner with confirmation emails.
+    #  • ``requests_locked_until`` is set 7 days out when the listing owner
+    #    clicks "I didn't submit this" in a confirmation email — while it's
+    #    in the future the form refuses any update OR removal request for
+    #    this listing.
+    last_update_request_at = db.Column(db.DateTime)
+    requests_locked_until = db.Column(db.DateTime)
+
+    # Self-referential link to the existing entry a pending update matched.
+    matched_entry = db.relationship("RecoveryContact", remote_side=[id],
+                                    foreign_keys=[matched_entry_id])
+
+    @property
+    def public_phone(self):
+        """Phone number to render publicly, or None when the entry has
+        no phone or the admin hid it."""
+        return self.phone if (self.phone and self.show_phone) else None
+
+    @property
+    def public_email(self):
+        """Email to render publicly, or None when the entry has no email
+        or the admin hid it."""
+        return self.email if (self.email and self.show_email) else None
+
+
+class RecoveryContactLog(db.Model):
+    """Audit trail for the Recovery Contacts module: public submissions,
+    update/removal requests + their confirmation emails, the email-link
+    confirmations, relayed "Contact me" messages, and admin actions
+    (approve, edit, apply, remove, …). ``entry_name`` is a snapshot so the
+    log stays readable after the underlying entry is deleted."""
+    __tablename__ = "recovery_contact_log"
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    event = db.Column(db.String(40), nullable=False)   # machine key (drives the icon/colour)
+    message = db.Column(db.Text, nullable=False)        # human-readable line
+    entry_name = db.Column(db.String(200))             # snapshot of who it concerns
+    actor = db.Column(db.String(120))                  # 'Visitor', 'admin: jdoe', 'System'
+    ip_address = db.Column(db.String(64))
+
+
+def log_recovery_contact(event, message, entry_name=None, actor=None, ip_address=None):
+    """Append a Recovery Contacts audit-log row and commit. Best-effort —
+    a logging failure must never break the action it's recording."""
+    try:
+        db.session.add(RecoveryContactLog(
+            event=event, message=message,
+            entry_name=(entry_name or None),
+            actor=(actor or None),
+            ip_address=(ip_address or None)))
+        db.session.commit()
+    except Exception:  # noqa: BLE001
+        db.session.rollback()
+
+
+class RecoveryContactAbuse(db.Model):
+    """A flagged, likely-malicious self-service request against a Recovery
+    Contacts listing — surfaced in Watchtower so an admin can block the IP
+    and deal with it. Two kinds:
+
+      • ``rate_limited`` — a second update request hit the same listing
+        within 24 h. The second request's data is discarded (not ingested).
+      • ``disavowed``    — the listing owner clicked "I didn't submit this"
+        in a confirmation email. The request is discarded and the listing
+        is locked against further update/removal requests for 7 days
+        (``locked_until`` snapshots that deadline).
+
+    ``ip_address`` is the requestor's IP (the abuser), so the Watchtower
+    panel can offer a one-click block. Repeat hits from the same kind +
+    listing + IP bump ``attempt_count`` / ``last_attempt_at`` rather than
+    piling up rows. ``resolved`` lets an admin clear it once handled."""
+    __tablename__ = "recovery_contact_abuse"
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    kind = db.Column(db.String(20), nullable=False)        # 'rate_limited' | 'disavowed'
+    entry_id = db.Column(db.Integer,
+                         db.ForeignKey("recovery_contact.id", ondelete="SET NULL"))
+    entry_name = db.Column(db.String(200))                  # snapshot of the targeted listing
+    entry_email = db.Column(db.String(255))                 # snapshot
+    ip_address = db.Column(db.String(64))                   # requestor (abuser) IP
+    detail = db.Column(db.Text)                             # human-readable line
+    attempt_count = db.Column(db.Integer, nullable=False, default=1)
+    last_attempt_at = db.Column(db.DateTime, default=datetime.utcnow)
+    locked_until = db.Column(db.DateTime)                   # set for 'disavowed'
+    resolved = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    resolved_at = db.Column(db.DateTime)
+    resolved_by = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"))
+
+
+def record_recovery_contact_abuse(kind, entry, ip_address, detail, locked_until=None):
+    """Record (or bump) a Recovery Contacts abuse flag and commit. If an
+    unresolved row of the same ``kind`` already exists for this listing +
+    IP, increment its ``attempt_count`` instead of adding a duplicate.
+    Returns the row, or None on failure (best-effort — never raises)."""
+    try:
+        name = getattr(entry, "name", None)
+        email = getattr(entry, "email", None)
+        eid = getattr(entry, "id", None)
+        now = datetime.utcnow()
+        row = (RecoveryContactAbuse.query
+               .filter_by(kind=kind, entry_id=eid, ip_address=ip_address,
+                          resolved=False)
+               .first()) if eid is not None else None
+        if row is not None:
+            row.attempt_count = (row.attempt_count or 1) + 1
+            row.last_attempt_at = now
+            row.detail = detail or row.detail
+            if locked_until is not None:
+                row.locked_until = locked_until
+        else:
+            row = RecoveryContactAbuse(
+                kind=kind, entry_id=eid, entry_name=name, entry_email=email,
+                ip_address=ip_address, detail=detail,
+                attempt_count=1, last_attempt_at=now, locked_until=locked_until)
+            db.session.add(row)
+        db.session.commit()
+        return row
+    except Exception:  # noqa: BLE001
+        db.session.rollback()
+        return None
 
 
 class NotificationDismissal(db.Model):
@@ -2493,9 +2788,56 @@ class Page(db.Model):
     og_title = db.Column(db.String(200))
     og_description = db.Column(db.Text)
     og_image_filename = db.Column(db.String(500))
+    # Pending-draft snapshot for already-published pages. When non-null,
+    # `draft_json` holds a JSON object capturing every form field of an
+    # in-progress edit (title, slug, blocks_json, layout, background,
+    # padding, SEO, etc.) without touching the published columns. The
+    # public site keeps rendering whatever's in the live columns; the
+    # admin's edit screen loads from the draft snapshot when it exists.
+    # `draft_saved_at` is the wall-clock of the last "Save as Draft"
+    # click, surfaced in the editor banner ("Draft saved 3 minutes ago").
+    # Publishing copies the snapshot back to the columns and clears both
+    # fields atomically. Distinct from `is_published` (which controls
+    # public visibility — a `Draft` visibility page has nothing to do
+    # with this column).
+    draft_json = db.Column(db.Text)
+    draft_saved_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow,
                            onupdate=datetime.utcnow)
+
+
+class PageRevision(db.Model):
+    """Append-only edit history for a Page. Every successful Save (whether
+    draft or publish) writes a row here capturing the full page state at
+    that moment — same shape as `Page.draft_json` (a JSON object keyed by
+    column name). Lets the admin browse past states and Restore one back
+    into the draft slot for review before re-publishing. Capped per page
+    by `_trim_page_revisions()`; older entries fall off the tail."""
+    __tablename__ = "page_revision"
+    id = db.Column(db.Integer, primary_key=True)
+    page_id = db.Column(db.Integer,
+                        db.ForeignKey("page.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    # Which save produced this row — 'draft' (Save Draft) or 'publish'
+    # (Save & Publish). Surfaced as a chip in the History modal so the
+    # admin can scan past activity at a glance.
+    action = db.Column(db.String(16), nullable=False)
+    # Full page snapshot at save time. JSON object whose keys mirror
+    # Page columns (title, slug, blocks_json, bg_*, pad_*, og_*, etc.).
+    # Restore deserialises this back into `Page.draft_json` so the
+    # admin can review before publishing.
+    snapshot_json = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False,
+                           default=datetime.utcnow, index=True)
+    # User who triggered the save (nullable in case the request slipped
+    # through without an authenticated user — defensive).
+    created_by_id = db.Column(db.Integer,
+                              db.ForeignKey("user.id"), nullable=True)
+    page = db.relationship("Page", backref=db.backref(
+        "revisions", lazy="dynamic", cascade="all, delete-orphan",
+        order_by="PageRevision.created_at.desc()"))
+    user = db.relationship("User")
 
 
 class Popup(db.Model):
@@ -2694,12 +3036,19 @@ class NotFoundEvent(db.Model):
     # Daily-rotating one-way hash for unique-visitor approximation. Same
     # privacy properties as VisitorEvent.visitor_hash.
     visitor_hash = db.Column(db.String(32), index=True)
+    # Source IP. Unlike VisitorEvent we DO persist the IP for 404s —
+    # 404 logs are an abuse-investigation surface (scanner traffic,
+    # vulnerability probes, link-rot from a specific source). Same
+    # justification as LoginFailure.ip and ActivityLog.ip. Admin-only
+    # surface; index keeps the "all 404s from this IP" lookup cheap.
+    ip = db.Column(db.String(45), index=True)
     # Date-only UTC bucket (YYYY-MM-DD) so the tab's today/7d/window
     # rollups run in SQLite without a per-row date conversion.
     day = db.Column(db.String(10), nullable=False, index=True)
 
     __table_args__ = (
         db.Index("ix_not_found_event_day_path", "day", "path"),
+        db.Index("ix_not_found_event_path_ip", "path", "ip"),
     )
 
 

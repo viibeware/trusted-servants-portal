@@ -428,7 +428,8 @@
     html += '</div></div>';
     const row = elFromHtml(html);
     const cellEls = Array.from(row.querySelectorAll('[data-be-zone="container-col"]'));
-    const kids = payload.data.blocks;
+    const kids = payload.data.blocks || [];
+    const cellLengths = payload.data.cell_lengths;
     const allContainers = kids.length > 0 && kids.every(b => b && b.type === 'container');
     if (allContainers && kids.length === nCols) {
       // Showcase pattern — each cell maps to one inner container.
@@ -440,8 +441,26 @@
           if (node) cell.appendChild(node);
         });
       });
+    } else if (Array.isArray(cellLengths)
+               && cellLengths.length === nCols
+               && cellLengths.reduce((a, b) => a + (b | 0), 0) === kids.length) {
+      // Cell-aware — saved with explicit per-cell counts. Slice the
+      // flat list into cells per the lengths so an unequal split
+      // (e.g. 2 left + 3 right) restores exactly as the admin built it.
+      let cursor = 0;
+      cellLengths.forEach((n, idx) => {
+        const cell = cellEls[idx];
+        const slice = kids.slice(cursor, cursor + (n | 0));
+        cursor += (n | 0);
+        if (!cell) return;
+        slice.forEach(child => {
+          const node = makeNodeFromPayload(child);
+          if (node) cell.appendChild(node);
+        });
+      });
     } else {
-      // Flat — distribute children round-robin across cells.
+      // Legacy — distribute children round-robin across cells (matches
+      // CSS grid `auto-flow: row` placement).
       kids.forEach((child, i) => {
         const cellIdx = i % nCols;
         const cell = cellEls[cellIdx];
@@ -676,9 +695,14 @@
   //   • Showcase: every cell holds exactly one container payload.
   //     Cells flatten in order so the outer's data.blocks =
   //     [innerContainer0, innerContainer1, …].
-  //   • Round-robin: children of any type are distributed across
-  //     cells. We interleave back so cell[0][0], cell[1][0],
-  //     cell[0][1], cell[1][1], … reconstructs the original order.
+  //   • Cell-aware: children are concatenated by cell and the per-
+  //     cell counts are persisted in `data.cell_lengths`. The public
+  //     renderer reads this to wrap each cell's children in a flex-
+  //     column sub-wrapper carrying `grid-column: N`, so unequal
+  //     columns (e.g. 2 left + 3 right) survive the round trip.
+  //     CSS grid's `auto-flow: row` can't express unequal columns
+  //     natively, hence the wrapper approach. `cell_lengths` is
+  //     omitted for single-cell containers (nothing to track).
   function rebuildContainerFromRow(containerPayload, rowEl) {
     if (!containerPayload || !containerPayload.data) return;
     const cellEls = Array.from(rowEl.querySelectorAll(
@@ -691,14 +715,15 @@
       && buckets.every(b => b.length === 1 && b[0] && b[0].type === 'container');
     if (showcase) {
       containerPayload.data.blocks = buckets.flat();
+      delete containerPayload.data.cell_lengths;
       return;
     }
-    const flat = [];
-    const maxLen = buckets.reduce((m, b) => Math.max(m, b.length), 0);
-    for (let i = 0; i < maxLen; i++) {
-      buckets.forEach(b => { if (b[i] !== undefined) flat.push(b[i]); });
+    containerPayload.data.blocks = buckets.flat();
+    if (buckets.length > 1) {
+      containerPayload.data.cell_lengths = buckets.map(b => b.length);
+    } else {
+      delete containerPayload.data.cell_lengths;
     }
-    containerPayload.data.blocks = flat;
   }
 
   function reconstructSectionsFromDom() {

@@ -149,13 +149,23 @@
             </td>
             <td><span class="chip">{{ _layout_label }}</span></td>
             <td>
-              {% if _status == 'draft' %}
-                <span class="post-chip post-chip-draft">Draft</span>
-              {% elif _status == 'private' %}
-                <span class="post-chip post-chip-private">Private</span>
-              {% else %}
-                <span class="post-chip post-chip-online">Published</span>
-              {% endif %}
+              <div class="fe-page-status-pills">
+                {% if _status == 'draft' %}
+                  <span class="post-chip post-chip-draft">Draft</span>
+                {% elif _status == 'private' %}
+                  <span class="post-chip post-chip-private">Private</span>
+                {% else %}
+                  <span class="post-chip post-chip-online">Published</span>
+                {% endif %}
+                {# Pending-draft chip — distinct from the visibility "Draft"
+                   chip above. Surfaces when a published page has stashed
+                   unpublished changes (`draft_json` set). Clicking Edit
+                   loads the editor against the draft snapshot. #}
+                {% if p.is_published and p.draft_json %}
+                  <span class="post-chip post-chip-pending-draft"
+                        title="This page has unpublished draft changes. Open Edit to continue working on them.">{{ icon('clipboard') }} Unpublished changes</span>
+                {% endif %}
+              </div>
             </td>
             <td class="nowrap muted">{{ _updated.strftime('%Y-%m-%d') if _updated else '' }}</td>
             <td class="row-actions">

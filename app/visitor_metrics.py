@@ -82,6 +82,15 @@ _ASSET_EXTS = (
 )
 _ASSET_PREFIXES = ("/static/", "/pub/", "/site-branding/", "/favicon")
 
+# Reusable SQL clause: exclude background data/poll rows under /api/ (e.g.
+# the utility bar's /api/live-meeting poller) from EVERY metric. New hits
+# are dropped at record time (see _should_skip), but rows logged before
+# that skip existed are still in the table — applying this clause to every
+# aggregation keeps them from skewing totals, daily series, uniques, and
+# the device/browser/OS/referrer/path/hour breakdowns. (`notlike` treats a
+# NULL path as non-matching, but record_visit always stores at least "/".)
+_NO_API = VisitorEvent.path.notlike("/api/%")
+
 
 def _parse_ua(ua):
     """Return (device, browser, os) for a UA string. Each field falls
@@ -177,6 +186,13 @@ def _should_skip(path, method, ua):
     if lower_path.startswith(_ASSET_PREFIXES):
         return True
     if lower_path.endswith(_ASSET_EXTS):
+        return True
+    # Background data/poll endpoints (e.g. the utility bar's
+    # /api/live-meeting poller, which every public visitor fires every
+    # 30s) are machine requests, not page views — never count them, or
+    # they'd dominate the top-paths list. Mirrors the same /api skip the
+    # online-users tracker applies.
+    if lower_path.startswith("/api/"):
         return True
     # Browser prefetch / prerender hints — Chrome/Edge ship these with a
     # `Sec-Purpose: prefetch` header. We don't want to count link
@@ -292,6 +308,11 @@ def record_404(path=None):
             browser=browser,
             os=os_name,
             visitor_hash=_visitor_hash(_client_ip(), ua),
+            # 404 events DO persist the IP (unlike regular visit events)
+            # so Watchtower can show "who's hitting this dead URL" and
+            # offer a one-click block. Same abuse-investigation use case
+            # as LoginFailure.ip / ActivityLog.ip.
+            ip=_client_ip()[:45] or None,
         )
         db.session.add(ev)
         db.session.commit()
@@ -332,7 +353,7 @@ def summary(days=30):
     cutoff_window = (today - timedelta(days=days - 1)).strftime("%Y-%m-%d")
 
     def _views_in(day_from, day_to=None):
-        q = db.session.query(func.count(VisitorEvent.id))
+        q = db.session.query(func.count(VisitorEvent.id)).filter(_NO_API)
         if day_to is None:
             q = q.filter(VisitorEvent.day == day_from)
         else:
@@ -341,7 +362,8 @@ def summary(days=30):
         return int(q.scalar() or 0)
 
     def _uniques_in(day_from, day_to=None):
-        q = db.session.query(func.count(func.distinct(VisitorEvent.visitor_hash)))
+        q = (db.session.query(func.count(func.distinct(VisitorEvent.visitor_hash)))
+             .filter(_NO_API))
         if day_to is None:
             q = q.filter(VisitorEvent.day == day_from)
         else:
@@ -350,8 +372,10 @@ def summary(days=30):
         q = q.filter(VisitorEvent.visitor_hash.isnot(None))
         return int(q.scalar() or 0)
 
-    total_views = int(db.session.query(func.count(VisitorEvent.id)).scalar() or 0)
+    total_views = int(db.session.query(func.count(VisitorEvent.id))
+                      .filter(_NO_API).scalar() or 0)
     first_row = (db.session.query(VisitorEvent.created_at)
+                 .filter(_NO_API)
                  .order_by(VisitorEvent.created_at.asc()).first())
     first_seen_at = first_row[0] if first_row else None
 
@@ -382,12 +406,14 @@ def daily_series(days=30):
     views_by_day = dict(
         db.session.query(VisitorEvent.day, func.count(VisitorEvent.id))
         .filter(VisitorEvent.day >= cutoff)
+        .filter(_NO_API)
         .group_by(VisitorEvent.day).all()
     )
     uniques_by_day = dict(
         db.session.query(VisitorEvent.day,
                          func.count(func.distinct(VisitorEvent.visitor_hash)))
         .filter(VisitorEvent.day >= cutoff)
+        .filter(_NO_API)
         .filter(VisitorEvent.visitor_hash.isnot(None))
         .group_by(VisitorEvent.day).all()
     )
@@ -401,75 +427,125 @@ def daily_series(days=30):
     return out
 
 
-def hourly_distribution(days=14):
-    """Average views per hour-of-day across the window. Returns a list of
-    24 dicts ``[{hour, views}, ...]`` covering 0..23. The metrics page
-    uses this for a 24-bar "when do people visit" chart.
+def _count_expr(metric):
+    """SQLAlchemy expression for the chosen metric.
+
+    - "views": every recorded hit counts (`COUNT(*)`)
+    - "uniques": distinct daily-rotating visitor_hashes (approximate
+      unique-visitor count; rows with NULL hash are excluded by the
+      caller so the count isn't inflated by un-hashable requests)
+    """
+    if metric == "uniques":
+        return func.count(func.distinct(VisitorEvent.visitor_hash))
+    return func.count(VisitorEvent.id)
+
+
+def hourly_distribution(days=14, metric="views"):
+    """Hits or unique visitors per hour-of-day across the window.
+    Returns a list of 24 dicts ``[{hour, count}, ...]`` covering 0..23.
+    The metrics page uses this for the 24-bar "when do people visit"
+    chart. Pass ``metric="uniques"`` to count distinct visitors per
+    hour instead of every hit.
 
     SQLite stores `created_at` as text; we slice the hour with `strftime`
     so the rollup runs server-side without pulling rows into Python.
     """
     today = datetime.utcnow().date()
     cutoff = (today - timedelta(days=days - 1)).strftime("%Y-%m-%d")
-    rows = (db.session.query(
-                func.strftime("%H", VisitorEvent.created_at).label("hour"),
-                func.count(VisitorEvent.id))
-            .filter(VisitorEvent.day >= cutoff)
-            .group_by("hour").all())
+    q = (db.session.query(
+            func.strftime("%H", VisitorEvent.created_at).label("hour"),
+            _count_expr(metric))
+         .filter(VisitorEvent.day >= cutoff)
+         .filter(_NO_API))
+    if metric == "uniques":
+        q = q.filter(VisitorEvent.visitor_hash.isnot(None))
+    rows = q.group_by("hour").all()
     by_hour = {int(h): int(c) for h, c in rows if h is not None}
-    return [{"hour": h, "views": by_hour.get(h, 0)} for h in range(24)]
+    return [{"hour": h, "count": by_hour.get(h, 0)} for h in range(24)]
 
 
-def _top_n(column, days, limit, label_for_none="(unknown)"):
+def _top_n(column, days, limit, metric="views", label_for_none="(unknown)"):
     """Generic top-N grouped count over the last ``days`` days. The
     caller passes the column to group on; we return a list of dicts
     ``[{label, count}, ...]`` ordered by count desc. NULLs surface as
-    ``label_for_none`` so the chart legend never has blank bars."""
+    ``label_for_none`` so the chart legend never has blank bars.
+
+    ``metric="uniques"`` counts distinct visitors per bucket instead of
+    raw hits (and drops rows with no visitor_hash so the metric isn't
+    inflated)."""
     today = datetime.utcnow().date()
     cutoff = (today - timedelta(days=days - 1)).strftime("%Y-%m-%d")
-    rows = (db.session.query(column, func.count(VisitorEvent.id))
-            .filter(VisitorEvent.day >= cutoff)
-            .group_by(column)
-            .order_by(func.count(VisitorEvent.id).desc())
-            .limit(limit).all())
+    cnt = _count_expr(metric)
+    q = (db.session.query(column, cnt)
+         .filter(VisitorEvent.day >= cutoff)
+         .filter(_NO_API))
+    if metric == "uniques":
+        q = q.filter(VisitorEvent.visitor_hash.isnot(None))
+    rows = (q.group_by(column).order_by(cnt.desc()).limit(limit).all())
     return [{"label": (v or label_for_none), "count": int(c)} for v, c in rows]
 
 
-def top_paths(days=30, limit=10):
-    """Most-visited paths in the window."""
-    return _top_n(VisitorEvent.path, days, limit, label_for_none="/")
+def top_paths(days=30, limit=10, metric="views"):
+    """Most-visited paths in the window.
 
+    metric="views"   — every page load counts.
+    metric="uniques" — counts distinct visitors per path (more useful
+                       when comparing reach across pages because it
+                       isn't skewed by a single visitor reloading).
 
-def top_referrers(days=30, limit=10):
-    """Top referring hosts in the window (None hash → 'Direct')."""
+    Background data endpoints under ``/api/`` (e.g. the utility bar's
+    ``/api/live-meeting`` poller) are excluded from the list — they're
+    machine polls, not page views. New hits are already dropped at record
+    time (see ``_should_skip``); this filter also hides any historical
+    ``/api/*`` rows logged before that skip existed."""
     today = datetime.utcnow().date()
     cutoff = (today - timedelta(days=days - 1)).strftime("%Y-%m-%d")
-    rows = (db.session.query(VisitorEvent.referrer_host,
-                             func.count(VisitorEvent.id))
-            .filter(VisitorEvent.day >= cutoff)
-            .group_by(VisitorEvent.referrer_host)
-            .order_by(func.count(VisitorEvent.id).desc())
-            .limit(limit).all())
+    cnt = _count_expr(metric)
+    q = (db.session.query(VisitorEvent.path, cnt)
+         .filter(VisitorEvent.day >= cutoff)
+         .filter(_NO_API))
+    if metric == "uniques":
+        q = q.filter(VisitorEvent.visitor_hash.isnot(None))
+    rows = (q.group_by(VisitorEvent.path).order_by(cnt.desc()).limit(limit).all())
+    return [{"label": (v or "/"), "count": int(c)} for v, c in rows]
+
+
+def top_referrers(days=30, limit=10, metric="views"):
+    """Top referring hosts in the window (None hash → 'Direct').
+    See ``top_paths`` for the metric semantics."""
+    today = datetime.utcnow().date()
+    cutoff = (today - timedelta(days=days - 1)).strftime("%Y-%m-%d")
+    cnt = _count_expr(metric)
+    q = (db.session.query(VisitorEvent.referrer_host, cnt)
+         .filter(VisitorEvent.day >= cutoff)
+         .filter(_NO_API))
+    if metric == "uniques":
+        q = q.filter(VisitorEvent.visitor_hash.isnot(None))
+    rows = (q.group_by(VisitorEvent.referrer_host)
+             .order_by(cnt.desc()).limit(limit).all())
     return [{"label": v or "Direct", "count": int(c)} for v, c in rows]
 
 
-def device_breakdown(days=30):
+def device_breakdown(days=30, metric="views"):
     """Counts per device class for the donut chart."""
-    return _top_n(VisitorEvent.device, days, 8, label_for_none="other")
+    return _top_n(VisitorEvent.device, days, 8, metric=metric, label_for_none="other")
 
 
-def browser_breakdown(days=30):
+def browser_breakdown(days=30, metric="views"):
     """Counts per browser family for the donut chart."""
-    return _top_n(VisitorEvent.browser, days, 8)
+    return _top_n(VisitorEvent.browser, days, 8, metric=metric)
 
 
-def os_breakdown(days=30):
+def os_breakdown(days=30, metric="views"):
     """Counts per OS family for the donut chart."""
-    return _top_n(VisitorEvent.os, days, 8)
+    return _top_n(VisitorEvent.os, days, 8, metric=metric)
 
 
-def sparkline_views(days=14):
-    """Compact daily-views series for the dashboard widget. Returns a
-    plain list of ints (oldest first) — the widget's SVG sparkline only
-    needs the magnitudes, not the day labels."""
-    return [d["views"] for d in daily_series(days=days)]
+def sparkline_views(days=14, metric="uniques"):
+    """Compact daily series for the dashboard widget. Returns a plain
+    list of ints (oldest first) — the widget's SVG sparkline only
+    needs the magnitudes, not the day labels. Defaults to unique
+    visitors (the more meaningful number for "how many real people");
+    pass ``metric="views"`` for the legacy hit-count shape."""
+    key = "uniques" if metric == "uniques" else "views"
+    return [d[key] for d in daily_series(days=days)]

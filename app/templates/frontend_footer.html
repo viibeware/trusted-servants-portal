@@ -30,6 +30,7 @@
 {% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/frontend.css', v=app_build_id) }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dynbg.css', v=app_build_id) }}">
 <div class="fe-admin-layout">
   {% include "_frontend_subnav.html" %}
   <div class="fe-admin-main">
@@ -49,6 +50,8 @@
   'divider': ('Divider', 'minus'),
   'spacer': ('Spacer', 'move-vertical'),
   'powered_by': ('Powered by', 'github'),
+  'admin_login': ('Admin login', 'log-in'),
+  'privacy_links': ('Privacy & cookies', 'shield'),
 } %}
 {% set _editable_types = ['brand', 'link_columns', 'social_row', 'secondary_nav',
                            'copyright', 'meeting_locations', 'contact_section'] %}

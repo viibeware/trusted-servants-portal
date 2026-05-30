@@ -1,0 +1,108 @@
+{# Recovery Contacts — clean, self-contained PDF/print document rendered
+   server-side by WeasyPrint (/contactlist.pdf). Deliberately NOT themed:
+   inline styles only, so the PDF is crisp and predictable regardless of
+   the active frontend theme. Lists approved entries (name + the phone /
+   email each entry chose to make public), one row each, sorted by name. #}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ heading }} · {{ frontend_title }}</title>
+<style>
+  @page {
+    size: letter;
+    margin: 16mm 14mm 18mm;
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      font-size: 8pt; color: #94a3b8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    color: #0f172a; margin: 0; font-size: 10.5pt; line-height: 1.4;
+  }
+  .doc-head {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 14px;
+    border-bottom: 2px solid #0b5cff; padding-bottom: 10px; margin-bottom: 4px;
+  }
+  /* Left column: logo with the public URL stacked beneath it. */
+  .doc-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .doc-logo { height: 24px; width: auto; }
+  /* Center column — title centered on the header line. */
+  .doc-title { font-size: 18pt; font-weight: 800; letter-spacing: -0.01em; margin: 0; text-align: center; }
+  .doc-eyebrow {
+    font-size: 8pt; font-weight: 700; letter-spacing: 0; text-transform: none;
+    color: #0b5cff; margin: 0;
+  }
+  .doc-meta { text-align: right; font-size: 8.5pt; color: #64748b; white-space: nowrap; }
+  .doc-meta strong { color: #0f172a; font-size: 11pt; }
+  .doc-filter { font-size: 9pt; color: #475569; margin: 8px 0 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+  thead th {
+    text-align: left; font-size: 7.5pt; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; color: #64748b; border-bottom: 1.5px solid #cbd5e1;
+    padding: 0 8px 6px;
+  }
+  tbody td { padding: 7px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  tbody tr { break-inside: avoid; }
+  .c-name { font-weight: 600; width: 38%; }
+  .c-phone { width: 28%; white-space: nowrap; }
+  .c-email { width: 34%; word-break: break-word; }
+  .sponsor-tag {
+    display: inline-block; font-size: 7pt; font-weight: 700; color: #be123c;
+    border: 1px solid #fecdd3; background: #fff1f2; border-radius: 999px;
+    padding: 0 6px; margin-left: 6px; vertical-align: 1px;
+  }
+  .muted { color: #94a3b8; }
+  /* Contact-only listings (phone + email hidden, but reachable via the
+     site's "Contact me" button) — note that across the phone/email span. */
+  .c-contact { font-style: italic; color: #475569; font-size: 9.5pt; }
+  .c-contact a { text-decoration: none; }
+  .c-contact b { font-style: normal; color: #0b5cff; }
+  .empty { margin-top: 28px; color: #64748b; font-size: 11pt; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="doc-head">
+    <div class="doc-brand">
+      {% if site and site.frontend_logo_filename %}
+        <img class="doc-logo" src="{{ url_for('public.site_frontend_logo') }}" alt="">
+      {% endif %}
+      {% if display_url %}<p class="doc-eyebrow">{{ display_url }}</p>{% endif %}
+    </div>
+    <h1 class="doc-title">{{ heading }}</h1>
+    <div class="doc-meta">
+      <div><strong>{{ entries|length }}</strong> {{ 'contact' if entries|length == 1 else 'contacts' }}</div>
+      <div>{{ generated_at.strftime('%B %-d, %Y') }}</div>
+    </div>
+  </div>
+  {% if query %}
+  <p class="doc-filter">Filtered by “{{ query }}”</p>
+  {% endif %}
+
+  {% if entries %}
+  <table>
+    <thead>
+      <tr><th class="c-name">Name</th><th class="c-phone">Phone</th><th class="c-email">Email</th></tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td class="c-name">{{ e.name }}{% if e.available_to_sponsor %}<span class="sponsor-tag">SPONSOR</span>{% endif %}</td>
+        {% if e.contact_enabled and not e.public_phone and not e.public_email %}
+        <td class="c-contact" colspan="2">Contact through the site{% if contact_url %} — <a href="{{ contact_url }}"><b>{{ contact_url|replace('https://', '')|replace('http://', '') }}</b></a>{% endif %}</td>
+        {% else %}
+        <td class="c-phone">{{ (e.public_phone|phone_fmt) or '' }}{% if not e.public_phone %}<span class="muted">—</span>{% endif %}</td>
+        <td class="c-email">{{ e.public_email or '' }}{% if not e.public_email %}<span class="muted">—</span>{% endif %}</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No contacts to list{% if query %} for “{{ query }}”{% endif %}.</p>
+  {% endif %}
+</body>
+</html>
