@@ -3086,7 +3086,7 @@ class NotFoundEvent(db.Model):
     )
 
 
-BACKUP_KINDS = ("ftp", "sftp", "dropbox")
+BACKUP_KINDS = ("ftp", "sftp", "dropbox", "tspro_backup")
 BACKUP_STATUS = ("ok", "failed", "running", "never_run")
 
 
@@ -3101,7 +3101,7 @@ class BackupTarget(db.Model):
     __tablename__ = "backup_target"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(128), nullable=False)
-    kind = db.Column(db.String(16), nullable=False)  # ftp | sftp | dropbox
+    kind = db.Column(db.String(16), nullable=False)  # ftp | sftp | dropbox | tspro_backup
     enabled = db.Column(db.Boolean, nullable=False, default=False)
 
     # Connection — FTP/SFTP use host/port/username/password_enc; SFTP can
@@ -3125,6 +3125,17 @@ class BackupTarget(db.Model):
     app_key = db.Column(db.String(64))
     app_secret_enc = db.Column(db.LargeBinary)
     refresh_token_enc = db.Column(db.LargeBinary)
+
+    # TS Pro Backup: an off-site, end-to-end-encrypted destination running
+    # the tspro-backup server. ``api_base_url`` is its ``/api/v1`` endpoint,
+    # ``api_key_enc`` the per-site bearer key (Fernet-encrypted), and
+    # ``e2ee_public_key`` the site's ``tsppk_…`` recipient public key that
+    # ``TSProBackupBackend`` encrypts every archive to before upload. The
+    # matching private key is held by the operator out-of-band and is only
+    # needed at restore — it is never stored here.
+    api_base_url = db.Column(db.String(500))
+    api_key_enc = db.Column(db.LargeBinary)
+    e2ee_public_key = db.Column(db.String(80))
 
     # FTPS toggle (FTP only). When false, plain FTP — surface a warning
     # in the wizard so the admin opts in deliberately.

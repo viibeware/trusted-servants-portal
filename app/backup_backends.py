@@ -468,6 +468,229 @@ class DropboxBackend:
 
 
 # ─────────────────────────────────────────────────────────────────────
+# TS Pro Backup (off-site, end-to-end encrypted HTTP destination)
+# ─────────────────────────────────────────────────────────────────────
+
+class TSProBackupBackend:
+    """Push backups to a TS Pro Backup server over its ``/api/v1`` API.
+
+    Unlike the other backends this one is **end-to-end encrypted**: the
+    destination issues this site an X25519 keypair and we encrypt every
+    archive to the server's *public* key (``app.pubkey``, ``TSPEPK01``)
+    before upload, so the server only ever stores ciphertext it cannot
+    read. Only the operator's private key — entered at restore time, never
+    sent here — can decrypt. ``fetch`` therefore returns ciphertext; the
+    restore flow decrypts it with the private key.
+
+    The server identifies backups by integer id, not filename, so ``list``
+    caches a name→id map that ``delete`` reuses. Retention is primarily the
+    server's job (its per-site GFS policy); the scheduler's ``retain_count``
+    acts as a secondary cap via ``delete``.
+    """
+
+    def __init__(self, api_base_url, api_key, public_key, scope="full", timeout=120):
+        self.base = (api_base_url or "").rstrip("/")
+        self.api_key = api_key or ""
+        self.public_key = public_key or ""
+        self.scope = scope or "full"
+        self.timeout = timeout
+        self._sess = None
+        self._ids = {}  # remote_name -> backup id, populated by list()
+        # Chunked-upload capability, learned from /ping in open(). When the
+        # encrypted archive exceeds one chunk we split it so a body-size-
+        # limited proxy (e.g. Cloudflare's 100 MiB cap) can't reject it.
+        self._chunked = False
+        self._chunk_mb = 90
+
+    # ── helpers ────────────────────────────────────────────────────
+    def _headers(self):
+        return {"Authorization": f"Bearer {self.api_key}"}
+
+    def _url(self, path):
+        return f"{self.base}{path}"
+
+    def _check(self, resp, what):
+        if resp.status_code in (200, 201):
+            return
+        try:
+            msg = resp.json().get("error") or resp.text
+        except Exception:  # noqa: BLE001
+            msg = resp.text
+        if resp.status_code in (401, 403):
+            raise BackendError(f"TS Pro Backup auth failed: {msg}")
+        raise BackendError(f"TS Pro Backup {what} failed (HTTP {resp.status_code}): {msg}")
+
+    # ── lifecycle ──────────────────────────────────────────────────
+    def open(self):
+        import requests
+        if not self.base:
+            raise BackendError("TS Pro Backup: no API URL configured")
+        self._sess = requests.Session()
+        try:
+            r = self._sess.get(self._url("/ping"), headers=self._headers(), timeout=self.timeout)
+        except requests.RequestException as e:
+            raise BackendError(f"TS Pro Backup connect failed: {e}") from e
+        self._check(r, "ping")
+        caps = r.json()
+        self._chunked = bool(caps.get("chunked_upload"))
+        try:
+            self._chunk_mb = max(1, int(caps.get("max_chunk_mb") or 90))
+        except (TypeError, ValueError):
+            self._chunk_mb = 90
+        server_pub = caps.get("e2ee_public_key")
+        # Adopt the server's key if we don't have one yet; refuse to upload
+        # to a *different* key than the admin confirmed (a silent server-side
+        # rotation would make backups undecryptable with the stored private
+        # key) — the admin must re-confirm via "Test connection".
+        if server_pub:
+            if not self.public_key:
+                self.public_key = server_pub
+            elif server_pub != self.public_key:
+                raise BackendError(
+                    "TS Pro Backup: the server's encryption key changed since this "
+                    "target was configured. Re-test the connection to adopt the new "
+                    "key — and keep the old private key to restore existing backups.")
+        if not self.public_key:
+            raise BackendError(
+                "TS Pro Backup: server provided no encryption key. Rotate the site's "
+                "keypair in the backup server console, then re-test the connection.")
+
+    def put(self, local_path, remote_name):
+        import os as _os
+        import tempfile
+        from . import pubkey
+        enc_path = None
+        try:
+            fd, enc_path = tempfile.mkstemp(prefix="tsp-e2ee-", suffix=pubkey.EXT)
+            _os.close(fd)
+            try:
+                pubkey.encrypt_to_pubkey(local_path, enc_path, self.public_key)
+            except pubkey.E2EEKeyError as e:
+                raise BackendError(f"TS Pro Backup: bad encryption key — {e}") from e
+            upload_name = remote_name + pubkey.EXT
+            chunk_bytes = self._chunk_mb * 1024 * 1024
+            # Chunk when the server supports it and the ciphertext exceeds a
+            # single chunk; otherwise one request is simpler.
+            if self._chunked and _os.path.getsize(enc_path) > chunk_bytes:
+                self._put_chunked(enc_path, upload_name, chunk_bytes)
+            else:
+                self._put_single(enc_path, upload_name)
+        finally:
+            if enc_path and _os.path.exists(enc_path):
+                try: _os.unlink(enc_path)
+                except OSError: pass
+
+    def _put_single(self, enc_path, upload_name):
+        try:
+            with open(enc_path, "rb") as fh:
+                r = self._sess.post(
+                    self._url("/backups"),
+                    headers=self._headers(),
+                    data={"scope": self.scope},
+                    files={"file": (upload_name, fh, "application/octet-stream")},
+                    timeout=None,  # large archives; no read timeout
+                )
+        except Exception as e:  # noqa: BLE001
+            raise BackendError(f"TS Pro Backup upload failed: {e}") from e
+        self._check(r, "upload")
+
+    def _put_chunked(self, enc_path, upload_name, chunk_bytes):
+        """Split the ciphertext into <=chunk_bytes parts, POST each to
+        /backups/chunk, then /backups/finalize to reassemble + ingest.
+        Each request stays under the fronting proxy's body limit."""
+        import math
+        import os as _os
+        import uuid
+        total = os.path.getsize(enc_path)
+        n = max(1, math.ceil(total / chunk_bytes))
+        upload_id = str(uuid.uuid4())
+        try:
+            with open(enc_path, "rb") as fh:
+                for index in range(n):
+                    blob = fh.read(chunk_bytes)
+                    if not blob:
+                        break
+                    r = self._sess.post(
+                        self._url("/backups/chunk"),
+                        headers=self._headers(),
+                        data={"upload_id": upload_id, "chunk_index": index, "total_chunks": n},
+                        files={"chunk": (f"{index:08d}.bin", blob, "application/octet-stream")},
+                        timeout=None,
+                    )
+                    self._check(r, f"chunk {index + 1}/{n}")
+            r = self._sess.post(
+                self._url("/backups/finalize"),
+                headers=self._headers(),
+                data={"upload_id": upload_id, "scope": self.scope,
+                      "filename": upload_name, "total_chunks": n},
+                timeout=None,
+            )
+        except BackendError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise BackendError(f"TS Pro Backup chunked upload failed: {e}") from e
+        self._check(r, "finalize")
+
+    def list(self) -> list[RemoteFile]:
+        import requests
+        try:
+            r = self._sess.get(self._url("/backups"), headers=self._headers(),
+                               params={"scope": self.scope}, timeout=self.timeout)
+        except requests.RequestException as e:
+            raise BackendError(f"TS Pro Backup list failed: {e}") from e
+        self._check(r, "list")
+        out, self._ids = [], {}
+        for b in r.json().get("backups", []):
+            name = b.get("name") or f"backup-{b['id']}"
+            self._ids[name] = b["id"]
+            out.append(RemoteFile(name=name, size=b.get("stored_size") or b.get("size") or 0, mtime=0))
+        out.sort(key=lambda rf: rf.name, reverse=True)
+        return out
+
+    def delete(self, remote_name):
+        import requests
+        bid = self._ids.get(remote_name)
+        if bid is None:
+            # Refresh the map once in case delete was called without a prior list.
+            self.list()
+            bid = self._ids.get(remote_name)
+        if bid is None:
+            raise BackendError(f"TS Pro Backup: no stored backup named {remote_name!r}")
+        try:
+            r = self._sess.delete(self._url(f"/backups/{bid}"), headers=self._headers(), timeout=self.timeout)
+        except requests.RequestException as e:
+            raise BackendError(f"TS Pro Backup delete failed: {e}") from e
+        self._check(r, "delete")
+
+    def fetch(self, remote_name, local_path):
+        """Download the stored (still-encrypted) archive. The restore flow
+        decrypts it with the operator's private key."""
+        import requests
+        bid = self._ids.get(remote_name)
+        if bid is None:
+            self.list()
+            bid = self._ids.get(remote_name)
+        if bid is None:
+            raise BackendError(f"TS Pro Backup: no stored backup named {remote_name!r}")
+        try:
+            with self._sess.get(self._url(f"/backups/{bid}/download"), headers=self._headers(),
+                                stream=True, timeout=None) as r:
+                self._check(r, "fetch")
+                with open(local_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+        except requests.RequestException as e:
+            raise BackendError(f"TS Pro Backup fetch failed: {e}") from e
+
+    def close(self):
+        if self._sess is not None:
+            try: self._sess.close()
+            except Exception: pass
+            self._sess = None
+
+
+# ─────────────────────────────────────────────────────────────────────
 # Factory
 # ─────────────────────────────────────────────────────────────────────
 
@@ -505,5 +728,11 @@ def make_backend(target):
             app_secret=decrypt(target.app_secret_enc) if target.app_secret_enc else None,
             refresh_token=decrypt(target.refresh_token_enc) if target.refresh_token_enc else None,
             remote_path=target.remote_path or "/",
+        )
+    if kind == "tspro_backup":
+        return TSProBackupBackend(
+            api_base_url=target.api_base_url or "",
+            api_key=decrypt(target.api_key_enc) if target.api_key_enc else "",
+            public_key=target.e2ee_public_key or "",
         )
     raise BackendError(f"unknown backup kind {kind!r}")

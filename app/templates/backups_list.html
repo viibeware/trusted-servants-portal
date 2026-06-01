@@ -24,9 +24,9 @@
       a real disaster needs an off-machine copy.
     </p>
     <p class="muted small">
-      Supported: <b>FTP/FTPS</b>, <b>SFTP</b>, <b>Dropbox</b>. The setup
-      wizard walks you through credentials, schedule, and (optional)
-      passphrase-based archive encryption.
+      Supported: <b>TS&nbsp;Pro Backup</b> (end-to-end encrypted), <b>FTP/FTPS</b>,
+      <b>SFTP</b>, <b>Dropbox</b>. The setup wizard walks you through
+      credentials, schedule, and encryption.
     </p>
     <div class="form-actions">
       <button type="button" class="btn btn-primary" data-backup-add-target>
@@ -49,13 +49,13 @@
               {% else %}Never run{% endif %}
             </span>
             <strong>{{ t.name }}</strong>
-            <span class="muted smaller">· {{ t.kind|upper }}</span>
+            <span class="muted smaller">· {{ 'TS Pro Backup' if t.kind == 'tspro_backup' else t.kind|upper }}</span>
             {% if not t.enabled %}<span class="muted smaller">· paused</span>{% endif %}
-            {% if t.encrypt_archive %}<span class="muted smaller">· {{ icon('lock') }} encrypted</span>{% endif %}
+            {% if t.kind == 'tspro_backup' %}<span class="muted smaller">· {{ icon('shield') }} end-to-end</span>{% elif t.encrypt_archive %}<span class="muted smaller">· {{ icon('lock') }} encrypted</span>{% endif %}
           </div>
           <div class="backup-target-sub muted smaller">
-            {% if t.kind == 'dropbox' %}Dropbox app folder{% else %}{{ t.host or 'no host' }}{% if t.port %}:{{ t.port }}{% endif %}{% endif %}
-            · path <code>{{ t.remote_path or '/' }}</code>
+            {% if t.kind == 'dropbox' %}Dropbox app folder{% elif t.kind == 'tspro_backup' %}<code>{{ t.api_base_url or 'no endpoint' }}</code>{% else %}{{ t.host or 'no host' }}{% if t.port %}:{{ t.port }}{% endif %}
+            · path <code>{{ t.remote_path or '/' }}</code>{% endif %}
             · schedule <code>{{ t.schedule_cron }}</code>
             · keep last {{ t.retain_count }}
           </div>

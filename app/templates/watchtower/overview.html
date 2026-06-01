@@ -5,6 +5,69 @@
 {% block content %}
 {% include "watchtower/_tabs.html" %}
 
+{# ───────── Attention widget ─────────
+   Surfaces the exact items behind the sidebar Watchtower chip and links
+   each one straight to the tab/panel that owns it, so an admin who clicked
+   in because of a number knows immediately where to act. Mirrors the three
+   counts in inject_globals(); renders nothing when all are zero. #}
+{% set _wt_attention_total = (recovery_contacts_abuse_count or 0) + (pending_access_count or 0) + (locked_accounts_count or 0) %}
+{% set _wt_attention_areas = (1 if recovery_contacts_abuse_count else 0) + (1 if pending_access_count else 0) + (1 if locked_accounts_count else 0) %}
+<section class="card wt-attention-card{% if not _wt_attention_total %} wt-attention-card--clear{% endif %}">
+  <div class="card-head">
+    <h2>Needs attention</h2>
+    {% if _wt_attention_total %}
+    <span class="muted smaller">{{ _wt_attention_total }} item{{ '' if _wt_attention_total == 1 else 's' }} across {{ _wt_attention_areas }} area{{ '' if _wt_attention_areas == 1 else 's' }}</span>
+    {% else %}
+    <span class="muted smaller">All clear</span>
+    {% endif %}
+  </div>
+  {% if not _wt_attention_total %}
+  <p class="muted wt-attention-empty">{{ icon('check-circle') }} Nothing needs your attention right now — no flagged Recovery Contacts requests, pending access requests, or locked accounts.</p>
+  {% else %}
+  <ul class="wt-attention-list">
+    {% if recovery_contacts_abuse_count %}
+    <li class="wt-attention-item">
+      <a class="wt-attention-link" href="{{ url_for('main.watchtower') }}#wt-rc-abuse">
+        <span class="wt-attention-icon wt-attention-icon--danger">{{ icon('alert-triangle') }}</span>
+        <span class="wt-attention-text">
+          <span class="wt-attention-title">{{ recovery_contacts_abuse_count }} flagged Recovery Contacts request{{ 's' if recovery_contacts_abuse_count != 1 else '' }}</span>
+          <span class="wt-attention-sub muted small">Likely-malicious self-service update/removal attempts — review &amp; block on Overview.</span>
+        </span>
+        <span class="nav-badge nav-badge-danger">{{ recovery_contacts_abuse_count }}</span>
+        <span class="wt-attention-go" aria-hidden="true">{{ icon('chevron-right') }}</span>
+      </a>
+    </li>
+    {% endif %}
+    {% if pending_access_count %}
+    <li class="wt-attention-item">
+      <a class="wt-attention-link" href="{{ url_for('main.watchtower_requests') }}">
+        <span class="wt-attention-icon wt-attention-icon--warn">{{ icon('mail') }}</span>
+        <span class="wt-attention-text">
+          <span class="wt-attention-title">{{ pending_access_count }} pending access request{{ 's' if pending_access_count != 1 else '' }}</span>
+          <span class="wt-attention-sub muted small">Awaiting a decision in the Requests inbox.</span>
+        </span>
+        <span class="nav-badge nav-badge-warn">{{ pending_access_count }}</span>
+        <span class="wt-attention-go" aria-hidden="true">{{ icon('chevron-right') }}</span>
+      </a>
+    </li>
+    {% endif %}
+    {% if locked_accounts_count %}
+    <li class="wt-attention-item">
+      <a class="wt-attention-link" href="{{ url_for('main.watchtower_access') }}">
+        <span class="wt-attention-icon">{{ icon('key') }}</span>
+        <span class="wt-attention-text">
+          <span class="wt-attention-title">{{ locked_accounts_count }} locked account{{ 's' if locked_accounts_count != 1 else '' }}</span>
+          <span class="wt-attention-sub muted small">Locked out by repeated failed logins — review on the Access tab.</span>
+        </span>
+        <span class="nav-badge">{{ locked_accounts_count }}</span>
+        <span class="wt-attention-go" aria-hidden="true">{{ icon('chevron-right') }}</span>
+      </a>
+    </li>
+    {% endif %}
+  </ul>
+  {% endif %}
+</section>
+
 {# ───────── Anomaly banner ───────── #}
 {% if anomalies %}
 <section class="wt-anomalies">

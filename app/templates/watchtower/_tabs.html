@@ -1,12 +1,21 @@
 {# Watchtower tab strip. Renders the five primary surfaces so a click
    moves between Overview / Visitors / Access / Deletes / Requests
    without forcing a sidebar trip. `active_tab` is passed in by every
-   route under /watchtower so the chip lights up correctly. #}
+   route under /watchtower so the chip lights up correctly.
+
+   Each attention source from the sidebar quicknav chip is pinned to the
+   tab that actually owns it, so the same count that drew an admin into
+   Watchtower now tells them which tab to open:
+     • recovery_contacts_abuse_count → Overview (the flagged-requests panel)
+     • locked_accounts_count         → Access   (login sessions + lockouts)
+     • pending_access_count          → Requests (access-request inbox)
+   Counts come from inject_globals() in routes.py — available everywhere. #}
 <nav class="wt-tabs" aria-label="Watchtower sections">
   <a href="{{ url_for('main.watchtower') }}"
      class="wt-tab {% if active_tab == 'overview' %}is-active{% endif %}">
     <span class="wt-tab-icon">{{ icon('activity') }}</span>
     <span class="wt-tab-label">Overview</span>
+    {% if recovery_contacts_abuse_count %}<span class="nav-badge nav-badge-danger" title="{{ recovery_contacts_abuse_count }} flagged Recovery Contacts request{{ 's' if recovery_contacts_abuse_count != 1 else '' }} need review">{{ recovery_contacts_abuse_count }}</span>{% endif %}
   </a>
   <a href="{{ url_for('main.watchtower_visitors') }}"
      class="wt-tab {% if active_tab == 'visitors' %}is-active{% endif %}">
@@ -22,6 +31,7 @@
      class="wt-tab {% if active_tab == 'access' %}is-active{% endif %}">
     <span class="wt-tab-icon">{{ icon('key') }}</span>
     <span class="wt-tab-label">Access</span>
+    {% if locked_accounts_count %}<span class="nav-badge" title="{{ locked_accounts_count }} locked account{{ 's' if locked_accounts_count != 1 else '' }}">{{ locked_accounts_count }}</span>{% endif %}
   </a>
   <a href="{{ url_for('main.watchtower_deletes') }}"
      class="wt-tab {% if active_tab == 'deletes' %}is-active{% endif %}">
@@ -32,5 +42,6 @@
      class="wt-tab {% if active_tab == 'requests' %}is-active{% endif %}">
     <span class="wt-tab-icon">{{ icon('mail') }}</span>
     <span class="wt-tab-label">Requests</span>
+    {% if pending_access_count %}<span class="nav-badge nav-badge-warn" title="{{ pending_access_count }} pending access request{{ 's' if pending_access_count != 1 else '' }}">{{ pending_access_count }}</span>{% endif %}
   </a>
 </nav>

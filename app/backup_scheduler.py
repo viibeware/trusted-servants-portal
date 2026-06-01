@@ -178,7 +178,12 @@ def run_target(app, target_id, triggered_by="schedule"):
             archive_path, archive_name, _size = build_export_archive(app)
 
             upload_path = archive_path
-            if target.encrypt_archive and target.archive_passphrase_enc:
+            # TS Pro Backup encrypts to the site's public key inside the
+            # backend's put(), so never apply the passphrase layer on top of
+            # it — that would double-wrap and the server expects the
+            # public-key (TSPEPK01) envelope as the outermost layer.
+            if (target.encrypt_archive and target.archive_passphrase_enc
+                    and target.kind != "tspro_backup"):
                 passphrase = decrypt(target.archive_passphrase_enc)
                 if not passphrase:
                     raise RuntimeError("archive encryption configured but passphrase is unreadable")
@@ -253,6 +258,19 @@ def run_target(app, target_id, triggered_by="schedule"):
                     try: os.unlink(p)
                     except OSError: pass
 
+        # Detach the row with its columns loaded before this app context
+        # (and its session) tears down on ``with`` exit. Otherwise the
+        # synchronous callers (run-now, the wizard's first run) read
+        # ``run.status`` on a detached instance whose attributes were
+        # expired by commit, raising DetachedInstanceError → a 500 that
+        # masks the real outcome. refresh() repopulates, expunge() keeps
+        # those values readable after detach.
+        if run is not None:
+            try:
+                db.session.refresh(run)
+            except Exception:  # noqa: BLE001 — never let cleanup mask the result
+                pass
+            db.session.expunge(run)
         return run
 
 

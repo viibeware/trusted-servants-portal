@@ -38,7 +38,12 @@
       {% endfor %}
     </ul>
 
-    {% if files | selectattr('name', 'match', '.+\\.enc$') | list %}
+    {% if t.kind == 'tspro_backup' %}
+    <label>Private key (required — decrypts the archive)
+      <input type="password" name="private_key" autocomplete="off" placeholder="tspsk_…">
+      <span class="muted smaller">The site's private key, shown once when the site was created in the backup server's console. It is used here to decrypt and is never uploaded.</span>
+    </label>
+    {% elif files | selectattr('name', 'match', '.+\\.enc$') | list %}
     <label>Passphrase (only required if you select an encrypted archive)
       <input type="password" name="passphrase" autocomplete="off">
     </label>

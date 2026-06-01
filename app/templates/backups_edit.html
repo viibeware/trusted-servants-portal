@@ -72,6 +72,17 @@
         </p>
       </details>
       {% endif %}
+      {% elif t.kind == 'tspro_backup' %}
+      <label>Backup server API endpoint
+        <input type="url" name="api_base_url" value="{{ t.api_base_url or '' }}" required placeholder="https://backup.example.org/api/v1">
+      </label>
+      <label>Site API key
+        <input type="password" name="api_key" autocomplete="new-password" placeholder="{% if t.api_key_enc %}(leave blank to keep current){% else %}tspb_…{% endif %}">
+      </label>
+      <p class="muted smaller">
+        {% if t.e2ee_public_key %}🔑 Encryption key fingerprint: <code>{{ t.e2ee_public_key|tspro_fp }}</code> — confirm it matches the backup server's console.
+        {% else %}Run “Test connection” to fetch this site's encryption key.{% endif %}
+      </p>
       {% else %}
       {# Dropbox — same refresh-token flow as the wizard. Shared partial
          so a future change to the OAuth fields lands in one place. #}
@@ -123,6 +134,14 @@
     <section class="card backup-step-card">
       <div class="card-head"><h2>{{ icon('lock') }} Encryption at rest</h2></div>
 
+      {% if t.kind == 'tspro_backup' %}
+      <p class="muted">
+        {{ icon('shield') }} <strong>End-to-end encrypted automatically.</strong>
+        Every archive is encrypted to the backup server's public key
+        {% if t.e2ee_public_key %}(fingerprint <code>{{ t.e2ee_public_key|tspro_fp }}</code>){% endif %}
+        before upload. There's no passphrase here — restore with the site's private key.
+      </p>
+      {% else %}
       <label class="check">
         <input type="checkbox" name="encrypt_archive" value="1" data-encrypt-toggle {% if t.encrypt_archive %}checked{% endif %}>
         <span>
@@ -153,6 +172,7 @@
           {% if t.archive_passphrase_enc %}<span class="muted smaller">(only required when setting a new passphrase)</span>{% endif %}
         </label>
       </div>
+      {% endif %}
     </section>
 
     <div class="form-actions">
@@ -192,7 +212,8 @@
       var connNames = ['csrf_token', 'embed', 'name',
                        'host', 'port', 'username', 'password',
                        'remote_path', 'use_tls',
-                       'private_key', 'private_key_text', 'oauth_token'];
+                       'private_key', 'private_key_text', 'oauth_token',
+                       'api_base_url', 'api_key'];
       var data = new FormData();
       connNames.forEach(function (n) {
         form.querySelectorAll('[name="' + n + '"]').forEach(function (el) {

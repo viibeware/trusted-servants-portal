@@ -1390,9 +1390,19 @@
                     data-finalize-action="{{ url_for('main.data_import_finalize') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <label>Export archive (.zip or .zip.enc)<input type="file" name="archive" accept=".zip,.enc,application/zip,application/octet-stream" required></label>
-                <label>Decryption passphrase <span class="muted smaller">(required for <code>.zip.enc</code> bundles, leave blank otherwise)</span>
-                  <input type="password" name="passphrase" autocomplete="off" placeholder="Required only for encrypted bundles">
+                <label>Decryption passphrase <span class="muted smaller">(legacy <code>.zip.enc</code> passphrase bundles only; leave blank otherwise)</span>
+                  <input type="password" name="passphrase" autocomplete="off" placeholder="Only for passphrase-encrypted bundles">
                 </label>
+                <label>Private key <span class="muted smaller">(end-to-end-encrypted TS&nbsp;Pro Backup <code>.enc</code> files only)</span>
+                  <input type="password" name="private_key" autocomplete="off" placeholder="tspsk_… — leave blank for ordinary .zip imports">
+                </label>
+                <p class="muted smaller">
+                  {{ icon('shield') }} Restoring an <strong>end-to-end-encrypted TS&nbsp;Pro Backup</strong>? Two ways:
+                  decrypt it on that target's
+                  <a href="{{ url_for('main.backups_list', embed=1 if request.args.get('embed') else None) }}">Off-site backups → Restore</a>
+                  page first, then import the resulting <code>.zip</code> here with both fields blank — or, if Restore isn't available,
+                  download the <code>.enc</code> from the backup server and paste the site's <strong>private key</strong> above to import it directly.
+                </p>
                 <label>Type <code>REPLACE</code> to confirm<input type="text" name="confirm" placeholder="REPLACE" autocomplete="off" required></label>
                 <div class="form-actions"><button class="btn btn-danger" data-import-bundle-submit>Import &amp; Replace All Data</button></div>
               </form>
@@ -1500,7 +1510,7 @@
                   return { uploadId: uploadId, totalChunks: total };
                 }
 
-                function finalize(uploadId, totalChunks, confirmValue, csrfToken, passphrase) {
+                function finalize(uploadId, totalChunks, confirmValue, csrfToken, passphrase, privateKey) {
                   // Hand off to a synthetic form POST so the browser
                   // follows the server's redirect-to-logout natively
                   // (carrying the flashed status message).
@@ -1517,6 +1527,7 @@
                     expected_chunks: String(totalChunks),
                     confirm: confirmValue,
                     passphrase: passphrase || '',
+                    private_key: privateKey || '',
                   };
                   Object.keys(fields).forEach(function (k) {
                     var input = document.createElement('input');
@@ -1534,6 +1545,7 @@
                   var confirmInput = form.querySelector('input[name="confirm"]');
                   var csrfInput    = form.querySelector('input[name="csrf_token"]');
                   var passInput    = form.querySelector('input[name="passphrase"]');
+                  var pkInput      = form.querySelector('input[name="private_key"]');
                   if (!fileInput || !fileInput.files || !fileInput.files[0]) return;
                   if (!confirmInput || confirmInput.value !== 'REPLACE') return;
 
@@ -1547,7 +1559,8 @@
                     var info = await uploadChunked(fileInput.files[0], csrfInput ? csrfInput.value : '');
                     finalize(info.uploadId, info.totalChunks, confirmInput.value,
                              csrfInput ? csrfInput.value : '',
-                             passInput ? passInput.value : '');
+                             passInput ? passInput.value : '',
+                             pkInput ? pkInput.value : '');
                   } catch (err) {
                     if (btn) { btn.disabled = false; btn.textContent = 'Import & Replace All Data'; }
                     setStatus('Upload failed',

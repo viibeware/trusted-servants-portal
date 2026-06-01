@@ -4045,19 +4045,57 @@ def _cleanup_stale_chunk_dirs(max_age_seconds=24 * 60 * 60):
         pass
 
 
-def _decrypt_if_encrypted(zip_path, passphrase):
-    """If ``zip_path`` looks like a tsp-encrypted bundle, decrypt it
-    under ``passphrase`` to a new tempfile and return the new path.
-    Otherwise return ``zip_path`` unchanged. Caller is responsible for
-    unlinking the returned path (which may equal ``zip_path``).
+def _decrypt_if_encrypted(zip_path, passphrase, private_key=""):
+    """If ``zip_path`` looks like an encrypted bundle, decrypt it to a new
+    tempfile and return that path. Otherwise return ``zip_path`` unchanged.
+    Caller is responsible for unlinking the returned path (which may equal
+    ``zip_path``).
 
-    Returns ``(path, decrypted: bool, error_msg: str | None)``. On
-    decrypt failure ``path`` is None and ``error_msg`` carries a
-    user-friendly explanation the caller flashes + redirects on.
+    Handles two envelopes:
+      * ``TSPEPK01`` — an end-to-end-encrypted TS Pro Backup archive,
+        decrypted with the site's ``tspsk_…`` private key. This is the
+        manual-recovery path: download the ``.enc`` from the backup server
+        and paste the private key, when the target's Restore page isn't
+        available.
+      * ``TSPENC01`` — a legacy passphrase bundle (``bundle_crypto``),
+        decrypted with ``passphrase``.
+
+    Returns ``(path, decrypted: bool, error_msg: str | None)``. On failure
+    ``path`` is None and ``error_msg`` is a user-friendly explanation.
     """
     import tempfile
     from .bundle_crypto import is_encrypted, decrypt_file, BundleDecryptError
+    from . import pubkey
 
+    upload_dir = current_app.config["UPLOAD_FOLDER"]
+    data_dir = os.path.dirname(upload_dir.rstrip("/"))
+
+    # ── End-to-end-encrypted TS Pro Backup archive (public-key) ──
+    try:
+        with open(zip_path, "rb") as _fh:
+            _is_e2ee = pubkey.head_is_e2ee(_fh.read(8))
+    except OSError:
+        _is_e2ee = False
+    if _is_e2ee:
+        private_key = (private_key or "").strip()
+        if not private_key:
+            return None, False, (
+                "This is an end-to-end-encrypted TS Pro Backup archive. Paste the site's "
+                "private key (tspsk_…) in the Import form to decrypt it here — or decrypt it "
+                "first on Settings → Off-site backups → your target → Restore, then import "
+                "the resulting .zip.")
+        decrypted = tempfile.NamedTemporaryFile(
+            prefix="tsp-import-e2ee-", suffix=".zip", delete=False, dir=data_dir)
+        decrypted.close()
+        try:
+            pubkey.decrypt_with_privkey(zip_path, decrypted.name, private_key)
+        except (pubkey.E2EEDecryptError, pubkey.E2EEKeyError) as exc:
+            try: os.unlink(decrypted.name)
+            except OSError: pass
+            return None, False, f"Could not decrypt with that private key: {exc}"
+        return decrypted.name, True, None
+
+    # ── Legacy passphrase bundle ──
     if not is_encrypted(zip_path):
         if passphrase:
             # Operator typed a passphrase but the bundle isn't encrypted
@@ -4068,8 +4106,6 @@ def _decrypt_if_encrypted(zip_path, passphrase):
     if not passphrase:
         return None, False, ("This bundle is encrypted — supply the decryption "
                              "passphrase in the Import form and retry.")
-    upload_dir = current_app.config["UPLOAD_FOLDER"]
-    data_dir = os.path.dirname(upload_dir.rstrip("/"))
     decrypted = tempfile.NamedTemporaryFile(
         prefix="tsp-import-decrypted-", suffix=".zip", delete=False, dir=data_dir)
     decrypted.close()
@@ -4255,6 +4291,7 @@ def data_import():
         return redirect(_safe_referrer() or url_for("main.index"))
 
     passphrase = (request.form.get("passphrase") or "").strip()
+    private_key = (request.form.get("private_key") or "").strip()
 
     upload_dir = current_app.config["UPLOAD_FOLDER"]
     data_dir = os.path.dirname(upload_dir.rstrip("/"))
@@ -4264,7 +4301,7 @@ def data_import():
     decrypted_path = None
     try:
         f.save(tmp_zip.name)
-        import_path, was_decrypted, err = _decrypt_if_encrypted(tmp_zip.name, passphrase)
+        import_path, was_decrypted, err = _decrypt_if_encrypted(tmp_zip.name, passphrase, private_key)
         if err:
             flash(err, "danger")
             return redirect(_safe_referrer() or url_for("main.index"))
@@ -4345,6 +4382,7 @@ def data_import_finalize():
         return redirect(_safe_referrer() or url_for("main.index"))
 
     passphrase = (request.form.get("passphrase") or "").strip()
+    private_key = (request.form.get("private_key") or "").strip()
 
     upload_dir = current_app.config["UPLOAD_FOLDER"]
     data_dir = os.path.dirname(upload_dir.rstrip("/"))
@@ -4363,7 +4401,7 @@ def data_import_finalize():
 
     decrypted_path = None
     try:
-        import_path, was_decrypted, err = _decrypt_if_encrypted(tmp_zip.name, passphrase)
+        import_path, was_decrypted, err = _decrypt_if_encrypted(tmp_zip.name, passphrase, private_key)
         if err:
             flash(err, "danger")
             return redirect(_safe_referrer() or url_for("main.index"))
@@ -4958,7 +4996,7 @@ def backups_new_post():
         flash("Pick a destination type to continue.", "danger")
         return redirect(url_for("main.backups_new", **_backup_embed_kwargs()))
     t = BackupTarget(name=name, kind=kind, enabled=False,
-                     remote_path="/" if kind == "dropbox" else "/backups/tsp",
+                     remote_path="/" if kind in ("dropbox", "tspro_backup") else "/backups/tsp",
                      schedule_cron="0 3 * * *",
                      retain_count=14,
                      use_tls=True)
@@ -4984,6 +5022,41 @@ def backups_wizard(target_id, step):
         return render_template("backups_wizard_step5.html", t=t,
                                presets=SCHEDULE_PRESETS, embed=embed)
     abort(404)
+
+
+def _tspro_backup_pin_pubkey(t):
+    """Ping a TS Pro Backup target and pin the site's current public key on
+    the row. Returns (ok, message): on success ``message`` is the key's
+    fingerprint; on failure a user-readable error. Pinning here (rather than
+    silently adopting whatever the server advertises at upload time) means a
+    later server-side key rotation is surfaced to the admin instead of
+    quietly re-pointing backups at a new key."""
+    import requests
+    from . import pubkey
+    base = (t.api_base_url or "").rstrip("/")
+    api_key = decrypt(t.api_key_enc) if t.api_key_enc else ""
+    if not base or not api_key:
+        return False, "Enter the API endpoint and API key first."
+    try:
+        r = requests.get(f"{base}/ping",
+                         headers={"Authorization": f"Bearer {api_key}"}, timeout=30)
+    except requests.RequestException as e:
+        return False, f"Could not reach the backup server: {e}"
+    if r.status_code in (401, 403):
+        return False, "The backup server rejected this API key."
+    if r.status_code != 200:
+        return False, f"Unexpected response from the backup server (HTTP {r.status_code})."
+    try:
+        caps = r.json()
+    except ValueError:
+        return False, "The backup server returned an unreadable response."
+    server_pub = caps.get("e2ee_public_key")
+    if not server_pub:
+        return False, ("This site has no encryption key yet — rotate its keypair in the "
+                       "backup server's console, then test again.")
+    t.e2ee_public_key = server_pub
+    db.session.commit()
+    return True, pubkey.fingerprint(server_pub)
 
 
 @bp.route("/settings/backups/<int:target_id>/wizard/2", methods=["POST"])
@@ -5048,6 +5121,17 @@ def backups_wizard_step2_post(target_id):
         legacy_token = (request.form.get("oauth_token") or "").strip()
         if legacy_token:
             t.oauth_token_enc = encrypt(legacy_token)
+    elif t.kind == "tspro_backup":
+        t.api_base_url = (request.form.get("api_base_url") or "").strip() or None
+        api_key = (request.form.get("api_key") or "").strip()
+        if api_key:
+            t.api_key_enc = encrypt(api_key)
+        db.session.commit()
+        # Best-effort: pin the server's public key now so the fingerprint
+        # shows and the first run has a key. Failures are non-fatal — the
+        # "Test connection" button surfaces them, and the backend re-pings
+        # at runtime if the key is still unset.
+        _tspro_backup_pin_pubkey(t)
 
     db.session.commit()
     return redirect(url_for("main.backups_wizard", target_id=t.id, step=3,
@@ -5085,6 +5169,15 @@ def backups_wizard_step3_post(target_id):
 def backups_wizard_step4_post(target_id):
     """Encryption-at-rest opt-in."""
     t = db.session.get(BackupTarget, target_id) or abort(404)
+    # TS Pro Backup is always end-to-end encrypted to the site's public key
+    # by the backend itself, so the passphrase layer is neither offered nor
+    # applicable — never double-wrap.
+    if t.kind == "tspro_backup":
+        t.encrypt_archive = False
+        t.archive_passphrase_enc = None
+        db.session.commit()
+        return redirect(url_for("main.backups_wizard", target_id=t.id, step=5,
+                                **_backup_embed_kwargs()))
     want = (request.form.get("encrypt_archive") == "1")
     if want:
         passphrase = request.form.get("passphrase") or ""
@@ -5233,6 +5326,12 @@ def backups_edit_post(target_id):
         legacy_token = (request.form.get("oauth_token") or "").strip()
         if legacy_token:
             t.oauth_token_enc = encrypt(legacy_token)
+    elif t.kind == "tspro_backup":
+        t.api_base_url = (request.form.get("api_base_url") or t.api_base_url or "").strip() or None
+        api_key = (request.form.get("api_key") or "").strip()
+        if api_key:
+            t.api_key_enc = encrypt(api_key)
+        _tspro_backup_pin_pubkey(t)  # best-effort re-pin / refresh fingerprint
 
     # ── Schedule (same as step 3) ──
     preset = request.form.get("schedule_preset") or ""
@@ -5259,6 +5358,17 @@ def backups_edit_post(target_id):
     # wizard's step-4 ack_saved gate only kicks in when a new passphrase
     # is being set — toggling an already-stored passphrase off doesn't
     # need re-acknowledgement.
+    # TS Pro Backup encrypts to the site's public key in the backend, so
+    # the passphrase layer never applies — keep it off, skip the block.
+    if t.kind == "tspro_backup":
+        t.encrypt_archive = False
+        t.archive_passphrase_enc = None
+        if t.enabled:
+            t.next_run_at = compute_next_run(t.schedule_cron)
+        db.session.commit()
+        flash(f"Updated '{t.name}'.", "success")
+        return redirect(url_for("main.backups_list", **_backup_embed_kwargs()))
+
     want_encrypt = (request.form.get("encrypt_archive") == "1")
     new_passphrase = request.form.get("passphrase") or ""
     confirm = request.form.get("passphrase_confirm") or ""
@@ -5306,6 +5416,17 @@ def backups_test(target_id):
     auth/path failures before the user advances the wizard."""
     from .backup_backends import make_backend, BackendError
     t = db.session.get(BackupTarget, target_id) or abort(404)
+    # TS Pro Backup: a ping authenticates and yields the encryption key —
+    # no need to round-trip a probe file (and create a throwaway backup
+    # row). Pin the server's current key and report its fingerprint so the
+    # admin can confirm it against the backup server's console.
+    if t.kind == "tspro_backup":
+        ok, msg = _tspro_backup_pin_pubkey(t)
+        if ok:
+            return jsonify({"ok": True,
+                            "message": f"Connection ok — encryption key fingerprint {msg}. "
+                                       "Confirm this matches the backup server's console."})
+        return jsonify({"ok": False, "message": msg})
     backend = None
     try:
         backend = make_backend(t)
@@ -5452,7 +5573,36 @@ def backups_restore_post(target_id):
 
     out_path = tmp.name
     out_name = remote_name
-    if remote_name.endswith(".enc"):
+
+    # Detect the envelope by content, not extension. A TS Pro Backup archive
+    # is a public-key (TSPEPK01) blob and is decrypted with the site's
+    # private key; legacy ``.enc`` archives use the passphrase path.
+    with open(tmp.name, "rb") as _fh:
+        _head = _fh.read(8)
+    from . import pubkey
+    if pubkey.head_is_e2ee(_head):
+        private_key = (request.form.get("private_key") or "").strip()
+        if not private_key:
+            try: os.unlink(tmp.name)
+            except OSError: pass
+            flash("This archive is end-to-end encrypted — enter the site's private key to decrypt it.", "danger")
+            return redirect(url_for("main.backups_restore", target_id=t.id, **_backup_embed_kwargs()))
+        dec = _tempfile.NamedTemporaryFile(prefix="tsp-restore-dec-", suffix=".zip", delete=False)
+        dec.close()
+        try:
+            pubkey.decrypt_with_privkey(tmp.name, dec.name, private_key)
+            out_path = dec.name
+            out_name = remote_name[:-4] if remote_name.endswith(".enc") else remote_name
+        except (pubkey.E2EEDecryptError, pubkey.E2EEKeyError) as e:
+            for p in (tmp.name, dec.name):
+                try: os.unlink(p)
+                except OSError: pass
+            flash(f"Decryption failed: {e}", "danger")
+            return redirect(url_for("main.backups_restore", target_id=t.id, **_backup_embed_kwargs()))
+        finally:
+            try: os.unlink(tmp.name)
+            except OSError: pass
+    elif remote_name.endswith(".enc"):
         if not passphrase:
             try: os.unlink(tmp.name)
             except OSError: pass

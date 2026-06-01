@@ -58,6 +58,27 @@
       </p>
     </details>
     {% endif %}
+    {% elif t.kind == 'tspro_backup' %}
+    {# TS Pro Backup — end-to-end encrypted HTTP destination. We collect
+       the server's /api/v1 endpoint + the per-site API key. "Test
+       connection" pings the server, pins its public key on this target,
+       and shows the key's fingerprint so the admin can confirm it
+       matches the one shown in the backup server's console. #}
+    <label>Backup server API endpoint
+      <input type="url" name="api_base_url" value="{{ t.api_base_url or '' }}" required placeholder="https://backup.example.org/api/v1">
+      <span class="muted smaller">The TS&nbsp;Pro Backup server's API base, ending in <code>/api/v1</code>.</span>
+    </label>
+    <label>Site API key
+      <input type="password" name="api_key" autocomplete="new-password" placeholder="{% if t.api_key_enc %}(leave blank to keep current){% else %}tspb_…{% endif %}">
+      <span class="muted smaller">Shown once when the site was created in the backup server's console. Stored encrypted on disk.</span>
+    </label>
+    <p class="muted smaller">
+      {% if t.e2ee_public_key %}
+        🔑 Encryption key fingerprint: <code>{{ t.e2ee_public_key|tspro_fp }}</code> — confirm this matches the backup server's console.
+      {% else %}
+        Run “Test connection” to fetch and confirm this site's encryption key.
+      {% endif %}
+    </p>
     {% else %}
     {# Dropbox — refresh-token OAuth flow. The legacy "Generate access
        token" path produced a token that expires after 4 hours, so the

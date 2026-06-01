@@ -7,7 +7,18 @@ bump. The deeper, version-by-version implementation log lives in
 The same content appears in-app under **Settings → About** with the
 release notes expanded by default and the changelog collapsed.
 
-## 2.10.1 — 2026-05-31 (latest) — Know at a glance whether your email relay is connected
+## 2.10.2 — 2026-06-01 (latest) — End-to-end-encrypted off-site backups + clearer Watchtower
+
+- **A new, private off-site backup option: TS Pro Backup.** Alongside FTP/FTPS, SFTP, and Dropbox, you can now send your backups to a dedicated TS Pro Backup server — and they're **end-to-end encrypted**. Each backup is scrambled *on your portal*, using a key the backup server hands out, **before** it ever leaves; the backup server only ever holds a locked copy it can't open. You keep the matching **private key** (shown once when your site is created in the backup server's console), and it's the only thing that can unlock a backup — so even the backup host can't read your data. The setup wizard walks you through it: paste the server address and your site's API key, click **Test connection**, and it shows a short "fingerprint" of your encryption key so you can confirm it matches what the backup server displays.
+- **Restoring is just as private.** On a TS Pro Backup target's **Restore** page you paste your private key to unlock and restore an archive — the key is used right there and never uploaded. And if you ever need to recover the hard way, you can download the encrypted file from the backup server and import it directly under **Settings → Import** by pasting the same private key. Your existing passphrase-based encrypted backups keep working exactly as before.
+- **Fixed: "Run now" (and the wizard's first backup) no longer shows an error after a successful run.** A timing issue could make a backup that actually succeeded report a server error instead of its real result. It now reports the true outcome every time.
+
+## 2.10.2 — Watchtower also tells you which tab needs attention
+
+- **The Watchtower attention count now points you to the right place.** The shield button in the sidebar has long shown a little number when something needs a look — flagged Recovery Contacts requests, pending access requests, or locked-out accounts — but once you opened Watchtower it didn't say *which* section that number was about. Now each of Watchtower's tabs carries its own coloured chip (red on **Overview** for flagged Recovery Contacts, amber on **Requests** for pending access requests, blue on **Access** for locked accounts), so you can see at a glance where to go.
+- **A new "Needs attention" panel at the top of the Watchtower Overview.** It lists each thing that needs you — with a short description and a count — and every row is a link that takes you straight to the section that handles it. When there's nothing outstanding it simply says "All clear."
+
+## 2.10.1 — 2026-05-31 — Know at a glance whether your email relay is connected
 
 - **A connection check for the API relay, right where you set it up.** Under **Settings → Domain / Email**, the API-relay option now shows a status pill — **Connected**, **Not connected**, or **Not tested** — next to a **Test connection** button. Click it after pasting in your relay's address and API key and the portal checks, *without sending an email*, that the relay is reachable and that the key is accepted — so you can confirm everything's right **before** you save. If something's off, it tells you why (a rejected key, an unreachable address, and so on). Each time you open the tab it re-checks, so the pill always reflects the live connection.
 - **For the full check, update the companion relay to v0.1.1 or newer** (pull `viibeware/tspro-relay:latest`). On an older relay the portal still validates your API key — it just notes that the relay should be updated to report its own status.

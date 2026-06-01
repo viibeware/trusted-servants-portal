@@ -12,6 +12,21 @@
   <section class="card backup-step-card">
     <div class="card-head"><h2>{{ icon('lock') }} Encryption at rest</h2></div>
 
+    {% if t.kind == 'tspro_backup' %}
+    <p class="muted">
+      {{ icon('shield') }} <strong>This destination is end-to-end encrypted automatically.</strong>
+      Every archive is encrypted to the backup server's public key
+      {% if t.e2ee_public_key %}(fingerprint <code>{{ t.e2ee_public_key|tspro_fp }}</code>){% endif %}
+      before it leaves this portal — the server only ever stores ciphertext it
+      can't read. There's no passphrase to set here; you'll use the site's
+      <strong>private key</strong> to decrypt when restoring.
+    </p>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">{{ icon('arrow-right') }} Continue to review</button>
+    </div>
+  </section>
+</form>
+{% else %}
     <label class="check">
       <input type="checkbox" name="encrypt_archive" value="1" data-encrypt-toggle {% if t.encrypt_archive %}checked{% endif %}>
       <span>
@@ -54,4 +69,5 @@
   t.addEventListener('change', () => { fields.hidden = !t.checked; });
 })();
 </script>
+{% endif %}
 {% endblock %}

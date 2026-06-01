@@ -14,16 +14,21 @@
 
     <dl class="backup-review-list">
       <dt>Name</dt>           <dd>{{ t.name }}</dd>
+      {% if t.kind == 'tspro_backup' %}
+      <dt>Destination</dt>    <dd>TS Pro Backup · <code>{{ t.api_base_url }}</code></dd>
+      <dt>Encryption key</dt> <dd>{% if t.e2ee_public_key %}<code>{{ t.e2ee_public_key|tspro_fp }}</code>{% else %}<span class="warning">not set — test the connection</span>{% endif %}</dd>
+      {% else %}
       <dt>Destination</dt>    <dd>{{ t.kind|upper }}{% if t.kind != 'dropbox' %} · {{ t.host }}{% if t.port %}:{{ t.port }}{% endif %}{% endif %}</dd>
       {% if t.kind == 'ftp' %}<dt>Connection</dt><dd>{{ 'FTPS (encrypted)' if t.use_tls else 'Plain FTP — not encrypted' }}</dd>{% endif %}
       {% if t.username %}<dt>Username</dt><dd>{{ t.username }}</dd>{% endif %}
       <dt>Remote path</dt>    <dd><code>{{ t.remote_path or '/' }}</code></dd>
+      {% endif %}
       <dt>Schedule</dt>       <dd><code>{{ t.schedule_cron }}</code>
         {% for key, (cron, label) in presets.items() %}{% if cron == t.schedule_cron %} ({{ label }}){% endif %}{% endfor %}
       </dd>
       <dt>Retention</dt>      <dd>Keep last {{ t.retain_count }} archives</dd>
       <dt>Archive encryption</dt>
-        <dd>{% if t.encrypt_archive %}{{ icon('lock') }} On — files uploaded as <code>.zip.enc</code>{% else %}Off — files uploaded as plain <code>.zip</code>{% endif %}</dd>
+        <dd>{% if t.kind == 'tspro_backup' %}{{ icon('shield') }} End-to-end — encrypted to the server's public key{% elif t.encrypt_archive %}{{ icon('lock') }} On — files uploaded as <code>.zip.enc</code>{% else %}Off — files uploaded as plain <code>.zip</code>{% endif %}</dd>
     </dl>
 
     <label class="check">
